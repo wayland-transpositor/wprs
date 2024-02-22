@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+if ! cargo +nightly fmt -- --check
+then
+    echo "cargo +nightly fmt is complaining about something; run cargo +nightly fmt."
+    exit 1
+fi
+
+# cargo install cargo-cranky
+if ! cargo +nightly cranky --all-targets -- -D warnings
+then
+    echo "cargo +nightly cranky is complaining about something."
+    exit 1
+fi
+
+if ! cargo test
+then
+    echo "Some tests are failing."
+    exit 1
+fi
+
+# https://github.com/rust-lang/miri#using-miri
+# rustup +nightly component add miri
+if ! MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test
+then
+    echo "Miri detected undefined behaviour."
+    exit 1
+fi
+
+exit 0

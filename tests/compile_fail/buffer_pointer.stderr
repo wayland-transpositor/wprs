@@ -1,0 +1,37 @@
+error[E0597]: `a_ptr` does not live long enough
+  --> tests/compile_fail/buffer_pointer.rs:27:37
+   |
+24 |     let _bufptr = {
+   |         ------- borrow later stored here
+25 |         let a = [0u32; 4];
+26 |         let a_ptr = a.as_ptr();
+   |             ----- binding `a_ptr` declared here
+27 |         unsafe { BufferPointer::new(&a_ptr, a.len()) }
+   |                                     ^^^^^^ borrowed value does not live long enough
+28 |     };
+   |     - `a_ptr` dropped here while still borrowed
+
+error[E0597]: `a_ptr` does not live long enough
+  --> tests/compile_fail/buffer_pointer.rs:35:41
+   |
+32 |     let _bufptr: BufferPointer<*const u8> = unsafe {
+   |         ------- borrow later stored here
+33 |         let a = [0u32; 4];
+34 |         let a_ptr = a.as_ptr();
+   |             ----- binding `a_ptr` declared here
+35 |         let bufptr = BufferPointer::new(&a_ptr, a.len());
+   |                                         ^^^^^^ borrowed value does not live long enough
+36 |         bufptr.cast()
+37 |     };
+   |     - `a_ptr` dropped here while still borrowed
+
+error[E0597]: `a_ptr` does not live long enough
+  --> tests/compile_fail/buffer_pointer.rs:44:41
+   |
+43 |         let a_ptr = a.as_ptr();
+   |             ----- binding `a_ptr` declared here
+44 |         let bufptr = BufferPointer::new(&a_ptr, a.len());
+   |                                         ^^^^^^ borrowed value does not live long enough
+45 |         bufptr.split_at(2)
+46 |     };
+   |     - `a_ptr` dropped here while still borrowed

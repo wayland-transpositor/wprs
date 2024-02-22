@@ -1,0 +1,11 @@
+error[E0597]: `channel_parent` does not live long enough
+  --> tests/compile_fail/infallible_sender.rs:53:13
+   |
+51 |         let _infallible_sender = {
+   |             ------------------ borrow later stored here
+52 |             let channel_parent = ChannelParent::new();
+   |                 -------------- binding `channel_parent` declared here
+53 |             channel_parent.infallible_sender()
+   |             ^^^^^^^^^^^^^^ borrowed value does not live long enough
+54 |         };
+   |         - `channel_parent` dropped here while still borrowed

@@ -1,0 +1,46 @@
+# https://github.com/ericseppanen/cargo-cranky
+# cargo install cargo-cranky && cargo cranky
+
+deny = [
+  # TODO(https://github.com/rust-lang/rust-clippy/issues/11440): replace with
+  # the new rule from that bug.
+  "clippy::enum_glob_use",
+]
+
+warn = [
+  "clippy::derive_partial_eq_without_eq",
+  "clippy::inconsistent_struct_constructor",
+  "clippy::inefficient_to_string",
+  "clippy::iter_with_drain",
+  "clippy::manual_instant_elapsed",
+  "clippy::missing_panics_doc",
+  "clippy::needless_collect",
+  "clippy::ptr_as_ptr",
+  "clippy::ptr_cast_constness",
+  "clippy::redundant_clone",
+  "clippy::redundant_closure_for_method_calls",
+  "clippy::ref_patterns",
+  "clippy::rest_pat_in_fully_bound_structs",
+  "clippy::string_to_string",
+  "clippy::tests_outside_test_module",
+  "clippy::trait_duplication_in_bounds",
+  "clippy::type_repetition_in_bounds",
+  "clippy::unnested_or_patterns",
+  "clippy::unused_async",
+  "clippy::unused_peekable",
+  "clippy::unused_rounding",
+  "clippy::use_self",
+  "clippy::used_underscore_binding",
+  "clippy::verbose_file_reads",
+  "clippy::wildcard_imports",
+  "unsafe_op_in_unsafe_fn",
+]
+
+allow = [
+  "clippy::blocks_in_conditions",
+  "clippy::large_enum_variant",
+  "clippy::option_map_unit_fn",
+  "clippy::println_empty_string",
+  "clippy::too_many_arguments",
+  "clippy::type_complexity",
+]

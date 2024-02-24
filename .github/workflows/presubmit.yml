@@ -1,0 +1,64 @@
+name: presubmit
+on: [push, pull_request, workflow_call, workflow_dispatch]
+
+env:
+  # Without this, tracy-client won't build because the github runners don't have
+  # TSCs. We don't care since we're not actually testing tracy functionality but
+  # we still want to test with --all-features.
+  TRACY_NO_INVARIANT_CHECK: 1
+
+jobs:
+  test:
+    name: cargo test --all-features
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+      - run: sudo apt-get install libwayland-dev libxkbcommon-dev
+      - run: cargo test --all-features
+
+  miri:
+    name: cargo +nightly miri test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+        with:
+          components: miri
+          channel: nightly
+      - run: sudo apt-get install libwayland-dev libxkbcommon-dev
+      - run: cargo +nightly miri test
+
+  rustfmt:
+    name: cargo +nightly fmt -- --check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+        with:
+          components: rustfmt
+          channel: nightly
+      - run: cargo +nightly fmt -- --check
+
+  cranky:
+    name: cargo +nightly cranky --all-targets -- -D warnings
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+        with:
+          components: clippy
+          bins: cargo-cranky@0.3.0
+          channel: nightly
+      - run: sudo apt-get install libwayland-dev libxkbcommon-dev
+      - run: cargo +nightly cranky --all-targets -- -D warnings
+
+  deny:
+    name: cargo deny --all-features check licenses
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+        with:
+          bins: cargo-deny
+      - run: cargo deny --all-features check licenses

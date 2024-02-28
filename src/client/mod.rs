@@ -473,9 +473,11 @@ impl RemoteSurface {
     ) -> Result<()> {
         match new_buffer {
             Some(BufferAssignment::New(mut new_buffer)) => {
-                new_buffer.data = buffer_cache
-                    .take()
-                    .expect("buffer_cache should always be populated before a commit");
+                if let Some(buffer_data) = buffer_cache.take() {
+                    new_buffer.data = buffer_data;
+                }
+                // else use the data in new_buffer as the buffer is data is
+                // still sent inline on connection.
                 self.set_buffer(new_buffer, pool).location(loc!())?;
             },
             Some(BufferAssignment::Removed) => {

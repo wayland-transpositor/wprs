@@ -22,16 +22,15 @@ use std::time::Instant;
 use smithay::input::Seat;
 use smithay::input::SeatState;
 use smithay::output::Output;
+use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::compositor;
 use smithay::wayland::compositor::CompositorState;
-use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::compositor::SurfaceData;
 use smithay::wayland::compositor::TraversalAction;
 use smithay::wayland::selection::data_device::DataDeviceState;
@@ -42,7 +41,6 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shm::ShmState;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationMode;
 
-use crate::compositor_utils;
 use crate::prelude::*;
 use crate::serialization::wayland::SurfaceRequest;
 use crate::serialization::wayland::SurfaceRequestPayload;
@@ -81,15 +79,12 @@ fn surface_destruction_callback(state: &mut WprsServerState, surface: &WlSurface
     });
 }
 
-pub struct CalloopData {
-    pub state: WprsServerState,
-    pub display: Display<WprsServerState>,
-}
-
 pub struct WprsServerState {
     pub dh: DisplayHandle,
+    pub lh: LoopHandle<'static, Self>,
     pub compositor_state: CompositorState,
     pub start_time: Instant,
+    pub frame_interval: Duration,
     pub xwayland_enabled: bool,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
@@ -128,8 +123,10 @@ pub struct WprsServerState {
 impl WprsServerState {
     pub fn new(
         dh: DisplayHandle,
+        lh: LoopHandle<'static, Self>,
         serializer: Serializer<Request, Event>,
         xwayland_enabled: bool,
+        frame_interval: Duration,
         kde_server_side_decorations: bool,
     ) -> Self {
         let mut seat_state = SeatState::new();
@@ -142,9 +139,11 @@ impl WprsServerState {
 
         Self {
             dh: dh.clone(),
+            lh,
             compositor_state: CompositorState::new::<Self>(&dh),
             start_time: Instant::now(),
             xwayland_enabled,
+            frame_interval,
             xdg_shell_state: XdgShellState::new::<Self>(&dh),
             xdg_decoration_state: XdgDecorationState::new::<Self>(&dh),
             kde_decoration_state: KdeDecorationState::new::<Self>(&dh, kde_default_decoration_mode),
@@ -207,20 +206,5 @@ impl WprsServerState {
                 |_, _, _| true,
             )
         }
-    }
-
-    pub fn send_callbacks(&self, frame_interval: Duration) {
-        self.for_each_surface(|surface, surface_data| {
-            let mut surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
-
-            compositor_utils::send_frames(
-                surface,
-                &surface_data.data_map,
-                &mut surface_attributes,
-                self.start_time.elapsed(),
-                frame_interval,
-            )
-            .log_and_ignore(loc!());
-        });
     }
 }

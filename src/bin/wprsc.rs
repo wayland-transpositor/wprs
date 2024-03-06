@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use std::fs;
-use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use bpaf::Parser;
 use optional_struct::optional_struct;
@@ -24,7 +22,7 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::reexports::calloop::channel::Event;
 use smithay::reexports::calloop::EventLoop;
-use smithay_client_toolkit::reexports::client::backend::WaylandError;
+use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 use smithay_client_toolkit::reexports::client::ConnectError;
 use smithay_client_toolkit::reexports::client::Connection;
@@ -33,7 +31,6 @@ use wprs::args;
 use wprs::args::Config;
 use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
-use wprs::client::CalloopData;
 use wprs::client::ClientOptions;
 use wprs::client::WprsClientState;
 use wprs::control_server;
@@ -136,7 +133,7 @@ fn main() -> Result<()> {
         _ => anyhow!(e),
     })?;
 
-    let (globals, mut event_queue) = registry_queue_init(&conn)?;
+    let (globals, event_queue) = registry_queue_init(&conn)?;
 
     fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
     let mut serializer = Serializer::new_client(&config.socket).with_context(loc!(), || {
@@ -154,17 +151,22 @@ fn main() -> Result<()> {
     let options = ClientOptions {
         title_prefix: config.title_prefix,
     };
-    let mut loop_data = CalloopData {
-        state: WprsClientState::new(event_queue.handle(), globals, conn, serializer, options)
-            .location(loc!())?,
-    };
+    let mut state = WprsClientState::new(
+        event_queue.handle(),
+        globals,
+        conn.clone(),
+        serializer,
+        options,
+    )
+    .location(loc!())?;
 
     let mut event_loop = EventLoop::try_new()?;
+
     event_loop.handle().insert_source(
         reader,
-        |event, _metadata, loop_data: &mut CalloopData| {
+        |event, _metadata, state: &mut WprsClientState| {
             match event {
-                Event::Msg(msg) => loop_data.state.handle_request(msg),
+                Event::Msg(msg) => state.handle_request(msg),
                 Event::Closed => {
                     unreachable!("serialization::client_loop terminates the process when the server disconnects.");
                 },
@@ -173,7 +175,7 @@ fn main() -> Result<()> {
     ).unwrap();
 
     {
-        let capabilities = loop_data.state.capabilities.clone();
+        let capabilities = state.capabilities.clone();
         control_server::start(config.control_socket, move |input: &str| {
             Ok(match input {
                 // TODO: make the input use json when we have more commands
@@ -187,32 +189,11 @@ fn main() -> Result<()> {
         .location(loc!())?;
     }
 
-    event_loop
-        .run(Duration::from_millis(1), &mut loop_data, move |loop_data| {
-            // WouldBlock means that the compositor can't keep up with our messages.
-            // Seems rare, so we will retry again on next loop.
-
-            match event_queue.flush() {
-                Ok(_) => {},
-                Err(WaylandError::Io(err)) if err.kind() == ErrorKind::WouldBlock => {
-                    warn!("{err:?}");
-                },
-                _ => {
-                    panic!("Error writing to wayland connection.");
-                },
-            };
-
-            match event_queue.prepare_read().unwrap().read() {
-                Ok(_) => {
-                    event_queue.dispatch_pending(&mut loop_data.state).unwrap();
-                },
-                Err(WaylandError::Io(err)) if err.kind() == ErrorKind::WouldBlock => {},
-                _ => {
-                    panic!("Error reading from wayland connection.");
-                },
-            };
-        })
+    WaylandSource::new(conn, event_queue)
+        .insert(event_loop.handle())
         .location(loc!())?;
+
+    event_loop.run(None, &mut state, |_| {}).location(loc!())?;
 
     Ok(())
 }

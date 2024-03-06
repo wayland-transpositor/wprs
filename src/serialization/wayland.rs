@@ -216,16 +216,9 @@ impl Buffer {
         let self_data = match Arc::get_mut(&mut self.data) {
             Some(self_data) => self_data,
             None => {
-                // TODO: this happens more frequently than we'd like. This seems
-                // to happen when a callback is sent shortly after a commit and
-                // then the client immediately commits again (as is its right).
-                // Sending callbacks is currently done on a timer, not related
-                // to commits. We used to send it right after a commit, but we
-                // didn't have a good way to throttle them there. Ideally we'd
-                // send them on a timer but delay sending them for specific
-                // surfaces if that surface's last commit is still being
-                // processed. Also change the log line to a warning after we fix
-                // this.
+                // TODO: this happens rarely but still more frequently than we'd
+                // like. Figure out why. Also change the log line to a warning
+                // after we fix this.
                 debug!("Next commit received for surface before serialization of previous commit finished.");
                 self.data = Arc::new(Vec4u8s::with_total_size(data.len()));
                 // We just created the Arc, no one else can have a copy of it

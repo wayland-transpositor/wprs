@@ -54,7 +54,7 @@ where
 
 // Based on https://github.com/Smithay/smithay/blob/b1c682742ac7b9fa08736476df3e651489709ac2/src/desktop/wayland/utils.rs.
 #[derive(Debug, Default)]
-struct SurfaceFrameThrottlingState(Mutex<Option<Duration>>);
+pub(crate) struct SurfaceFrameThrottlingState(Mutex<Option<Duration>>);
 
 impl SurfaceFrameThrottlingState {
     pub fn update(&self, time: Duration, throttle: Duration) -> bool {

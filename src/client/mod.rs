@@ -93,10 +93,6 @@ impl ObjectBimapExt for ObjectBimap {
     }
 }
 
-pub struct CalloopData {
-    pub state: WprsClientState,
-}
-
 pub struct ClientOptions {
     pub title_prefix: String,
 }

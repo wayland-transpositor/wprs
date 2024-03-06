@@ -25,8 +25,6 @@ use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::reexports::calloop::channel::Event;
 use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::timer::TimeoutAction;
-use smithay::reexports::calloop::timer::Timer;
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::calloop::Interest;
 use smithay::reexports::calloop::Mode;
@@ -173,26 +171,20 @@ impl OptionalConfig<WprsdConfig> for OptionalWprsdConfig {
     }
 }
 
-pub struct CalloopData {
-    pub state: WprsServerState,
-    pub display: Display<WprsServerState>,
-}
-
 fn init_wayland_listener(
     wayland_display: &str,
-    loop_data: &mut CalloopData,
-    event_loop: &EventLoop<CalloopData>,
+    mut display: Display<WprsServerState>,
+    state: &mut WprsServerState,
+    event_loop: &EventLoop<WprsServerState>,
 ) -> Result<()> {
     let listening_socket = ListeningSocketSource::with_name(wayland_display).location(loc!())?;
-    let writer = loop_data.state.serializer.writer().into_inner();
+    let writer = state.serializer.writer().into_inner();
+    let mut dh = display.handle();
 
     event_loop
         .handle()
-        .insert_source(listening_socket, move |stream, _, loop_data| {
-            loop_data
-                .display
-                .handle()
-                .insert_client(stream, Arc::new(ClientState::new(writer.clone())))
+        .insert_source(listening_socket, move |stream, _, _| {
+            dh.insert_client(stream, Arc::new(ClientState::new(writer.clone())))
                 .unwrap();
         })
         .location(loc!())?;
@@ -201,20 +193,12 @@ fn init_wayland_listener(
         .handle()
         .insert_source(
             Generic::new(
-                loop_data
-                    .display
-                    .backend()
-                    .poll_fd()
-                    .try_clone_to_owned()
-                    .unwrap(),
+                display.backend().poll_fd().try_clone_to_owned().unwrap(),
                 Interest::READ,
                 Mode::Level,
             ),
-            |_, _, loop_data| {
-                loop_data
-                    .display
-                    .dispatch_clients(&mut loop_data.state)
-                    .unwrap();
+            move |_, _, state| {
+                display.dispatch_clients(state).unwrap();
                 Ok(PostAction::Continue)
             },
         )
@@ -263,17 +247,19 @@ pub fn main() -> Result<()> {
     let mut event_loop = EventLoop::try_new().location(loc!())?;
     let display: Display<WprsServerState> = Display::new().location(loc!())?;
 
-    let mut loop_data = CalloopData {
-        state: WprsServerState::new(
-            display.handle(),
-            serializer,
-            config.enable_xwayland,
-            config.kde_server_side_decorations,
-        ),
-        display,
-    };
+    let frame_interval = Duration::from_secs_f64(1.0 / (config.framerate as f64));
 
-    init_wayland_listener(&config.wayland_display, &mut loop_data, &event_loop).location(loc!())?;
+    let mut state = WprsServerState::new(
+        display.handle(),
+        event_loop.handle(),
+        serializer,
+        config.enable_xwayland,
+        frame_interval,
+        config.kde_server_side_decorations,
+    );
+
+    init_wayland_listener(&config.wayland_display, display, &mut state, &event_loop)
+        .location(loc!())?;
 
     if config.enable_xwayland {
         start_xwayland_xdg_shell(
@@ -285,38 +271,26 @@ pub fn main() -> Result<()> {
     }
 
     // TODO: do this in WprsServerState::new;
-    let _keyboard = loop_data
-        .state
+    let _keyboard = state
         .seat
         .add_keyboard(Default::default(), 200, 200)
         .location(loc!())?;
-    let _pointer = loop_data.state.seat.add_pointer();
+    let _pointer = state.seat.add_pointer();
 
     event_loop
         .handle()
-        .insert_source(reader, |event, _metadata, loop_data| {
+        .insert_source(reader, |event, _metadata, state| {
             match event {
-                Event::Msg(msg) => loop_data.state.handle_event(msg),
+                Event::Msg(msg) => state.handle_event(msg),
                 Event::Closed => {
                     unreachable!("reader is an in-memory channel whose write end has the same lifetime as serializer: the lifetime of the program.")
                 },
             }
         }).unwrap();
 
-    let frame_interval = Duration::from_secs_f64(1.0 / (config.framerate as f64));
     event_loop
-        .handle()
-        .insert_source(Timer::immediate(), move |_, _, loop_data| {
-            if loop_data.state.serializer.other_end_connected() {
-                loop_data.state.send_callbacks(frame_interval);
-            }
-            TimeoutAction::ToDuration(Duration::from_millis(1))
-        })
-        .unwrap();
-
-    event_loop
-        .run(Duration::from_millis(1), &mut loop_data, move |loop_data| {
-            loop_data.display.flush_clients().unwrap();
+        .run(None, &mut state, move |state| {
+            state.dh.flush_clients().unwrap();
         })
         .location(loc!())?;
 

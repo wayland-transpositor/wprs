@@ -32,11 +32,11 @@ use smithay::xwayland::XwmHandler;
 use crate::prelude::*;
 use crate::xwayland_xdg_shell::client::Role;
 use crate::xwayland_xdg_shell::xsurface_from_x11_surface;
-use crate::xwayland_xdg_shell::CalloopData;
+use crate::xwayland_xdg_shell::WprsState;
 
-impl XwmHandler for CalloopData {
+impl XwmHandler for WprsState {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
-        self.state.compositor_state.xwm.as_mut().unwrap()
+        self.compositor_state.xwm.as_mut().unwrap()
     }
 
     fn new_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
@@ -48,11 +48,11 @@ impl XwmHandler for CalloopData {
         geo.loc.x = 0;
         geo.loc.y = 0;
         window.configure(geo).log_and_ignore(loc!());
-        self.state.compositor_state.x11_surfaces.push(window);
+        self.compositor_state.x11_surfaces.push(window);
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.state.compositor_state.x11_surfaces.push(window);
+        self.compositor_state.x11_surfaces.push(window);
     }
 
     #[instrument(skip(self, _xwm), level = "debug")]
@@ -60,18 +60,18 @@ impl XwmHandler for CalloopData {
         if let Some(wl_surface) = window.wl_surface() {
             // TODO: verify that we don't end up with stale entries
             let surface_id = wl_surface.id();
-            self.state.remove_surface(&surface_id);
+            self.remove_surface(&surface_id);
 
             // TODO: maybe do this on leave?
             // Without this, xwayland still thinks the key that triggered the
             // window close is still held down and sends key repeat events.
-            if let Some(keyboard) = self.state.compositor_state.seat.get_keyboard() {
+            if let Some(keyboard) = self.compositor_state.seat.get_keyboard() {
                 if keyboard
                     .current_focus()
                     .map_or(false, |focus| focus == window)
                 {
                     let serial = SERIAL_COUNTER.next_serial();
-                    keyboard.set_focus(&mut self.state, None, serial);
+                    keyboard.set_focus(self, None, serial);
                 }
             }
         }
@@ -143,8 +143,7 @@ impl XwmHandler for CalloopData {
     // need to worry about that saving the old geometry and restoring it here.
 
     fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.state.surfaces, &window)
-        {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
             if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
                 toplevel.local_window.set_maximized();
             } else {
@@ -156,8 +155,7 @@ impl XwmHandler for CalloopData {
     }
 
     fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.state.surfaces, &window)
-        {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
             if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
                 toplevel.local_window.unset_maximized();
             } else {
@@ -169,8 +167,7 @@ impl XwmHandler for CalloopData {
     }
 
     fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.state.surfaces, &window)
-        {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
             if let Some(Role::XdgToplevel(toplevel)) = &mut xwayland_surface.role {
                 toplevel.local_window.set_fullscreen(None);
             } else {
@@ -182,8 +179,7 @@ impl XwmHandler for CalloopData {
     }
 
     fn unfullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.state.surfaces, &window)
-        {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
             if let Some(Role::XdgToplevel(toplevel)) = &mut xwayland_surface.role {
                 toplevel.local_window.unset_fullscreen();
             } else {
@@ -212,7 +208,7 @@ impl XwmHandler for CalloopData {
     fn allow_selection_access(&mut self, _xwm: XwmId, selection: SelectionTarget) -> bool {
         true
         // TODO: the below should be correct but needs to be verified.
-        // !self.state.client_state.selection_offers.is_empty()
+        // !self.client_state.selection_offers.is_empty()
     }
 
     #[instrument(skip(self, _xwm), level = "debug")]
@@ -225,8 +221,7 @@ impl XwmHandler for CalloopData {
     ) {
         let read_pipe = match selection {
             SelectionTarget::Primary => {
-                let Some(cur_offer) = self.state.client_state.primary_selection_offer.clone()
-                else {
+                let Some(cur_offer) = self.client_state.primary_selection_offer.clone() else {
                     warn!("primary_selection_offer was empty");
                     return;
                 };
@@ -234,7 +229,7 @@ impl XwmHandler for CalloopData {
                 cur_offer.receive(mime_type.clone()).ok()
             },
             SelectionTarget::Clipboard => {
-                let Some(cur_offer) = self.state.client_state.selection_offer.clone() else {
+                let Some(cur_offer) = self.client_state.selection_offer.clone() else {
                     warn!("selection_offer was empty");
                     return;
                 };
@@ -267,43 +262,42 @@ impl XwmHandler for CalloopData {
         selection: SelectionTarget,
         mut mime_types: Vec<String>,
     ) {
-        if let Some(seat_obj) = self.state.client_state.seat_objects.last() {
+        if let Some(seat_obj) = self.client_state.seat_objects.last() {
             mime_types.push("_xwayland_xdg_shell_marker".to_owned());
 
             match selection {
                 SelectionTarget::Clipboard => {
                     let source = self
-                        .state
                         .client_state
                         .data_device_manager_state
                         .create_copy_paste_source(
-                            &self.state.client_state.qh,
+                            &self.client_state.qh,
                             mime_types.iter().map(String::as_str),
                         );
 
                     source.set_selection(
                         &seat_obj.data_device,
-                        self.state.client_state.last_implicit_grab_serial,
+                        self.client_state.last_implicit_grab_serial,
                     );
 
-                    self.state.client_state.selection_source = Some(source);
+                    self.client_state.selection_source = Some(source);
                 },
                 SelectionTarget::Primary => {
                     if let (Some(primary_selection_manager_state), Some(primary_selection_device)) = (
-                        &self.state.client_state.primary_selection_manager_state,
+                        &self.client_state.primary_selection_manager_state,
                         &seat_obj.primary_selection_device,
                     ) {
                         let source = primary_selection_manager_state.create_selection_source(
-                            &self.state.client_state.qh,
+                            &self.client_state.qh,
                             mime_types.iter().map(String::as_str),
                         );
 
                         source.set_selection(
                             primary_selection_device,
-                            self.state.client_state.last_implicit_grab_serial,
+                            self.client_state.last_implicit_grab_serial,
                         );
 
-                        self.state.client_state.primary_selection_source = Some(source);
+                        self.client_state.primary_selection_source = Some(source);
                     }
                 },
             };

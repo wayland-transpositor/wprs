@@ -13,9 +13,7 @@
 // limitations under the License.
 
 use std::ffi::OsString;
-use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use bpaf::Parser;
 use optional_struct::optional_struct;
@@ -29,7 +27,7 @@ use smithay::reexports::calloop::Mode;
 use smithay::reexports::calloop::PostAction;
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::socket::ListeningSocketSource;
-use smithay_client_toolkit::reexports::client::backend::WaylandError;
+use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 use smithay_client_toolkit::reexports::client::Connection;
 use tracing::Level;
@@ -40,7 +38,6 @@ use wprs::args::SerializableLevel;
 use wprs::prelude::*;
 use wprs::utils;
 use wprs::xwayland_xdg_shell::compositor::DecorationBehavior;
-use wprs::xwayland_xdg_shell::CalloopData;
 use wprs::xwayland_xdg_shell::WprsState;
 
 #[optional_struct]
@@ -141,8 +138,8 @@ impl OptionalConfig<XwaylandXdgShellConfig> for OptionalXwaylandXdgShellConfig {
 
 fn init_wayland_listener(
     wayland_display: &str,
-    display: &mut Display<WprsState>,
-    event_loop: &EventLoop<CalloopData>,
+    mut display: Display<WprsState>,
+    event_loop: &EventLoop<WprsState>,
 ) -> Result<OsString> {
     let listening_socket = ListeningSocketSource::with_name(wayland_display).location(loc!())?;
     let socket_name = listening_socket.socket_name().to_os_string();
@@ -155,11 +152,8 @@ fn init_wayland_listener(
                 Interest::READ,
                 Mode::Level,
             ),
-            |_, _, loop_data| {
-                loop_data
-                    .display
-                    .dispatch_clients(&mut loop_data.state)
-                    .unwrap();
+            move |_, _, state| {
+                display.dispatch_clients(state).unwrap();
                 Ok(PostAction::Continue)
             },
         )
@@ -184,38 +178,32 @@ pub fn main() -> Result<()> {
     let display: Display<WprsState> = Display::new().location(loc!())?;
 
     let conn = Connection::connect_to_env().location(loc!())?;
-    let (globals, mut event_queue) = registry_queue_init(&conn).location(loc!())?;
+    let (globals, event_queue) = registry_queue_init(&conn).location(loc!())?;
 
-    let mut loop_data = CalloopData {
-        state: WprsState::new(
-            display.handle(),
-            &globals,
-            event_queue.handle(),
-            conn,
-            event_loop.handle(),
-            config.decoration_behavior,
-        )
-        .location(loc!())?,
-        display,
-        globals,
-    };
+    let mut state = WprsState::new(
+        display.handle(),
+        &globals,
+        event_queue.handle(),
+        conn.clone(),
+        event_loop.handle(),
+        config.decoration_behavior,
+    )
+    .location(loc!())?;
 
-    init_wayland_listener(&config.wayland_display, &mut loop_data.display, &event_loop)
-        .location(loc!())?;
+    init_wayland_listener(&config.wayland_display, display, &event_loop).location(loc!())?;
 
-    let seat = &mut loop_data.state.compositor_state.seat;
+    let seat = &mut state.compositor_state.seat;
     // TODO: do this in WprsState::new;
     let _keyboard = seat
         .add_keyboard(Default::default(), 200, 200)
         .location(loc!())?;
     let _pointer = seat.add_pointer();
 
-    loop_data
-        .state
+    state
         .compositor_state
         .xwayland
         .start(
-            loop_data.state.event_loop_handle.clone(),
+            state.event_loop_handle.clone(),
             config.display,
             vec![(
                 "WAYLAND_DEBUG",
@@ -230,33 +218,13 @@ pub fn main() -> Result<()> {
         )
         .context(loc!(), "Error starting Xwayland.")?;
 
+    WaylandSource::new(conn, event_queue)
+        .insert(event_loop.handle())
+        .location(loc!())?;
+
     event_loop
-        .run(Duration::from_millis(1), &mut loop_data, move |loop_data| {
-            // WouldBlock means that the compositor can't keep up with our messages.
-            // Seems rare, so we will retry again on next loop.
-
-            match event_queue.flush() {
-                Ok(_) => {},
-                Err(WaylandError::Io(err)) if err.kind() == ErrorKind::WouldBlock => {
-                    warn!("{err:?}");
-                },
-                _ => {
-                    panic!("Error writing to wayland connection.");
-                },
-            };
-
-            match event_queue.prepare_read().unwrap().read() {
-                Ok(_) => {
-                    event_queue.dispatch_pending(&mut loop_data.state).unwrap();
-                },
-                Err(WaylandError::Io(err)) if err.kind() == ErrorKind::WouldBlock => {},
-                _ => {
-                    panic!("Error reading from wayland connection.");
-                },
-            };
-
-            // compositor stuff
-            loop_data.display.flush_clients().unwrap();
+        .run(None, &mut state, move |state| {
+            state.dh.flush_clients().unwrap();
         })
         .context(loc!(), "Error starting event loop.")?;
     Ok(())

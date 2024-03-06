@@ -13,8 +13,10 @@
 // limitations under the License.
 
 /// Handlers for events from Smithay.
+use std::mem;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crossbeam_channel::Sender;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
@@ -38,6 +40,8 @@ use smithay::input::pointer::RelativeMotionEvent;
 use smithay::input::Seat;
 use smithay::input::SeatHandler;
 use smithay::input::SeatState;
+use smithay::reexports::calloop::timer::TimeoutAction;
+use smithay::reexports::calloop::timer::Timer;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode as KdeDecorationMode;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration;
@@ -507,7 +511,7 @@ impl CompositorHandler for WprsServerState {
         // Send over the updated buffers from the children first so that the
         // client already has them when the parent is comitted.
         let children_dirty = commit_sync_children(self, surface, &commit).unwrap();
-        commit(surface, self, children_dirty).log_and_ignore(loc!());
+        commit(surface, self, children_dirty, false).log_and_ignore(loc!());
     }
 }
 
@@ -518,14 +522,14 @@ pub(crate) fn commit_sync_children<T, F>(
     commit_fn: &F,
 ) -> Result<bool>
 where
-    F: Fn(&WlSurface, &mut T, bool) -> Result<bool>,
+    F: Fn(&WlSurface, &mut T, bool, bool) -> Result<bool>,
 {
     compositor::get_children(surface)
         .iter()
         .filter(|child| compositor::is_sync_subsurface(child))
         .map(|child| {
             let children_dirty = commit_sync_children(state, child, commit_fn).location(loc!())?;
-            commit_fn(child, state, children_dirty).location(loc!())
+            commit_fn(child, state, children_dirty, true).location(loc!())
         })
         .collect::<Result<Vec<bool>>>()
         .location(loc!())?
@@ -557,6 +561,7 @@ pub fn commit(
     surface: &WlSurface,
     state: &mut WprsServerState,
     children_dirty: bool,
+    skip_buffer: bool,
 ) -> Result<bool> {
     let surface_order = get_child_positions(surface);
 
@@ -575,6 +580,7 @@ pub fn commit(
             parent,
             surface_order,
             children_dirty,
+            skip_buffer,
         )
     })
     .location(loc!())?;
@@ -647,6 +653,7 @@ pub fn set_xdg_toplevel_attributes(
     Ok(())
 }
 
+#[allow(clippy::iter_with_drain)]
 #[instrument(skip(state), level = "debug")]
 pub fn commit_impl(
     surface: &WlSurface,
@@ -656,6 +663,10 @@ pub fn commit_impl(
     parent: Option<WlSurface>,
     surface_order: Vec<SubsurfacePosition>,
     children_dirty: bool,
+    // TODO: This is a hack to stop sending the same buffer over twice. The
+    // subsurface logic needs another pass overall, we shouldn be able to avoid
+    // two back-to-back commits in a better way.
+    skip_buffer: bool,
 ) -> Result<bool> {
     let surface_state = &mut surface_data
         .data_map
@@ -685,7 +696,48 @@ pub fn commit_impl(
         position: (0, 0).into(),
     });
 
-    let surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
+    let mut surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
+
+    let mut frame_callbacks = mem::take(&mut surface_attributes.frame_callbacks);
+
+    if !frame_callbacks.is_empty() {
+        let surface = surface.clone();
+        state
+            .lh
+            .insert_source(
+                Timer::from_duration(
+                    state
+                        .frame_interval
+                        // "The server should give some time for the client to
+                        // draw and commit after sending the frame callback
+                        // events to let it hit the next output refresh."
+                        .saturating_sub(Duration::from_millis(2)),
+                ),
+                move |_, _, state| {
+                    if !surface.is_alive() {
+                        return TimeoutAction::Drop;
+                    }
+
+                    if state.serializer.other_end_connected() {
+                        // We can't use into_iter() because we can't move
+                        // frame_callbacks because this is a FnMut. However, this
+                        // works because this branch will only ever be taken once.
+                        for callback in frame_callbacks.drain(..) {
+                            debug!(
+                                "Sending callback for surface {:?}: {:?}",
+                                surface.id(),
+                                callback.id()
+                            );
+                            callback.done(state.start_time.elapsed().as_millis() as u32);
+                        }
+                        TimeoutAction::Drop
+                    } else {
+                        TimeoutAction::ToDuration(state.frame_interval)
+                    }
+                },
+            )
+            .expect("timer registration should never fail");
+    }
 
     set_regions(&surface_attributes, surface_state);
     set_transformation(&surface_attributes, surface_state);
@@ -710,7 +762,7 @@ pub fn commit_impl(
     // TODO: make a function and dedupe with compositor.rs.
     debug!("buffer assignment: {:?}", &surface_attributes.buffer);
     match &surface_attributes.buffer {
-        Some(SmithayBufferAssignment::NewBuffer(buffer)) => {
+        Some(SmithayBufferAssignment::NewBuffer(buffer)) if !skip_buffer => {
             compositor_utils::with_buffer_contents(buffer, |data, spec| {
                 surface_state.set_buffer(&spec, data)
             })
@@ -746,7 +798,7 @@ pub fn commit_impl(
             surface_state.buffer = None;
             surface_state_to_send.buffer = Some(BufferAssignment::Removed);
         },
-        None => {
+        Some(SmithayBufferAssignment::NewBuffer(_)) | None => {
             if (surface_state_to_send == prev_without_buffer) && !children_dirty {
                 return Ok(false);
             }

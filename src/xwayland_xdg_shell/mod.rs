@@ -23,7 +23,6 @@ use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::backend::ObjectId as CompositorObjectId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as CompositorWlSurface;
-use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::Serial;
@@ -219,7 +218,7 @@ impl WaylandSurface for XWaylandSurface {
 #[derive(Debug)]
 pub struct WprsState {
     pub dh: DisplayHandle,
-    pub event_loop_handle: LoopHandle<'static, CalloopData>,
+    pub event_loop_handle: LoopHandle<'static, Self>,
     pub client_state: WprsClientState,
     pub compositor_state: WprsCompositorState,
     pub surface_bimap: BiMap<CompositorObjectId, ClientObjectId>,
@@ -233,7 +232,7 @@ impl WprsState {
         globals: &GlobalList,
         qh: QueueHandle<Self>,
         conn: Connection,
-        event_loop_handle: LoopHandle<'static, CalloopData>,
+        event_loop_handle: LoopHandle<'static, Self>,
         decoration_behavior: DecorationBehavior,
     ) -> Result<Self> {
         Ok(Self {
@@ -356,10 +355,4 @@ pub fn xsurface_from_x11_surface<'a>(
             .map(|s| s == surface)
             .unwrap_or(false)
     })
-}
-
-pub struct CalloopData {
-    pub state: WprsState,
-    pub display: Display<WprsState>,
-    pub globals: GlobalList,
 }

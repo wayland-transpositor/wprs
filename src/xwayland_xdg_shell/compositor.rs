@@ -77,7 +77,6 @@ use crate::serialization::wayland::OutputInfo;
 use crate::utils::SerialMap;
 use crate::xwayland_xdg_shell::client::Role;
 use crate::xwayland_xdg_shell::wmname;
-use crate::xwayland_xdg_shell::CalloopData;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 
@@ -118,7 +117,7 @@ impl WprsCompositorState {
     /// On failure launching xwayland.
     pub fn new(
         dh: DisplayHandle,
-        event_loop_handle: LoopHandle<'static, CalloopData>,
+        event_loop_handle: LoopHandle<'static, WprsState>,
         decoration_behavior: DecorationBehavior,
     ) -> Self {
         let mut seat_state = SeatState::new();
@@ -135,7 +134,7 @@ impl WprsCompositorState {
                     display,
                 } => {
                     let wm = X11Wm::start_wm(
-                        data.state.event_loop_handle.clone(),
+                        data.event_loop_handle.clone(),
                         dh.clone(),
                         connection,
                         client,
@@ -146,10 +145,10 @@ impl WprsCompositorState {
                     wmname::set_wmname(Some(&format!(":{}", display)), "LG3D")
                         .expect("Failed to set WM name.");
 
-                    data.state.compositor_state.xwm = Some(wm);
+                    data.compositor_state.xwm = Some(wm);
                 },
                 XWaylandEvent::Exited => {
-                    let _ = data.state.compositor_state.xwm.take();
+                    let _ = data.compositor_state.xwm.take();
                 },
             });
             if let Err(e) = ret {
@@ -253,9 +252,9 @@ fn execute_or_defer_commit(state: &mut WprsState, surface: WlSurface) -> Result<
         || is_cursor)
     {
         debug!("deferring commit");
-        X11Wm::commit_hook::<CalloopData>(&surface);
-        state.event_loop_handle.insert_idle(|loop_data| {
-            execute_or_defer_commit(&mut loop_data.state, surface).log_and_ignore(loc!());
+        X11Wm::commit_hook::<WprsState>(&surface);
+        state.event_loop_handle.insert_idle(|state| {
+            execute_or_defer_commit(state, surface).log_and_ignore(loc!());
         });
     }
     Ok(())

@@ -139,6 +139,8 @@ use crate::xwayland_xdg_shell::xsurface_from_client_surface;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 
+use super::compositor::X11ParentForSubsurface;
+
 #[derive(Debug)]
 pub struct WprsClientState {
     pub qh: QueueHandle<WprsState>,
@@ -148,6 +150,7 @@ pub struct WprsClientState {
     pub seat_state: SeatState,
     pub output_state: OutputState,
     pub compositor_state: CompositorState,
+    pub subcompositor: WlSubcompositor,
     pub subcompositor_state: Arc<SubcompositorState>,
     pub shm_state: Shm,
     pub xdg_shell_state: XdgShell,
@@ -190,6 +193,9 @@ impl WprsClientState {
             output_state: OutputState::new(globals, &qh),
             compositor_state,
             subcompositor_state,
+            subcompositor: globals
+                .bind(&qh, 1..=1, SubCompositorData)
+                .context(loc!(), "wl_subcompositor is not available")?,
             shm_state,
             xdg_shell_state: XdgShell::bind(globals, &qh)
                 .context(loc!(), "xdg shell is not available")?,
@@ -967,10 +973,14 @@ impl PointerHandler for WprsState {
                         self.client_state.last_focused_window = Some(X11Parent {
                             surface_id: parent_id.clone(),
                             for_toplevel: Some(toplevel.local_window.clone()),
-                            for_popup: X11ParentForPopup {
+                            for_popup: Some(X11ParentForPopup {
                                 surface_id: parent_id.clone(),
                                 xdg_surface: toplevel.xdg_surface().clone(),
                                 offset: toplevel.frame_offset,
+                            }),
+                            for_subsurface: X11ParentForSubsurface {
+                                surface_id: parent_id.clone(),
+                                surface: toplevel.wl_surface().clone(),
                             },
                         });
                     }
@@ -1229,6 +1239,7 @@ pub enum Role {
     Cursor,
     XdgToplevel(XWaylandXdgToplevel),
     XdgPopup(XWaylandXdgPopup),
+    SubSurface(XWaylandSubSurface),
 }
 
 #[derive(Debug)]
@@ -1429,6 +1440,63 @@ impl WaylandSurface for XWaylandXdgToplevel {
 impl XdgSurface for XWaylandXdgToplevel {
     fn xdg_surface(&self) -> &SctkXdgSurface {
         self.local_window.xdg_surface()
+    }
+}
+
+#[derive(Debug)]
+pub struct SubSurface {
+    pub subsurface: WlSubsurface,
+    pub surface: WlSurface,
+}
+
+#[derive(Debug)]
+pub struct XWaylandSubSurface {
+    pub local_subsurface: SubSurface,
+    pub parent: ObjectId,
+}
+
+impl XWaylandSubSurface {
+    pub(crate) fn set_role(
+        surface: &mut XWaylandSurface,
+        parent: X11ParentForSubsurface,
+        subcompositor: WlSubcompositor,
+        qh: &QueueHandle<WprsState>,
+    ) -> Result<()> {
+        let x11_surface = &surface.get_x11_surface().location(loc!())?;
+        let geometry = x11_surface.geometry();
+
+        let subsurface =
+            subcompositor.get_subsurface(surface.wl_surface(), &parent.surface, qh, SubSurfaceData);
+
+        let x = geometry.loc.x;
+        let y = geometry.loc.y;
+
+        subsurface.set_position(x, y);
+        subsurface.set_desync();
+
+        let new_subsurface = Self {
+            local_subsurface: SubSurface {
+                subsurface,
+                surface: surface.wl_surface().clone(),
+            },
+            parent: parent.surface_id,
+        };
+
+        surface.role = Some(Role::SubSurface(new_subsurface));
+        Ok(())
+    }
+
+    // pub(crate) fn position_relative_to_parent(&mut self, relative_x: i32, relative_y: i32) {
+    //     let x = self.parent.offset.x + relative_x;
+    //     let y = self.parent.offset.y + relative_y;
+
+    //     subsurface.set_position(x, y);
+    // }
+}
+
+impl WaylandSurface for XWaylandSubSurface {
+    fn wl_surface(&self) -> &WlSurface {
+        &self.local_subsurface.surface
     }
 }
 

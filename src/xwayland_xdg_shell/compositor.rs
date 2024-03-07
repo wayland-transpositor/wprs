@@ -63,6 +63,7 @@ use smithay::xwayland::X11Wm;
 use smithay::xwayland::XWayland;
 use smithay::xwayland::XWaylandClientData;
 use smithay::xwayland::XWaylandEvent;
+use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as ClientWlSurface;
 use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::shell::xdg::window::Window;
@@ -297,10 +298,17 @@ pub(crate) struct X11ParentForPopup {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct X11ParentForSubsurface {
+    pub(crate) surface_id: ObjectId,
+    pub(crate) surface: ClientWlSurface,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct X11Parent {
     pub(crate) surface_id: ObjectId,
     pub(crate) for_toplevel: Option<Window>,
-    pub(crate) for_popup: X11ParentForPopup,
+    pub(crate) for_popup: Option<X11ParentForPopup>,
+    pub(crate) for_subsurface: X11ParentForSubsurface,
 }
 
 pub(crate) fn find_x11_parent(
@@ -328,7 +336,7 @@ pub(crate) fn find_x11_parent(
                 Some(Role::XdgToplevel(toplevel)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
                     for_toplevel: Some(toplevel.local_window.clone()),
-                    for_popup: X11ParentForPopup {
+                    for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: toplevel.xdg_surface().clone(),
                         offset: (
@@ -336,15 +344,32 @@ pub(crate) fn find_x11_parent(
                             -geo.loc.y + toplevel.frame_offset.y,
                         )
                             .into(),
+                    }),
+                    for_subsurface: X11ParentForSubsurface {
+                        surface_id: parent_id.clone(),
+                        surface: toplevel.wl_surface().clone(),
                     },
                 }),
                 Some(Role::XdgPopup(popup)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
                     for_toplevel: None,
-                    for_popup: X11ParentForPopup {
+                    for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: popup.xdg_surface().clone(),
                         offset: (-geo.loc.x, -geo.loc.y).into(),
+                    }),
+                    for_subsurface: X11ParentForSubsurface {
+                        surface_id: parent_id.clone(),
+                        surface: popup.wl_surface().clone(),
+                    },
+                }),
+                Some(Role::SubSurface(subsurface)) => Some(X11Parent {
+                    surface_id: parent_id.clone(),
+                    for_toplevel: None, // subsurface cannot be parent to toplevel
+                    for_popup: None,    // subsurface cannot be parent to popup
+                    for_subsurface: X11ParentForSubsurface {
+                        surface_id: parent_id.clone(),
+                        surface: subsurface.wl_surface().clone(),
                     },
                 }),
                 Some(Role::Cursor) => unreachable!("Cursors cannot have child surfaces."),
@@ -416,6 +441,7 @@ pub fn commit_inner(
                 &state.client_state.xdg_shell_state,
                 &state.client_state.shm_state,
                 state.client_state.subcompositor_state.clone(),
+                state.client_state.subcompositor.clone(),
                 &state.client_state.qh,
                 state.compositor_state.decoration_behavior,
             )

@@ -213,11 +213,12 @@ impl XWaylandSurface {
                 XWaylandSubSurface::set_role(
                     self,
                     parent_if_subsurface.unwrap().for_subsurface,
+                    shm_state,
                     subcompositor,
+                    subcompositor_state,
                     qh,
                 )
                 .location(loc!())?;
-                // XWaylandSubSurface::set_role(surface, parent, xdg_shell_state, qh)
             },
             // TODO: do we need a None for hidden helper windows?
         }

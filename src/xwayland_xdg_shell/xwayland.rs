@@ -139,15 +139,14 @@ impl XwmHandler for WprsState {
         geometry: Rectangle<i32, Logical>,
         _above: Option<u32>,
     ) {
+        // Do we need to also reposition xdg-popups?
         if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
-            if let Some(Role::SubSurface(subsurface)) = &xwayland_surface.role {
-                // let parent = &parent.for_subsurface;
-                // let x = geo.loc.x + parent.offset.x;
-                // let y = geo.loc.y + parent.offset.y;
-                let x = geometry.loc.x;
-                let y = geometry.loc.y;
-                // subsurface.position = (x, y);
-                subsurface.local_subsurface.subsurface.set_position(x, y)
+            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+                // subsurface
+                //     .local_subsurface
+                //     .subsurface
+                //     .set_position(geometry.loc.x, geometry.loc.y);
+                // subsurface.moved_this_commit = true;
             }
         }
     }

@@ -157,7 +157,7 @@ impl XWaylandSurface {
         match wayland_window_type {
             WaylandWindowType::Toplevel => {
                 debug!("creating xdg_toplevel for {self:?}");
-                self.parent = parent_if_toplevel.clone();
+                self.parent.clone_from(&parent_if_toplevel);
                 XWaylandXdgToplevel::set_role(
                     self,
                     parent_if_toplevel.and_then(|p| p.for_toplevel).as_ref(),
@@ -187,7 +187,7 @@ impl XWaylandSurface {
             },
             WaylandWindowType::Popup => {
                 debug!("creating xdg_popup for {self:?}");
-                self.parent = parent_if_popup.clone();
+                self.parent.clone_from(&parent_if_popup);
                 XWaylandXdgPopup::set_role(
                     self,
                     &parent_if_popup.unwrap().for_popup,

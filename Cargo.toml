@@ -11,7 +11,7 @@ inherits = "release"
 debug = true
 
 [profile.release-lto]
-inherits = "release"
+inherits = "release-with-symbols"
 lto = true
 codegen-units = 1
 

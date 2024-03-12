@@ -634,8 +634,10 @@ pub fn set_xdg_toplevel_attributes(
     // Be careful about not moving objects out of
     // toplevel_attributes here.
     toplevel_state.parent = toplevel_attributes.parent.as_ref().map(WlSurfaceId::new);
-    toplevel_state.title = toplevel_attributes.title.clone();
-    toplevel_state.app_id = toplevel_attributes.app_id.clone();
+    toplevel_state.title.clone_from(&toplevel_attributes.title);
+    toplevel_state
+        .app_id
+        .clone_from(&toplevel_attributes.app_id);
 
     // TODO: decoration mode are in wayland::shell::xdg::ToplevelState. See also
     // TODO in server_handlers::handle_toplevel.
@@ -769,7 +771,9 @@ pub fn commit_impl(
             .location(loc!())?
             .location(loc!())?;
 
-            surface_state_to_send.buffer = surface_state.buffer.clone();
+            surface_state_to_send
+                .buffer
+                .clone_from(&surface_state.buffer);
             // surface_state.set_buffer (called above) sets buffer to
             // Some(BufferAssignment::New(...)), so the 4 unwraps below should
             // never fail.

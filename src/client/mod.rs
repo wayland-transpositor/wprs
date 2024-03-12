@@ -474,6 +474,13 @@ impl RemoteSurface {
                 }
                 // else use the data in new_buffer as the buffer is data is
                 // still sent inline on connection.
+
+                if new_buffer.data.is_empty() {
+                    // TODO: do we want to log a warning and let the rest of the
+                    // commit work? Unclear that it matters.
+                    return Err(anyhow!("Received buffer commit with empty data. This can if wprsc reattaches between wprsd sending a buffer message and a commit message."));
+                }
+
                 self.set_buffer(new_buffer, pool).location(loc!())?;
             },
             Some(BufferAssignment::Removed) => {

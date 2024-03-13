@@ -32,6 +32,7 @@ use crate::prelude::*;
 use crate::serialization::geometry::Size;
 use crate::serialization::wayland::SurfaceState;
 use crate::serialization::wayland::WlSurfaceId;
+use crate::serialization::xdg_shell::DecorationMode;
 use crate::serialization::xdg_shell::XdgPopupId;
 use crate::serialization::xdg_shell::XdgPositioner;
 use crate::serialization::xdg_shell::XdgToplevelId;
@@ -49,6 +50,7 @@ pub struct RemoteXdgToplevel {
     pub title: Option<String>,
     pub title_prefix: String,
     pub app_id: Option<String>,
+    pub decoration_mode: Option<DecorationMode>,
     pub max_size: Size<i32>,
     pub min_size: Size<i32>,
 }
@@ -107,6 +109,7 @@ impl RemoteXdgToplevel {
             title: None,
             title_prefix: String::new(),
             app_id: None,
+            decoration_mode: None,
             max_size: (0, 0).into(),
             min_size: (0, 0).into(),
         };
@@ -132,6 +135,14 @@ impl RemoteXdgToplevel {
             if let Some(app_id) = &self.app_id {
                 self.local_window.set_app_id(app_id);
             }
+        }
+    }
+
+    fn set_decoration_mode(&mut self, mode: Option<DecorationMode>) {
+        if self.decoration_mode != mode {
+            self.decoration_mode = mode;
+            self.local_window
+                .request_decoration_mode(mode.map(Into::into));
         }
     }
 
@@ -186,6 +197,7 @@ impl RemoteXdgToplevel {
 
         remote_toplevel.set_title(toplevel_state.title);
         remote_toplevel.set_app_id(toplevel_state.app_id);
+        remote_toplevel.set_decoration_mode(toplevel_state.decoration_mode);
 
         Ok(())
     }

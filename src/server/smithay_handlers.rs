@@ -639,9 +639,6 @@ pub fn set_xdg_toplevel_attributes(
         .app_id
         .clone_from(&toplevel_attributes.app_id);
 
-    // TODO: decoration mode are in wayland::shell::xdg::ToplevelState. See also
-    // TODO in server_handlers::handle_toplevel.
-
     // toplevel_state.maximized = toplevel_attributes
     //     .current
     //     .states
@@ -893,14 +890,22 @@ impl SeatHandler for WprsServerState {
 }
 
 impl WprsServerState {
-    fn send_decoration_mode_request(&self, surface: &WlSurface, mode: Option<DecorationMode>) {
-        self.serializer
-            .writer()
-            .send(SendType::Object(Request::Toplevel(ToplevelRequest {
-                client: serialization::ClientId::new(&surface.client().unwrap()),
-                surface: (&surface.id()).into(),
-                payload: ToplevelRequestPayload::Decoration(mode),
-            })))
+    fn set_decoration_mode(&self, surface: &WlSurface, mode: Option<DecorationMode>) {
+        compositor::with_states(surface, |surface_data| {
+            let surface_state = &mut surface_data
+                .data_map
+                .get::<LockedSurfaceState>()
+                .unwrap()
+                .0
+                .lock()
+                .unwrap();
+
+            // even though kde can send decorations for any surface, only send them
+            // for XdgTopLevel since that's what wprs currently expects
+            if let Some(Role::XdgToplevel(toplevel_state)) = &mut surface_state.role {
+                toplevel_state.decoration_mode = mode;
+            }
+        });
     }
 }
 
@@ -912,13 +917,13 @@ impl XdgDecorationHandler for WprsServerState {
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: XdgDecorationMode) {
         let mode: Option<DecorationMode> = mode.try_into().log(loc!()).ok();
         if mode.is_some() {
-            self.send_decoration_mode_request(toplevel.wl_surface(), mode);
+            self.set_decoration_mode(toplevel.wl_surface(), mode);
         };
     }
 
     #[instrument(skip(self), level = "debug")]
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        self.send_decoration_mode_request(toplevel.wl_surface(), None);
+        self.set_decoration_mode(toplevel.wl_surface(), None);
     }
 }
 
@@ -944,13 +949,13 @@ impl KdeDecorationHandler for WprsServerState {
 
         let mode: Option<DecorationMode> = mode.and_then(|m| m.try_into().log(loc!()).ok());
         if mode.is_some() {
-            self.send_decoration_mode_request(surface, mode);
+            self.set_decoration_mode(surface, mode);
         };
     }
 
     #[instrument(skip(self, _decoration), level = "debug")]
     fn release(&mut self, _decoration: &OrgKdeKwinServerDecoration, surface: &WlSurface) {
-        self.send_decoration_mode_request(surface, None);
+        self.set_decoration_mode(surface, None);
     }
 }
 

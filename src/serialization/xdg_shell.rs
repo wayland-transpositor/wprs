@@ -381,8 +381,6 @@ pub enum ToplevelRequestPayload {
     // there any way to unset minimization on this surface."
     SetMinimized,
 
-    Decoration(Option<DecorationMode>),
-
     Move(Move),
     Resize(Resize),
 }

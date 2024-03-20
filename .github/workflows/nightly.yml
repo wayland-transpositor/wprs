@@ -8,8 +8,8 @@ jobs:
     name: cargo deny --all-features check
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  #v4.1.1
+      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
         with:
           bins: cargo-deny
       - run: cargo deny --all-features check

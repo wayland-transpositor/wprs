@@ -295,13 +295,6 @@ impl WprsClientState {
                             .location(loc!())?,
                     );
             },
-            ToplevelRequestPayload::Decoration(mode) => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .request_decoration_mode(mode.map(Into::into));
-            },
         }
         Ok(())
     }

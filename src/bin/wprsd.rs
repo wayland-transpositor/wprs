@@ -122,7 +122,7 @@ fn xwayland_xdg_shell_args() -> impl Parser<Option<Vec<String>>> {
 fn kde_server_side_decorations() -> impl Parser<Option<bool>> {
     bpaf::long("kde-server-side-decorations")
         .argument::<bool>("BOOL")
-        .help("Whether to prefer server-side decorations for applications which still use the org_kde_kwin_server_decoration_manager protocol. GTK is the only major user of that protocol and it ignores polite suggestions from the compositor about whether server-side or client-side decorations should be used, so have to configure this preference at wprsd startup. Once GTK moves to the xwayland-xdg-shell protocol, this can be removed and we can auto-detect the preference of the client compositor.")
+        .help("Whether to prefer server-side decorations for applications which still use the org_kde_kwin_server_decoration_manager protocol. GTK is the only major user of that protocol and it ignores polite suggestions from the compositor about whether server-side or client-side decorations should be used, so have to configure this preference at wprsd startup. Once GTK moves to the xdg-decoration protocol, this can be removed and we can auto-detect the preference of the client compositor.")
         .optional()
 }
 

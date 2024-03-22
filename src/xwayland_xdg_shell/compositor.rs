@@ -482,14 +482,19 @@ pub fn commit_inner(
         }
     }
 
-    xwayland_surface.frame(&state.client_state.qh);
-    xwayland_surface.commit();
-
     if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
         // allow subsurface reposition again
         // TODO: do we need to move this after the surface commit or anything?
-        subsurface.moved_this_commit = false;
+
+        if !subsurface.waiting_for_callback {
+            xwayland_surface.frame(&state.client_state.qh);
+        }
+    } else {
+        xwayland_surface.frame(&state.client_state.qh);
     }
+
+    xwayland_surface.commit();
+
     if xwayland_surface.x11_surface.is_none() || matches!(xwayland_surface.role, Some(Role::Cursor))
     {
         compositor_utils::send_frames(

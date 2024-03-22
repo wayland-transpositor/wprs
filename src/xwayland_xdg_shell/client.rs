@@ -125,6 +125,7 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::ShmHandler;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
+use smithay_client_toolkit::subcompositor::SubsurfaceData;
 use tracing::Span;
 
 use crate::args;
@@ -256,6 +257,17 @@ impl CompositorHandler for WprsState {
     ) {
         if let Some(compositor_surface_id) = self.surface_bimap.get_by_right(&surface.id()) {
             let xwayland_surface = self.surfaces.get_mut(compositor_surface_id).unwrap();
+            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+                subsurface.waiting_for_callback = false;
+                // compositor::with_states(subsurface.wl_surface(), |surface_data| {
+                //     for callback in surface_data
+                //         .cached_state
+                //         .current::<SurfaceAttributes>()
+                //         .frame_callbacks
+                //         .drain(..)
+                //     {}
+                // });
+            }
             if let Some(x11_surface) = &xwayland_surface.x11_surface {
                 if let Some(wl_surface) = x11_surface.wl_surface() {
                     compositor::with_states(&wl_surface, |surface_data| {
@@ -272,7 +284,8 @@ impl CompositorHandler for WprsState {
                                 callback.id()
                             );
                             callback
-                                .done(self.compositor_state.start_time.elapsed().as_millis() as u32);
+                                .done(self.compositor_state.start_time.elapsed().as_millis()
+                                    as u32);
                         }
                     });
                 }
@@ -844,11 +857,11 @@ fn surface_tree_root(surface: &WlSurface) -> &WlSurface {
 //     Ok(())
 // }
 
-#[instrument(skip(state, conn, _qh, pointer), level = "debug")]
+#[instrument(skip(state, conn, qh, pointer), level = "debug")]
 fn handle_window_frame_pointer_event(
     state: &mut WprsState,
     conn: &Connection,
-    _qh: &QueueHandle<WprsState>,
+    qh: &QueueHandle<WprsState>,
     pointer: &WlPointer,
     events: &[PointerEvent],
 ) -> Result<()> {
@@ -856,6 +869,7 @@ fn handle_window_frame_pointer_event(
         let root_surface = surface_tree_root(&event.surface);
         let hack_parent = parent(&event.surface);
         let target_surface = hack_parent.unwrap_or(root_surface);
+
         let Some(xwayland_surface) = xsurface_from_client_surface(
             &state.surface_bimap,
             &mut state.surfaces,
@@ -914,27 +928,43 @@ fn handle_window_frame_pointer_event(
                                 }
                             }
 
-                            if subsurface.move_timestamp.elapsed() > Duration::from_millis(10) {
+                            // if subsurface.move_timestamp.elapsed() > Duration::from_millis(40) {
+                            if !subsurface.waiting_for_callback {
+                                let local_wl_surface = subsurface.local_subsurface.wl_surface();
                                 let (x, y) = event.position;
                                 let (init_x, init_y) = subsurface.inital_move_position;
-                                let geo = &mut x11_surface.geometry().clone();
-                                geo.loc.x += (x - init_x) as i32;
-                                geo.loc.y += (y - init_y) as i32;
-                                subsurface
-                                    .local_subsurface
-                                    .subsurface
-                                    .set_position(geo.loc.x, geo.loc.y);
-                                x11_surface.configure(*geo).location(loc!())?;
-                                target_surface.commit(); // helping!?
-                                subsurface.moved_this_commit = true;
-                                // subsurface.inital_move_position = event.position;
-                                subsurface.move_timestamp = Instant::now();
 
-                                // subsurface.local_subsurface.wl_surface().commit();
+                                let offset_x = (x - init_x).round() as i32;
+                                let offset_y = (y - init_y).round() as i32;
+                                if offset_x != 0 || offset_y != 0 {
+                                    let geo = &mut x11_surface.geometry().clone();
+                                    debug!("{geo:?}");
+                                    geo.loc.x += offset_x;
+                                    geo.loc.y += offset_y;
+                                    subsurface
+                                        .local_subsurface
+                                        .subsurface
+                                        .set_position(geo.loc.x, geo.loc.y);
 
-                                // if let Some(parent) = hack_parent {
-                                //     parent.commit();
-                                // }
+                                    local_wl_surface.frame(&qh, local_wl_surface.clone());
+                                    local_wl_surface.commit();
+                                    subsurface.parent_surface.commit(); // helping!?
+                                                                        // x11_surface.configure(*geo).location(loc!())?;
+                                    debug_span!(">>>configure<<<")
+                                        .in_scope(|| x11_surface.configure(*geo))
+                                        .location(loc!())?;
+                                    let geo2 = x11_surface.geometry().clone();
+                                    debug!("{geo2:?}");
+                                    subsurface.waiting_for_callback = true;
+                                    // subsurface.inital_move_position = event.position;
+                                    subsurface.move_timestamp = Instant::now();
+
+                                    // subsurface.local_subsurface.wl_surface().commit();
+
+                                    // if let Some(parent) = hack_parent {
+                                    //     parent.commit();
+                                    // }
+                                }
                             }
                         }
 
@@ -1788,6 +1818,7 @@ pub trait FramedSurface {
 pub struct XWaylandSubSurface {
     pub local_subsurface: SubSurface,
     pub parent: ObjectId,
+    pub parent_surface: WlSurface,
     pub decoration_behavior: DecorationBehavior,
     pub decorated_subsurface: Option<FallbackFrame<WprsState>>,
     pub interactive_move: bool,
@@ -1795,7 +1826,7 @@ pub struct XWaylandSubSurface {
     // pub offset_tick_thing: (f64, f64),
     pub move_timestamp: Instant,
     pub initial_move_geo: Rectangle<i32, smithay::utils::Logical>,
-    pub moved_this_commit: bool,
+    pub waiting_for_callback: bool,
 }
 
 impl XWaylandSubSurface {
@@ -1810,6 +1841,10 @@ impl XWaylandSubSurface {
         let x11_surface = &surface.get_x11_surface().location(loc!())?;
         let geometry = x11_surface.geometry();
 
+        let surface_data = SurfaceData::new(Some(parent.surface.clone()), 1);
+        // let surface = self.compositor.create_surface(queue_handle, surface_data);
+        // let subsurface_data = SubsurfaceData::new(surface.clone());
+
         let subsurface =
             subcompositor.get_subsurface(surface.wl_surface(), &parent.surface, qh, SubSurfaceData);
 
@@ -1823,7 +1858,7 @@ impl XWaylandSubSurface {
 
         // position is relative to parent coordinate space (NOT the set_window_geometry space)
         subsurface.set_position(geometry.loc.x, geometry.loc.y);
-        subsurface.set_sync();
+        subsurface.set_desync();
 
         // is_decorated means that the surface is already decorated and does NOT want our decorations.
         let decorated_subsurface = if !x11_surface.is_decorated() {
@@ -1856,12 +1891,13 @@ impl XWaylandSubSurface {
                 surface: surface.wl_surface().clone(),
             },
             parent: parent.surface_id,
+            parent_surface: parent.surface.clone(),
             decoration_behavior: DecorationBehavior::Auto,
             decorated_subsurface,
             interactive_move: false,
             inital_move_position: (0 as f64, 0 as f64),
             initial_move_geo: Rectangle::default(),
-            moved_this_commit: false,
+            waiting_for_callback: false,
             move_timestamp: Instant::now(),
         };
 
@@ -2010,13 +2046,13 @@ impl FramedSurface for XWaylandSubSurface {
     }
 
     fn handle_move(&mut self, position: (f64, f64)) {
-        let (x, y) = position;
-        let (init_x, init_y) = self.inital_move_position;
-        if self.interactive_move {
-            self.local_subsurface
-                .subsurface
-                .set_position((x - init_x) as i32, (y - init_y) as i32);
-        }
+        // let (x, y) = position;
+        // let (init_x, init_y) = self.inital_move_position;
+        // if self.interactive_move {
+        //     self.local_subsurface
+        //         .subsurface
+        //         .set_position((x - init_x) as i32, (y - init_y) as i32);
+        // }
     }
 
     fn mutate_frame(&self) -> &FallbackFrame<WprsState> {

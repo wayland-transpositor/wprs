@@ -122,7 +122,7 @@ where
     S: Sender,
     S::E: Debug,
 {
-    pub fn new<L>(sender: S, _l: &'a L) -> InfallibleSender<'a, S> {
+    pub fn new<L>(sender: S, _l: &'a L) -> Self {
         Self(sender, PhantomData)
     }
 

@@ -32,6 +32,7 @@ use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::reexports::client::backend::ObjectId as ClientObjectId;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
+use smithay_client_toolkit::reexports::client::protocol::wl_subcompositor::WlSubcompositor;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as ClientWlSurface;
 use smithay_client_toolkit::reexports::client::Connection;
 use smithay_client_toolkit::reexports::client::Proxy;
@@ -44,6 +45,7 @@ use tracing::Span;
 
 use crate::args;
 use crate::prelude::*;
+use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
 pub mod compositor;
@@ -105,6 +107,7 @@ impl XWaylandSurface {
         xdg_shell_state: &XdgShell,
         shm_state: &Shm,
         subcompositor_state: Arc<SubcompositorState>,
+        subcompositor: WlSubcompositor,
         qh: &QueueHandle<WprsState>,
         decoration_behavior: DecorationBehavior,
     ) -> Result<()> {
@@ -129,9 +132,10 @@ impl XWaylandSurface {
         enum WaylandWindowType {
             Toplevel,
             Popup,
+            SubSurface,
         }
 
-        let wayland_window_type = match window_type {
+        let mut wayland_window_type = match window_type {
             // Java uses Dialog with override-redirect for dropbown menus.
             WmWindowType::Dialog if x11_surface.is_override_redirect() => WaylandWindowType::Popup,
             // gvim uses Normal with override-redirect for tooltips.
@@ -151,8 +155,15 @@ impl XWaylandSurface {
             | WmWindowType::Tooltip => WaylandWindowType::Popup,
         };
 
+        // X11 child windows will try to place their location relative to the parent.
+        // override_redirect windows seem to not inform the compositor of further position changes.
+        if parent.is_some() && !x11_surface.is_override_redirect() {
+            wayland_window_type = WaylandWindowType::SubSurface;
+        }
+
         let parent_if_toplevel = parent.clone();
-        let parent_if_popup = parent.or_else(|| fallback_parent.clone());
+        let parent_if_popup = parent.clone().or_else(|| fallback_parent.clone());
+        let parent_if_subsurface = parent.or_else(|| fallback_parent.clone());
 
         match wayland_window_type {
             WaylandWindowType::Toplevel => {
@@ -190,8 +201,21 @@ impl XWaylandSurface {
                 self.parent.clone_from(&parent_if_popup);
                 XWaylandXdgPopup::set_role(
                     self,
-                    &parent_if_popup.unwrap().for_popup,
+                    &parent_if_popup.unwrap().for_popup.unwrap(),
                     xdg_shell_state,
+                    qh,
+                )
+                .location(loc!())?;
+            },
+            WaylandWindowType::SubSurface => {
+                debug!("creating subsurface for {self:?}");
+                self.parent = parent_if_subsurface.clone();
+                XWaylandSubSurface::set_role(
+                    self,
+                    parent_if_subsurface.unwrap().for_subsurface,
+                    shm_state,
+                    subcompositor,
+                    subcompositor_state,
                     qh,
                 )
                 .location(loc!())?;
@@ -211,6 +235,9 @@ impl WaylandSurface for XWaylandSurface {
                 remote_xdg_toplevel.local_window.wl_surface()
             },
             Some(Role::XdgPopup(remote_xdg_popup)) => remote_xdg_popup.local_popup.wl_surface(),
+            Some(Role::SubSurface(remote_subsurface)) => {
+                &remote_subsurface.local_subsurface.surface
+            },
         }
     }
 }

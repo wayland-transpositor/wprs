@@ -44,10 +44,15 @@ impl XwmHandler for WprsState {
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         window.set_mapped(true).unwrap();
-        let mut geo = window.geometry();
-        geo.loc.x = 0;
-        geo.loc.y = 0;
-        window.configure(geo).log_and_ignore(loc!());
+
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+            if let Some(Role::XdgPopup(_popup)) = &xwayland_surface.role {
+                let mut geo = window.geometry();
+                geo.loc.x = 0;
+                geo.loc.y = 0;
+                window.configure(geo).log_and_ignore(loc!());
+            }
+        }
         self.compositor_state.x11_surfaces.push(window);
     }
 
@@ -89,15 +94,25 @@ impl XwmHandler for WprsState {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _x: Option<i32>,
-        _y: Option<i32>,
+        x: Option<i32>,
+        y: Option<i32>,
         w: Option<u32>,
         h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
         let mut geo = window.geometry();
-        geo.loc.x = 0;
-        geo.loc.y = 0;
+        if let Some(x) = x {
+            geo.loc.x = x;
+        }
+        if let Some(y) = y {
+            geo.loc.y = y;
+        }
+        if let Some(w) = w {
+            geo.size.w = w as i32;
+        }
+        if let Some(h) = h {
+            geo.size.h = h as i32;
+        }
 
         if window.is_mapped() {
             // Under Wayland, windows don't get to resize themselves. Many X apps
@@ -107,20 +122,12 @@ impl XwmHandler for WprsState {
             // ConfigureNotify events where the size equals the current size, so
             // trigger a redraw by resizing the window by a small amount and then
             // resizing it back to the original size.
-            let mut old_geo = window.geometry();
-            old_geo.loc.x = 0;
-            old_geo.loc.y = 0;
+            let mut hack_geo = geo;
 
-            geo.size.w -= 1;
+            hack_geo.size.w -= 1;
+            window.configure(hack_geo).unwrap();
             window.configure(geo).unwrap();
-            window.configure(old_geo).unwrap();
         } else {
-            if let Some(w) = w {
-                geo.size.w = w as i32;
-            }
-            if let Some(h) = h {
-                geo.size.h = h as i32;
-            }
             window.configure(geo).unwrap();
         }
     }
@@ -128,10 +135,18 @@ impl XwmHandler for WprsState {
     fn configure_notify(
         &mut self,
         _xwm: XwmId,
-        _window: X11Surface,
-        _geometry: Rectangle<i32, Logical>,
+        window: X11Surface,
+        geometry: Rectangle<i32, Logical>,
         _above: Option<u32>,
     ) {
+        // TODO: Do we need to also reposition xdg-popups?
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+                if !subsurface.move_active {
+                    subsurface.move_(geometry.loc.x, geometry.loc.y, &self.client_state.qh);
+                }
+            }
+        }
     }
 
     // For maximize and fullscreeen: send the appropriate request to the wayland

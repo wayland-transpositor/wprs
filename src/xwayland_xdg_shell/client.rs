@@ -84,6 +84,7 @@ use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::csd_frame::FrameAction;
 use smithay_client_toolkit::reexports::csd_frame::FrameClick;
 use smithay_client_toolkit::reexports::csd_frame::ResizeEdge;
+use smithay_client_toolkit::reexports::csd_frame::WindowManagerCapabilities;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner::Anchor;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner::Gravity;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface::XdgSurface as SctkXdgSurface;
@@ -139,6 +140,8 @@ use crate::xwayland_xdg_shell::xsurface_from_client_surface;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 
+use super::compositor::X11ParentForSubsurface;
+
 #[derive(Debug)]
 pub struct WprsClientState {
     pub qh: QueueHandle<WprsState>,
@@ -148,6 +151,7 @@ pub struct WprsClientState {
     pub seat_state: SeatState,
     pub output_state: OutputState,
     pub compositor_state: CompositorState,
+    pub subcompositor: WlSubcompositor,
     pub subcompositor_state: Arc<SubcompositorState>,
     pub shm_state: Shm,
     pub xdg_shell_state: XdgShell,
@@ -189,6 +193,9 @@ impl WprsClientState {
             seat_state: SeatState::new(globals, &qh),
             output_state: OutputState::new(globals, &qh),
             compositor_state,
+            subcompositor: globals
+                .bind(&qh, 1..=1, SubCompositorData)
+                .context(loc!(), "wl_subcompositor is not available")?,
             subcompositor_state,
             shm_state,
             xdg_shell_state: XdgShell::bind(globals, &qh)
@@ -248,6 +255,9 @@ impl CompositorHandler for WprsState {
     ) {
         if let Some(compositor_surface_id) = self.surface_bimap.get_by_right(&surface.id()) {
             let xwayland_surface = self.surfaces.get_mut(compositor_surface_id).unwrap();
+            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+                subsurface.pending_frame_callback = false;
+            }
             if let Some(x11_surface) = &xwayland_surface.x11_surface {
                 if let Some(wl_surface) = x11_surface.wl_surface() {
                     compositor::with_states(&wl_surface, |surface_data| {
@@ -264,7 +274,8 @@ impl CompositorHandler for WprsState {
                                 callback.id()
                             );
                             callback
-                                .done(self.compositor_state.start_time.elapsed().as_millis() as u32);
+                                .done(self.compositor_state.start_time.elapsed().as_millis()
+                                    as u32);
                         }
                     });
                 }
@@ -785,62 +796,11 @@ fn surface_tree_root(surface: &WlSurface) -> &WlSurface {
     surface
 }
 
-#[instrument(level = "debug")]
-fn frame_action(
-    window: &mut Window,
-    x11_surface: &X11Surface,
-    client_pointer: &WlPointer,
-    serial: Serial,
-    action: FrameAction,
-) -> Result<()> {
-    let pointer_data = client_pointer.data::<PointerData>().unwrap();
-    let client_seat = pointer_data.seat();
-    match action {
-        FrameAction::Close => {
-            x11_surface.close().location(loc!())?;
-        },
-        FrameAction::Minimize => {
-            window.set_minimized();
-        },
-        FrameAction::Maximize => {
-            window.set_maximized();
-        },
-        FrameAction::UnMaximize => {
-            window.unset_maximized();
-        },
-        FrameAction::ShowMenu(x, y) => {
-            window.show_window_menu(client_seat, serial.into(), (x, y));
-        },
-        FrameAction::Resize(edge) => {
-            let edge = match edge {
-                ResizeEdge::None => SctkResizeEdge::None,
-                ResizeEdge::Top => SctkResizeEdge::Top,
-                ResizeEdge::Bottom => SctkResizeEdge::Bottom,
-                ResizeEdge::Left => SctkResizeEdge::Left,
-                ResizeEdge::TopLeft => SctkResizeEdge::TopLeft,
-                ResizeEdge::BottomLeft => SctkResizeEdge::BottomLeft,
-                ResizeEdge::Right => SctkResizeEdge::Right,
-                ResizeEdge::TopRight => SctkResizeEdge::TopRight,
-                ResizeEdge::BottomRight => SctkResizeEdge::BottomRight,
-                _ => SctkResizeEdge::None,
-            };
-            window.resize(client_seat, serial.into(), edge);
-        },
-        FrameAction::Move => {
-            window.move_(client_seat, serial.into());
-        },
-        _ => {
-            warn!("Unknown frame action: {:?}", action);
-        },
-    }
-    Ok(())
-}
-
-#[instrument(skip(state, conn, _qh, pointer), level = "debug")]
+#[instrument(skip(state, conn, pointer), level = "debug")]
 fn handle_window_frame_pointer_event(
     state: &mut WprsState,
     conn: &Connection,
-    _qh: &QueueHandle<WprsState>,
+    qh: &QueueHandle<WprsState>,
     pointer: &WlPointer,
     events: &[PointerEvent],
 ) -> Result<()> {
@@ -852,47 +812,120 @@ fn handle_window_frame_pointer_event(
             info!("frame owner not found");
             return Ok(());
         };
-        let xdg_toplevel = match &mut xwayland_surface.role {
-            Some(Role::XdgToplevel(xdg_toplevel)) => xdg_toplevel,
-            _ => unreachable!(
-                "expected role xdg_toplevel, found role {:?}",
-                &xwayland_surface.role
-            ),
-        };
-        let window = &mut xdg_toplevel.local_window;
-        let frame = &mut xdg_toplevel.window_frame;
-        let (x, y) = event.position;
+        let x11_surface = &xwayland_surface.x11_surface.as_ref().unwrap().clone();
 
-        match event.kind {
-            PointerEventKind::Enter { serial } => {
-                let cursor_icon = frame
-                    .click_point_moved(Duration::ZERO, &event.surface.id(), x, y)
-                    .unwrap_or(CursorIcon::Default);
-                state.client_state.cursor_icon = Some(cursor_icon);
-                let _ = state
-                    .client_state
-                    .seat_objects
-                    .last()
-                    .unwrap()
-                    .pointer
-                    .as_ref()
-                    .unwrap()
-                    .set_cursor(conn, cursor_icon);
-                state.client_state.last_enter_serial = serial;
-            },
-            PointerEventKind::Leave { serial: _ } => {
-                frame.click_point_left();
-                if frame.is_dirty() {
-                    frame.draw();
+        match &mut xwayland_surface.role {
+            Some(Role::SubSurface(subsurface)) => {
+                let (x, y) = event.position;
+                {
+                    let frame = subsurface.subsurface_decorations.as_mut().unwrap();
+                    let mut new_cursor: Option<CursorIcon> = None;
+                    match event.kind {
+                        PointerEventKind::Enter { serial } => {
+                            new_cursor = Some(
+                                frame
+                                    .click_point_moved(Duration::ZERO, &event.surface.id(), x, y)
+                                    .unwrap_or(CursorIcon::Default),
+                            );
+                            state.client_state.last_enter_serial = serial;
+                        },
+                        PointerEventKind::Leave { serial: _ } => {
+                            frame.click_point_left();
+                        },
+                        PointerEventKind::Motion { time: _ } => {
+                            new_cursor =
+                                frame.click_point_moved(Duration::ZERO, &event.surface.id(), x, y);
+
+                            if subsurface.move_active {
+                                new_cursor = Some(CursorIcon::Move);
+                            }
+
+                            if subsurface.move_active && !subsurface.pending_frame_callback {
+                                let (x, y) = event.position;
+                                let (init_x, init_y) = subsurface.move_pointer_location;
+                                let offset_x = (x - init_x).round() as i32;
+                                let offset_y = (y - init_y).round() as i32;
+
+                                if offset_x != 0 || offset_y != 0 {
+                                    let mut geo = x11_surface.geometry();
+                                    geo.loc.x += offset_x;
+                                    geo.loc.y += offset_y;
+
+                                    // frame() will cause the compositor to send us a frame callback on the next commit.
+                                    // So if we commit() the parent and call frame(), then we know that the compositor
+                                    // has processed our last set_position call, and therefore the next set of motion
+                                    // coordinates will be relative to it.  Without this, we won't know if the coordinates
+                                    // receive are relative to our current position or a previous position.
+                                    subsurface.move_(geo.loc.x, geo.loc.y, qh);
+
+                                    x11_surface.configure(geo).location(loc!())?;
+                                }
+                            }
+                        },
+                        PointerEventKind::Press { button, serial, .. }
+                        | PointerEventKind::Release { button, serial, .. } => {
+                            let kind = &event.kind;
+                            let pressed = matches!(event.kind, PointerEventKind::Press { .. });
+                            let click = match button {
+                                0x110 => FrameClick::Normal,
+                                0x111 => FrameClick::Alternate,
+                                _ => return Ok(()),
+                            };
+
+                            if let Some(action) = frame.on_click(Duration::ZERO, click, pressed) {
+                                debug!("button: {click:?}, kind: {kind:?}, action {action:?}");
+
+                                subsurface
+                                    .frame_action(
+                                        x11_surface,
+                                        pointer,
+                                        serial.into(),
+                                        action,
+                                        (x, y),
+                                    )
+                                    .location(loc!())?;
+                            } else {
+                                subsurface.move_active = false;
+                            }
+                        },
+                        PointerEventKind::Axis { .. } => {},
+                    }
+
+                    if let (Some(new_cursor), Some(cur_cursor)) =
+                        (new_cursor, state.client_state.cursor_icon)
+                    {
+                        if new_cursor != cur_cursor {
+                            state.client_state.cursor_icon = Some(new_cursor);
+                            let _ = state
+                                .client_state
+                                .seat_objects
+                                .last()
+                                .unwrap()
+                                .pointer
+                                .as_ref()
+                                .unwrap()
+                                .set_cursor(conn, new_cursor);
+                        }
+                    }
+                }
+
+                {
+                    let frame = subsurface.subsurface_decorations.as_mut().unwrap();
+
+                    if frame.is_dirty() {
+                        frame.draw();
+                    }
                 }
             },
-            PointerEventKind::Motion { time: _ } => {
-                if let (Some(new_cursor), Some(cur_cursor)) = (
-                    frame.click_point_moved(Duration::ZERO, &event.surface.id(), x, y),
-                    &state.client_state.cursor_icon,
-                ) {
-                    if &new_cursor != cur_cursor {
-                        state.client_state.cursor_icon = Some(new_cursor);
+            Some(Role::XdgToplevel(xdg_toplevel)) => {
+                let (x, y) = event.position;
+                let frame = &mut xdg_toplevel.window_frame;
+                match event.kind {
+                    PointerEventKind::Enter { serial } => {
+                        let cursor_icon = frame
+                            .click_point_moved(Duration::ZERO, &event.surface.id(), x, y)
+                            .unwrap_or(CursorIcon::Default);
+                        state.client_state.cursor_icon = Some(cursor_icon);
                         let _ = state
                             .client_state
                             .seat_objects
@@ -901,31 +934,63 @@ fn handle_window_frame_pointer_event(
                             .pointer
                             .as_ref()
                             .unwrap()
-                            .set_cursor(conn, new_cursor);
-                    }
-                }
-                if frame.is_dirty() {
-                    frame.draw();
-                }
-            },
-            PointerEventKind::Press { button, serial, .. }
-            | PointerEventKind::Release { button, serial, .. } => {
-                let kind = &event.kind;
-                let pressed = matches!(event.kind, PointerEventKind::Press { .. });
-                let click = match button {
-                    0x110 => FrameClick::Normal,
-                    0x111 => FrameClick::Alternate,
-                    _ => continue,
-                };
+                            .set_cursor(conn, cursor_icon);
+                        state.client_state.last_enter_serial = serial;
+                    },
+                    PointerEventKind::Leave { serial: _ } => {
+                        frame.click_point_left();
+                        if frame.is_dirty() {
+                            frame.draw();
+                        }
+                    },
+                    PointerEventKind::Motion { time: _ } => {
+                        if let (Some(new_cursor), Some(cur_cursor)) = (
+                            frame.click_point_moved(Duration::ZERO, &event.surface.id(), x, y),
+                            &state.client_state.cursor_icon,
+                        ) {
+                            if &new_cursor != cur_cursor {
+                                state.client_state.cursor_icon = Some(new_cursor);
+                                let _ = state
+                                    .client_state
+                                    .seat_objects
+                                    .last()
+                                    .unwrap()
+                                    .pointer
+                                    .as_ref()
+                                    .unwrap()
+                                    .set_cursor(conn, new_cursor);
+                            }
+                        }
 
-                if let Some(action) = frame.on_click(Duration::ZERO, click, pressed) {
-                    debug!("button: {click:?}, kind: {kind:?}, action {action:?}");
-                    let x11_surface = &xwayland_surface.x11_surface.as_ref().unwrap();
-                    frame_action(window, x11_surface, pointer, serial.into(), action)
-                        .location(loc!())?;
+                        if frame.is_dirty() {
+                            frame.draw();
+                        }
+                    },
+                    PointerEventKind::Press { button, serial, .. }
+                    | PointerEventKind::Release { button, serial, .. } => {
+                        let kind = &event.kind;
+                        let pressed = matches!(event.kind, PointerEventKind::Press { .. });
+                        let click = match button {
+                            0x110 => FrameClick::Normal,
+                            0x111 => FrameClick::Alternate,
+                            _ => return Ok(()),
+                        };
+
+                        if let Some(action) = frame.on_click(Duration::ZERO, click, pressed) {
+                            debug!("button: {click:?}, kind: {kind:?}, action {action:?}");
+
+                            xdg_toplevel
+                                .frame_action(x11_surface, pointer, serial.into(), action, (x, y))
+                                .location(loc!())?;
+                        }
+                    },
+                    PointerEventKind::Axis { .. } => {},
                 }
             },
-            PointerEventKind::Axis { .. } => {},
+            _ => unreachable!(
+                "expected role xdg_toplevel or subsurface, found role {:?}",
+                &xwayland_surface.role
+            ),
         }
     }
     Ok(())
@@ -967,10 +1032,13 @@ impl PointerHandler for WprsState {
                         self.client_state.last_focused_window = Some(X11Parent {
                             surface_id: parent_id.clone(),
                             for_toplevel: Some(toplevel.local_window.clone()),
-                            for_popup: X11ParentForPopup {
+                            for_popup: Some(X11ParentForPopup {
                                 surface_id: parent_id.clone(),
                                 xdg_surface: toplevel.xdg_surface().clone(),
                                 offset: toplevel.frame_offset,
+                            }),
+                            for_subsurface: X11ParentForSubsurface {
+                                surface: toplevel.wl_surface().clone(),
                             },
                         });
                     }
@@ -1229,6 +1297,7 @@ pub enum Role {
     Cursor,
     XdgToplevel(XWaylandXdgToplevel),
     XdgPopup(XWaylandXdgPopup),
+    SubSurface(XWaylandSubSurface),
 }
 
 #[derive(Debug)]
@@ -1420,6 +1489,60 @@ impl XWaylandXdgToplevel {
     }
 }
 
+impl FramedSurface for XWaylandXdgToplevel {
+    fn frame_action(
+        &mut self,
+        x11_surface: &X11Surface,
+        client_pointer: &WlPointer,
+        serial: Serial,
+        action: FrameAction,
+        _position: (f64, f64),
+    ) -> Result<()> {
+        let window = &self.local_window;
+        let pointer_data = client_pointer.data::<PointerData>().unwrap();
+        let client_seat = pointer_data.seat();
+        match action {
+            FrameAction::Close => {
+                x11_surface.close().location(loc!())?;
+            },
+            FrameAction::Minimize => {
+                window.set_minimized();
+            },
+            FrameAction::Maximize => {
+                window.set_maximized();
+            },
+            FrameAction::UnMaximize => {
+                window.unset_maximized();
+            },
+            FrameAction::ShowMenu(x, y) => {
+                window.show_window_menu(client_seat, serial.into(), (x, y));
+            },
+            FrameAction::Resize(edge) => {
+                let edge = match edge {
+                    ResizeEdge::None => SctkResizeEdge::None,
+                    ResizeEdge::Top => SctkResizeEdge::Top,
+                    ResizeEdge::Bottom => SctkResizeEdge::Bottom,
+                    ResizeEdge::Left => SctkResizeEdge::Left,
+                    ResizeEdge::TopLeft => SctkResizeEdge::TopLeft,
+                    ResizeEdge::BottomLeft => SctkResizeEdge::BottomLeft,
+                    ResizeEdge::Right => SctkResizeEdge::Right,
+                    ResizeEdge::TopRight => SctkResizeEdge::TopRight,
+                    ResizeEdge::BottomRight => SctkResizeEdge::BottomRight,
+                    _ => SctkResizeEdge::None,
+                };
+                window.resize(client_seat, serial.into(), edge);
+            },
+            FrameAction::Move => {
+                window.move_(client_seat, serial.into());
+            },
+            _ => {
+                warn!("Unknown frame action: {:?}", action);
+            },
+        }
+        Ok(())
+    }
+}
+
 impl WaylandSurface for XWaylandXdgToplevel {
     fn wl_surface(&self) -> &WlSurface {
         self.local_window.wl_surface()
@@ -1429,6 +1552,149 @@ impl WaylandSurface for XWaylandXdgToplevel {
 impl XdgSurface for XWaylandXdgToplevel {
     fn xdg_surface(&self) -> &SctkXdgSurface {
         self.local_window.xdg_surface()
+    }
+}
+
+#[derive(Debug)]
+pub struct SubSurface {
+    pub subsurface: WlSubsurface,
+    pub surface: WlSurface,
+}
+
+impl WaylandSurface for SubSurface {
+    fn wl_surface(&self) -> &WlSurface {
+        &self.surface
+    }
+}
+
+pub trait FramedSurface {
+    fn frame_action(
+        &mut self,
+        x11_surface: &X11Surface,
+        client_pointer: &WlPointer,
+        serial: Serial,
+        action: FrameAction,
+        position: (f64, f64),
+    ) -> Result<()>;
+}
+
+#[derive(Debug)]
+pub struct XWaylandSubSurface {
+    pub local_subsurface: SubSurface,
+    pub parent_surface: WlSurface,
+    pub subsurface_decorations: Option<FallbackFrame<WprsState>>,
+    pub move_active: bool,
+    pub move_pointer_location: (f64, f64),
+    pub pending_frame_callback: bool,
+}
+
+impl XWaylandSubSurface {
+    pub(crate) fn set_role(
+        surface: &mut XWaylandSurface,
+        parent: X11ParentForSubsurface,
+        shm_state: &Shm,
+        subcompositor: WlSubcompositor,
+        subcompositor_state: Arc<SubcompositorState>,
+        qh: &QueueHandle<WprsState>,
+    ) -> Result<()> {
+        let x11_surface = &surface.get_x11_surface().location(loc!())?;
+        let geometry = x11_surface.geometry();
+
+        let subsurface =
+            subcompositor.get_subsurface(surface.wl_surface(), &parent.surface, qh, SubSurfaceData);
+
+        let local_subsurface = SubSurface {
+            subsurface: subsurface.clone(),
+            surface: surface.wl_surface().clone(),
+        };
+
+        // position is relative to parent coordinate space (NOT the set_window_geometry space, like in xdg-shell)
+        subsurface.set_position(geometry.loc.x, geometry.loc.y);
+        subsurface.set_desync();
+
+        // is_decorated means that the surface is already decorated and does NOT want our decorations.
+        let subsurface_decorations = if !x11_surface.is_decorated() {
+            let mut subsurface_decorations = FallbackFrame::new(
+                &local_subsurface,
+                shm_state,
+                subcompositor_state,
+                qh.clone(),
+            )
+            .map_err(|e| anyhow!("failed to create client side decorations frame: {e:?}."))
+            .location(loc!())?;
+
+            // not an xdg-shell window, so we can't fullscreen/maximize/etc.
+            subsurface_decorations.update_wm_capabilities(WindowManagerCapabilities::empty());
+
+            //we want width and height to be inner dimensions.
+            let width = NonZeroU32::new(geometry.size.w.max(1) as u32).unwrap();
+            let height = NonZeroU32::new(geometry.size.h.max(1) as u32).unwrap();
+            subsurface_decorations.resize(width, height);
+
+            Some(subsurface_decorations)
+        } else {
+            None
+        };
+
+        let new_subsurface = Self {
+            local_subsurface: SubSurface {
+                subsurface,
+                surface: surface.wl_surface().clone(),
+            },
+            parent_surface: parent.surface,
+            subsurface_decorations,
+            move_active: false,
+            move_pointer_location: (0 as f64, 0 as f64),
+            pending_frame_callback: false,
+        };
+
+        surface.role = Some(Role::SubSurface(new_subsurface));
+        Ok(())
+    }
+
+    pub(crate) fn move_(&mut self, x: i32, y: i32, qh: &QueueHandle<WprsState>) {
+        if !self.pending_frame_callback {
+            let local_wl_surface = &self.local_subsurface.surface;
+            self.local_subsurface.subsurface.set_position(x, y);
+            local_wl_surface.frame(qh, local_wl_surface.clone());
+            local_wl_surface.commit();
+            self.parent_surface.commit();
+
+            self.pending_frame_callback = true;
+        }
+    }
+}
+
+impl WaylandSurface for XWaylandSubSurface {
+    fn wl_surface(&self) -> &WlSurface {
+        self.local_subsurface.wl_surface()
+    }
+}
+
+impl FramedSurface for XWaylandSubSurface {
+    fn frame_action(
+        &mut self,
+        x11_surface: &X11Surface,
+        _client_pointer: &WlPointer,
+        _serial: Serial,
+        action: FrameAction,
+        position: (f64, f64),
+    ) -> Result<()> {
+        match action {
+            FrameAction::Close => {
+                x11_surface.close().location(loc!())?;
+            },
+            FrameAction::Resize(_edge) => {
+                // TODO
+            },
+            FrameAction::Move => {
+                self.move_pointer_location = position;
+                self.move_active = true;
+            },
+            _ => {},
+        };
+
+        Ok(())
     }
 }
 

@@ -44,10 +44,6 @@ impl XwmHandler for WprsState {
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         window.set_mapped(true).unwrap();
-        let mut geo = window.geometry();
-        geo.loc.x = 0;
-        geo.loc.y = 0;
-        window.configure(geo).log_and_ignore(loc!());
         self.compositor_state.x11_surfaces.push(window);
     }
 
@@ -89,49 +85,71 @@ impl XwmHandler for WprsState {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _x: Option<i32>,
-        _y: Option<i32>,
+        x: Option<i32>,
+        y: Option<i32>,
         w: Option<u32>,
         h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
         let mut geo = window.geometry();
-        geo.loc.x = 0;
-        geo.loc.y = 0;
-
-        if window.is_mapped() {
-            // Under Wayland, windows don't get to resize themselves. Many X apps
-            // need a synthetic configure reply though. Additionally, some broken
-            // toolkits (read: Java) will still render the window at the size they
-            // asked for, even if the request wasn't granted, and also ignore
-            // ConfigureNotify events where the size equals the current size, so
-            // trigger a redraw by resizing the window by a small amount and then
-            // resizing it back to the original size.
-            let mut old_geo = window.geometry();
-            old_geo.loc.x = 0;
-            old_geo.loc.y = 0;
-
-            geo.size.w -= 1;
-            window.configure(geo).unwrap();
-            window.configure(old_geo).unwrap();
-        } else {
-            if let Some(w) = w {
+        if let Some(x) = x {
+            if x != 0 {
+                geo.loc.x = x;
+            }
+        }
+        if let Some(y) = y {
+            if y != 0 {
+                geo.loc.y = y;
+            }
+        }
+        if let Some(w) = w {
+            if w > 1 {
                 geo.size.w = w as i32;
             }
-            if let Some(h) = h {
+        }
+        if let Some(h) = h {
+            if h > 1 {
                 geo.size.h = h as i32;
             }
-            window.configure(geo).unwrap();
+        }
+
+        // x=0, y=0, w=1, h=1 means the window is asking us for a size.
+        // TODO: It seems like some toplevel windows are still slipping through this,
+        // maybe we need to actually figure out what size to set windows somehow?
+        if geo.loc.x > 0 && geo.loc.y > 0 && geo.size.w > 1 && geo.size.h > 1 {
+            if window.is_mapped() {
+                // Under Wayland, windows don't get to resize themselves. Many X apps
+                // need a synthetic configure reply though. Additionally, some broken
+                // toolkits (read: Java) will still render the window at the size they
+                // asked for, even if the request wasn't granted, and also ignore
+                // ConfigureNotify events where the size equals the current size, so
+                // trigger a redraw by resizing the window by a small amount and then
+                // resizing it back to the original size.
+                let mut hack_geo = geo;
+                hack_geo.size.w -= 1;
+
+                window.configure(hack_geo).unwrap();
+                window.configure(geo).unwrap();
+            } else {
+                window.configure(geo).unwrap();
+            }
         }
     }
 
     fn configure_notify(
         &mut self,
         _xwm: XwmId,
-        _window: X11Surface,
-        _geometry: Rectangle<i32, Logical>,
+        window: X11Surface,
+        geometry: Rectangle<i32, Logical>,
         _above: Option<u32>,
     ) {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+                if !subsurface.move_active {
+                    subsurface.move_(geometry.loc.x, geometry.loc.y, &self.client_state.qh);
+                }
+            }
+        }
     }
 
     // For maximize and fullscreeen: send the appropriate request to the wayland

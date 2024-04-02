@@ -380,12 +380,40 @@ def run_remote_command(cmd: list[str], env: dict[str, str]) -> None:
   print(f'Executing remote command: {cmd!r}')
   subprocess.run(cmd, env=os.environ)
 
+def get_x_cursor_size() -> str:
+  default = '24'
+
+  if xcurser_size := os.getenv('XCURSOR_SIZE'):
+    return xcurser_size
+
+  cmd = ['xrdb', '-query', '-get', 'Xcursor.size']
+  print(f'Executing local command: {cmd!r}')
+
+  try:
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=sys.stderr, close_fds=True)
+  except FileNotFoundError:
+    return default
+
+  timeout_in_secs = 5
+  try:
+    (stdout, _) = proc.communicate(timeout=timeout_in_secs)
+    if stdout:
+      return stdout.strip()
+
+  except subprocess.TimeoutExpired:
+    proc.kill()
+    (stdout, _) = proc.communicate()
+  except Exception:
+    proc.terminate()
+
+  return default
 
 def start_remote_command(caps: Capabilities | None) -> None:
   env = {
     'WAYLAND_DEBUG': str(int(args.command_wayland_debug)),
     'WAYLAND_DISPLAY': args.wprsd_wayland_display,
     'SSH_AUTH_SOCK': f'{remote_socket_dir()}/wprs-ssh-auth.sock',
+    'XCURSOR_SIZE': get_x_cursor_size(),
   }
 
   if args.xwayland:

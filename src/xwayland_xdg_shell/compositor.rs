@@ -109,6 +109,8 @@ pub struct WprsCompositorState {
     pub xwayland: XWayland,
     pub xwm: Option<X11Wm>,
 
+    pub x11_offset: Point<i32>,
+
     /// unpaired x11 surfaces
     pub x11_surfaces: Vec<X11Surface>,
 }
@@ -177,6 +179,8 @@ impl WprsCompositorState {
 
             xwayland,
             xwm: None,
+
+            x11_offset: Point { x: 2_101, y: 2_101 },
 
             x11_surfaces: Vec::new(),
         }
@@ -432,6 +436,7 @@ pub fn commit_inner(
         xwayland_surface
             .update_x11_surface(
                 x11_surface,
+                state.compositor_state.x11_offset,
                 parent,
                 &state.client_state.last_focused_window,
                 &state.client_state.xdg_shell_state,
@@ -609,8 +614,12 @@ pub(crate) fn handle_output(state: &mut WprsState, output: OutputInfo) {
         size: (0, 0).into(),
         refresh: 0,
     });
+    let mut expanded_dimensions = output.mode.dimensions;
+    expanded_dimensions.w = 10_100;
+    expanded_dimensions.h = 10_100;
+
     let received_mode = Mode {
-        size: output.mode.dimensions.into(),
+        size: expanded_dimensions.into(),
         refresh: output.mode.refresh_rate,
     };
     if current_mode != received_mode {

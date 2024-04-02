@@ -39,20 +39,21 @@ impl XwmHandler for WprsState {
         self.compositor_state.xwm.as_mut().unwrap()
     }
 
-    fn new_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
+    fn new_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+            if let Some(Role::XdgToplevel(_toplevel)) = &xwayland_surface.role {
+                let mut geo = window.geometry();
+                geo.loc.x = self.compositor_state.x11_offset.x;
+                geo.loc.y = self.compositor_state.x11_offset.y;
+                window.configure(geo).log_and_ignore(loc!());
+            }
+        }
+    }
+
     fn new_override_redirect_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         window.set_mapped(true).unwrap();
-
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
-            if let Some(Role::XdgPopup(_popup)) = &xwayland_surface.role {
-                let mut geo = window.geometry();
-                geo.loc.x = 0;
-                geo.loc.y = 0;
-                window.configure(geo).log_and_ignore(loc!());
-            }
-        }
         self.compositor_state.x11_surfaces.push(window);
     }
 
@@ -143,7 +144,11 @@ impl XwmHandler for WprsState {
         if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
             if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
                 if !subsurface.move_active {
-                    subsurface.move_(geometry.loc.x, geometry.loc.y, &self.client_state.qh);
+                    subsurface.move_(
+                        geometry.loc.x - self.compositor_state.x11_offset.x,
+                        geometry.loc.y - self.compositor_state.x11_offset.y,
+                        &self.client_state.qh,
+                    );
                 }
             }
         }

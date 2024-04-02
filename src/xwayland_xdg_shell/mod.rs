@@ -45,6 +45,7 @@ use tracing::Span;
 
 use crate::args;
 use crate::prelude::*;
+use crate::serialization::geometry::Point;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
@@ -102,6 +103,7 @@ impl XWaylandSurface {
     fn update_x11_surface(
         &mut self,
         x11_surface: X11Surface,
+        x11_offset: Point<i32>,
         parent: Option<X11Parent>,
         fallback_parent: &Option<X11Parent>,
         xdg_shell_state: &XdgShell,
@@ -212,6 +214,7 @@ impl XWaylandSurface {
                 self.parent = parent_if_subsurface.clone();
                 XWaylandSubSurface::set_role(
                     self,
+                    x11_offset,
                     parent_if_subsurface.unwrap().for_subsurface,
                     shm_state,
                     subcompositor,

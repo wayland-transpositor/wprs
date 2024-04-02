@@ -353,6 +353,7 @@ impl WindowHandler for WprsState {
         xdg_toplevel
             .apply_decoration(
                 x11_surface,
+                self.compositor_state.x11_offset,
                 Some(&configure),
                 xwayland_surface
                     .buffer
@@ -856,7 +857,11 @@ fn handle_window_frame_pointer_event(
                                     // has processed our last set_position call, and therefore the next set of motion
                                     // coordinates will be relative to it.  Without this, we won't know if the coordinates
                                     // receive are relative to our current position or a previous position.
-                                    subsurface.move_(geo.loc.x, geo.loc.y, qh);
+                                    subsurface.move_(
+                                        geo.loc.x - state.compositor_state.x11_offset.x,
+                                        geo.loc.y - state.compositor_state.x11_offset.y,
+                                        qh,
+                                    );
 
                                     x11_surface.configure(geo).location(loc!())?;
                                 }
@@ -1314,6 +1319,7 @@ impl XWaylandXdgToplevel {
     pub fn enable_decorations(
         &mut self,
         x11_surface: &X11Surface,
+        x11_offset: Point<i32>,
         configure: Option<&WindowConfigure>,
         buffer_metadata: Option<&BufferMetadata>,
     ) -> Result<(i32, i32)> {
@@ -1357,7 +1363,7 @@ impl XWaylandXdgToplevel {
         // dimensions. And don't worry about border_width. /sigh
         x11_surface
             .configure(Rectangle::from_loc_and_size(
-                (0, 0),
+                x11_offset,
                 (width as i32, height as i32),
             ))
             .location(loc!())?;
@@ -1387,6 +1393,7 @@ impl XWaylandXdgToplevel {
     pub fn disable_decoration(
         &mut self,
         x11_surface: &X11Surface,
+        x11_offset: Point<i32>,
         configure: Option<&WindowConfigure>,
         buffer_metadata: Option<&BufferMetadata>,
     ) -> Result<(i32, i32)> {
@@ -1409,7 +1416,7 @@ impl XWaylandXdgToplevel {
         };
 
         x11_surface
-            .configure(Rectangle::from_loc_and_size((0, 0), (width, height)))
+            .configure(Rectangle::from_loc_and_size(x11_offset, (width, height)))
             .location(loc!())?;
 
         self.local_window
@@ -1422,22 +1429,23 @@ impl XWaylandXdgToplevel {
     pub fn apply_decoration(
         &mut self,
         x11_surface: &X11Surface,
+        x11_offset: Point<i32>,
         configure: Option<&WindowConfigure>,
         buffer_metadata: Option<&BufferMetadata>,
     ) -> Result<(i32, i32)> {
         match self.decoration_behavior {
             DecorationBehavior::Auto => {
                 if !x11_surface.is_decorated() {
-                    self.enable_decorations(x11_surface, configure, buffer_metadata)
+                    self.enable_decorations(x11_surface, x11_offset, configure, buffer_metadata)
                 } else {
-                    self.disable_decoration(x11_surface, configure, buffer_metadata)
+                    self.disable_decoration(x11_surface, x11_offset, configure, buffer_metadata)
                 }
             },
             DecorationBehavior::AlwaysEnabled => {
-                self.enable_decorations(x11_surface, configure, buffer_metadata)
+                self.enable_decorations(x11_surface, x11_offset, configure, buffer_metadata)
             },
             DecorationBehavior::AlwaysDisabled => {
-                self.disable_decoration(x11_surface, configure, buffer_metadata)
+                self.disable_decoration(x11_surface, x11_offset, configure, buffer_metadata)
             },
         }
     }
@@ -1591,6 +1599,7 @@ pub struct XWaylandSubSurface {
 impl XWaylandSubSurface {
     pub(crate) fn set_role(
         surface: &mut XWaylandSurface,
+        x11_offset: Point<i32>,
         parent: X11ParentForSubsurface,
         shm_state: &Shm,
         subcompositor: WlSubcompositor,
@@ -1608,8 +1617,8 @@ impl XWaylandSubSurface {
             surface: surface.wl_surface().clone(),
         };
 
-        // position is relative to parent coordinate space (NOT the set_window_geometry space, like in xdg-shell)
-        subsurface.set_position(geometry.loc.x, geometry.loc.y);
+        // position is relative to parent coordinate space NOT the set_window_geometry space, like in xdg-shell
+        subsurface.set_position(geometry.loc.x - x11_offset.x, geometry.loc.y - x11_offset.y);
         subsurface.set_desync();
 
         // is_decorated means that the surface is already decorated and does NOT want our decorations.

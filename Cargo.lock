@@ -223,9 +223,9 @@ checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
 
 [[package]]
 name = "calloop"
-version = "0.12.4"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fba7adb4dd5aa98e5553510223000e7148f621165ec5f9acd7113f6ca4995298"
+checksum = "b99da2f8558ca23c71f4fd15dc57c906239752dd27ff3c00a1d56b685b7cbfec"
 dependencies = [
  "bitflags 2.4.2",
  "log",
@@ -237,9 +237,9 @@ dependencies = [
 
 [[package]]
 name = "calloop-wayland-source"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f0ea9b9476c7fad82841a8dbb380e2eae480c21910feba80725b46931ed8f02"
+checksum = "95a66a987056935f7efce4ab5668920b5d0dac4a7c99991a67395f13702ddd20"
 dependencies = [
  "calloop",
  "rustix",
@@ -1486,7 +1486,7 @@ checksum = "e6ecd384b10a64542d77071bd64bd7b231f4ed5940fba55e98c3de13824cf3d7"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/Smithay/smithay.git#2e999692f4cd19f332a095061eb098768ea43d9c"
+source = "git+https://github.com/Smithay/smithay.git#c5e9a697e41f50dc56b918d9ef1e3d2e52c84ac0"
 dependencies = [
  "appendlist",
  "bitflags 2.4.2",
@@ -1521,7 +1521,7 @@ dependencies = [
 [[package]]
 name = "smithay-client-toolkit"
 version = "0.18.0"
-source = "git+https://github.com/Smithay/client-toolkit.git#f3587a933ad822f729513cd1e1db3667b342ee72"
+source = "git+https://github.com/Smithay/client-toolkit.git#18070ad8e0675bdf555e6099bf90e3a92adc01b0"
 dependencies = [
  "bitflags 2.4.2",
  "bytemuck",

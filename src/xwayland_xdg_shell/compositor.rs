@@ -63,6 +63,7 @@ use smithay::xwayland::X11Wm;
 use smithay::xwayland::XWayland;
 use smithay::xwayland::XWaylandClientData;
 use smithay::xwayland::XWaylandEvent;
+use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as SctkWlSurface;
 use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::shell::xdg::window::Window;
@@ -238,19 +239,10 @@ fn execute_or_defer_commit(state: &mut WprsState, surface: WlSurface) -> Result<
     commit(&surface, state).location(loc!())?;
 
     let xwayland_surface = state.surfaces.get(&surface.id());
-    let is_cursor = matches!(
-        xwayland_surface,
-        Some(XWaylandSurface {
-            role: Some(Role::Cursor),
-            ..
-        })
-    );
 
-    if !(xwayland_surface
-        .as_ref()
-        .map_or(false, |s| s.x11_surface.is_some())
-        || is_cursor)
-    {
+    // we may not have matched an X11 surface to the wayland surface yet.
+    // defer if that is the case.
+    if !xwayland_surface.is_some_and(XWaylandSurface::ready) {
         debug!("deferring commit");
         X11Wm::commit_hook::<WprsState>(&surface);
         state.event_loop_handle.insert_idle(|state| {
@@ -297,10 +289,17 @@ pub(crate) struct X11ParentForPopup {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct X11ParentForSubsurface {
+    pub(crate) surface: SctkWlSurface,
+    pub(crate) offset: Point<i32>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct X11Parent {
     pub(crate) surface_id: ObjectId,
     pub(crate) for_toplevel: Option<Window>,
-    pub(crate) for_popup: X11ParentForPopup,
+    pub(crate) for_popup: Option<X11ParentForPopup>,
+    pub(crate) for_subsurface: X11ParentForSubsurface,
 }
 
 pub(crate) fn find_x11_parent(
@@ -328,7 +327,7 @@ pub(crate) fn find_x11_parent(
                 Some(Role::XdgToplevel(toplevel)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
                     for_toplevel: Some(toplevel.local_window.clone()),
-                    for_popup: X11ParentForPopup {
+                    for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: toplevel.xdg_surface().clone(),
                         offset: (
@@ -336,14 +335,31 @@ pub(crate) fn find_x11_parent(
                             -geo.loc.y + toplevel.frame_offset.y,
                         )
                             .into(),
+                    }),
+                    for_subsurface: X11ParentForSubsurface {
+                        surface: toplevel.wl_surface().clone(),
+                        offset: (-geo.loc.x, -geo.loc.y).into(),
                     },
                 }),
                 Some(Role::XdgPopup(popup)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
                     for_toplevel: None,
-                    for_popup: X11ParentForPopup {
+                    for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: popup.xdg_surface().clone(),
+                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                    }),
+                    for_subsurface: X11ParentForSubsurface {
+                        surface: popup.wl_surface().clone(),
+                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                    },
+                }),
+                Some(Role::SubSurface(subsurface)) => Some(X11Parent {
+                    surface_id: parent_id.clone(),
+                    for_toplevel: None, // subsurface cannot be parent to toplevel
+                    for_popup: None,    // subsurface cannot be parent to popup
+                    for_subsurface: X11ParentForSubsurface {
+                        surface: subsurface.wl_surface().clone(),
                         offset: (-geo.loc.x, -geo.loc.y).into(),
                     },
                 }),
@@ -394,20 +410,19 @@ pub fn commit_inner(
         parent_xwayland_surface.children.insert(surface.id());
     }
 
-    let xwayland_surface = state
-        .surfaces
-        .entry(surface.id())
-        .or_insert_with_result(|| {
-            XWaylandSurface::new(
+    let xwayland_surface = state.surfaces.entry(surface.id()).or_default();
+
+    if let Some(x11_surface) = x11_surface {
+        xwayland_surface
+            .update_local_surface(
                 surface,
+                parent.as_ref().map(|parent| &parent.for_subsurface.surface),
                 &state.client_state.compositor_state,
                 &state.client_state.qh,
                 &mut state.surface_bimap,
             )
-        })
-        .location(loc!())?;
+            .location(loc!())?;
 
-    if let Some(x11_surface) = x11_surface {
         xwayland_surface
             .update_x11_surface(
                 x11_surface,
@@ -423,6 +438,7 @@ pub fn commit_inner(
     }
 
     debug!("buffer assignment: {:?}", &surface_attributes.buffer);
+
     match &surface_attributes.buffer {
         Some(BufferAssignment::NewBuffer(buffer)) => {
             compositor_utils::with_buffer_contents(buffer, |data, spec| {
@@ -434,6 +450,8 @@ pub fn commit_inner(
             })
             .location(loc!())?
             .location(loc!())?;
+
+            xwayland_surface.buffer_attached = false;
         },
         Some(BufferAssignment::Removed) => {
             xwayland_surface.buffer = None;
@@ -448,8 +466,26 @@ pub fn commit_inner(
         }
     }
 
-    xwayland_surface.frame(&state.client_state.qh);
-    xwayland_surface.commit();
+    if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+        if let Some(decorated_subsurface) = &mut subsurface.frame {
+            if decorated_subsurface.is_dirty() {
+                decorated_subsurface.draw();
+            }
+        }
+    }
+
+    if xwayland_surface.ready() {
+        if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
+            if !subsurface.pending_frame_callback {
+                xwayland_surface.frame(&state.client_state.qh);
+            }
+        } else {
+            xwayland_surface.frame(&state.client_state.qh);
+        }
+
+        xwayland_surface.try_attach_buffer(&state.client_state.qh);
+        xwayland_surface.commit();
+    }
 
     if xwayland_surface.x11_surface.is_none() || matches!(xwayland_surface.role, Some(Role::Cursor))
     {

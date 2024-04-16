@@ -1064,8 +1064,8 @@ impl PointerHandler for WprsState {
                         })
                         .value(Axis::Horizontal, horizontal.absolute)
                         .value(Axis::Vertical, vertical.absolute)
-                        .v120(Axis::Horizontal, horizontal.discrete)
-                        .v120(Axis::Vertical, vertical.discrete),
+                        .v120(Axis::Horizontal, horizontal.discrete * 120)
+                        .v120(Axis::Vertical, vertical.discrete * 120),
                 ),
             }
         }

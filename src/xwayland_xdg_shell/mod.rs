@@ -215,7 +215,7 @@ impl XWaylandSurface {
 
         let parent_if_toplevel = parent.clone();
         let parent_if_popup = parent.clone().or_else(|| fallback_parent.clone());
-        let parent_if_subsurface = parent;
+        let parent_if_subsurface = parent.or_else(|| fallback_parent.clone());
 
         match wayland_window_type {
             WaylandWindowType::Toplevel => {

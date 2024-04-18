@@ -127,6 +127,14 @@ impl XWaylandSurface {
         }
     }
 
+    fn needs_configure(&self) -> bool {
+        match &self.role {
+            Some(Role::XdgToplevel(toplevel)) if !toplevel.configured => true,
+            Some(Role::XdgPopup(popup)) if !popup.configured => true,
+            _ => false,
+        }
+    }
+
     fn try_attach_buffer(&mut self, qh: &QueueHandle<WprsState>) {
         if !self.buffer_attached {
             if let Some(buffer) = &self.buffer {

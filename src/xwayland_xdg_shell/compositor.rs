@@ -484,6 +484,9 @@ pub fn commit_inner(
         }
 
         xwayland_surface.try_attach_buffer(&state.client_state.qh);
+    }
+
+    if xwayland_surface.ready() || xwayland_surface.needs_configure() {
         xwayland_surface.commit();
     }
 

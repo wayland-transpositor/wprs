@@ -123,6 +123,7 @@ impl XWaylandSurface {
         match &self.role {
             Some(Role::XdgToplevel(toplevel)) if !toplevel.configured => false,
             Some(Role::XdgPopup(popup)) if !popup.configured => false,
+            Some(Role::SubSurface(subsurface)) if !subsurface.position_initialized => false,
             _ => self.x11_surface.is_some() || matches!(self.role, Some(Role::Cursor)),
         }
     }

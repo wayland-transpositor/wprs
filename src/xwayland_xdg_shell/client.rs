@@ -246,6 +246,7 @@ impl CompositorHandler for WprsState {
             let xwayland_surface = self.surfaces.get_mut(compositor_surface_id).unwrap();
             if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
                 subsurface.pending_frame_callback = false;
+                subsurface.position_initialized = true;
             }
             if let Some(x11_surface) = &xwayland_surface.x11_surface {
                 if let Some(wl_surface) = x11_surface.wl_surface() {
@@ -1272,6 +1273,7 @@ pub struct XWaylandSubSurface {
     pub move_pointer_location: (f64, f64),
     pub pending_frame_callback: bool,
     pub buffer_attached: bool,
+    pub position_initialized: bool,
 }
 
 impl XWaylandSubSurface {
@@ -1292,16 +1294,10 @@ impl XWaylandSubSurface {
             subsurface: subsurface.clone(),
             surface: local_surface,
         };
+        subsurface.set_desync();
 
         let x11_surface = surface.get_x11_surface().location(loc!())?;
         let geometry = x11_surface.geometry();
-
-        // position is relative to parent coordinate space (NOT the set_window_geometry space, like in xdg-shell)
-        subsurface.set_position(
-            geometry.loc.x + parent.offset.x,
-            geometry.loc.y + parent.offset.y,
-        );
-        subsurface.set_desync();
 
         // is_decorated means that the surface is already decorated and does NOT want our decorations.
         let frame = if !x11_surface.is_decorated() && !x11_surface.is_override_redirect() {
@@ -1338,9 +1334,14 @@ impl XWaylandSubSurface {
             move_pointer_location: (0 as f64, 0 as f64),
             pending_frame_callback: false,
             buffer_attached: false,
+            position_initialized: false,
         };
-
         surface.role = Some(Role::SubSurface(new_subsurface));
+
+        if let Some(Role::SubSurface(subsurface)) = &mut surface.role {
+            subsurface.move_(geometry.loc.x, geometry.loc.y, qh);
+        }
+
         Ok(())
     }
 

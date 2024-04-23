@@ -900,7 +900,7 @@ impl WprsServerState {
                 .lock()
                 .unwrap();
 
-            // even though kde can send decorations for any surface, only send them
+            // even though the kde server decoration protocol can send decorations for any surface, only send them
             // for XdgTopLevel since that's what wprs currently expects
             if let Some(Role::XdgToplevel(toplevel_state)) = &mut surface_state.role {
                 toplevel_state.decoration_mode = mode;

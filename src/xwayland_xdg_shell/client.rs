@@ -1353,7 +1353,7 @@ impl XWaylandSubSurface {
                 .subsurface
                 .set_position(x + self.parent_offset.x, y + self.parent_offset.y);
             local_wl_surface.frame(qh, local_wl_surface.clone());
-            local_wl_surface.commit();
+            local_wl_surface.commit(); // TODO
             self.parent_surface.commit();
 
             self.pending_frame_callback = true;

@@ -136,6 +136,15 @@ impl XWaylandSurface {
         }
     }
 
+    // We won't receive frame callbacks (depending on the compositor) if the surface isn't visible,
+    // i.e. has a buffer attached.
+    fn needs_position(&self) -> bool {
+        if let Some(Role::SubSurface(subsurface)) = &self.role {
+            return !subsurface.position_initialized;
+        }
+        false
+    }
+
     fn try_attach_buffer(&mut self, qh: &QueueHandle<WprsState>) {
         if !self.buffer_attached {
             if let Some(buffer) = &self.buffer {

@@ -474,7 +474,7 @@ pub fn commit_inner(
         }
     }
 
-    if xwayland_surface.ready() {
+    if xwayland_surface.ready() || xwayland_surface.needs_position() {
         if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
             if !subsurface.pending_frame_callback {
                 xwayland_surface.frame(&state.client_state.qh);

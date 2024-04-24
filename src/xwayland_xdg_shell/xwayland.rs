@@ -113,26 +113,21 @@ impl XwmHandler for WprsState {
             }
         }
 
-        // x=0, y=0, w=1, h=1 means the window is asking us for a size.
-        // TODO: It seems like some toplevel windows are still slipping through this,
-        // maybe we need to actually figure out what size to set windows somehow?
-        if geo.loc.x > 0 && geo.loc.y > 0 && geo.size.w > 1 && geo.size.h > 1 {
-            if window.is_mapped() {
-                // Under Wayland, windows don't get to resize themselves. Many X apps
-                // need a synthetic configure reply though. Additionally, some broken
-                // toolkits (read: Java) will still render the window at the size they
-                // asked for, even if the request wasn't granted, and also ignore
-                // ConfigureNotify events where the size equals the current size, so
-                // trigger a redraw by resizing the window by a small amount and then
-                // resizing it back to the original size.
-                let mut hack_geo = geo;
-                hack_geo.size.w -= 1;
+        if window.is_mapped() {
+            // Under Wayland, windows don't get to resize themselves. Many X apps
+            // need a synthetic configure reply though. Additionally, some broken
+            // toolkits (read: Java) will still render the window at the size they
+            // asked for, even if the request wasn't granted, and also ignore
+            // ConfigureNotify events where the size equals the current size, so
+            // trigger a redraw by resizing the window by a small amount and then
+            // resizing it back to the original size.
+            let mut hack_geo = geo;
+            hack_geo.size.w -= 1;
 
-                window.configure(hack_geo).unwrap();
-                window.configure(geo).unwrap();
-            } else {
-                window.configure(geo).unwrap();
-            }
+            window.configure(hack_geo).unwrap();
+            window.configure(geo).unwrap();
+        } else {
+            window.configure(geo).unwrap();
         }
     }
 

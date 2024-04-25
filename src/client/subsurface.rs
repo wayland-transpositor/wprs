@@ -264,6 +264,10 @@ impl RemoteSubSurface {
             .location(loc!())?
             .as_sub_surface_mut()
             .location(loc!())?;
+
+        role.local_subsurface
+            .set_position(subsurface_state.location.x, subsurface_state.location.y);
+
         if role.sync == subsurface_state.sync {
             return Ok(());
         }

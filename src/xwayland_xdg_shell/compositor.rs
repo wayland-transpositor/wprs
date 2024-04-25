@@ -483,7 +483,7 @@ pub fn commit_inner(
             xwayland_surface.frame(&state.client_state.qh);
         }
 
-        xwayland_surface.try_attach_buffer(&state.client_state.qh);
+        xwayland_surface.try_attach_buffer();
     }
 
     if xwayland_surface.ready() || xwayland_surface.needs_configure() {

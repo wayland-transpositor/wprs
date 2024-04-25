@@ -746,6 +746,11 @@ pub fn commit_impl(
         Some(Role::Cursor(_)) => {},
         Some(Role::SubSurface(subsurface_state)) => {
             subsurface_state.sync = sync;
+            subsurface_state.location = surface_data
+                .cached_state
+                .pending::<SubsurfaceCachedState>()
+                .location
+                .into();
         },
         Some(Role::XdgToplevel(toplevel_state)) => {
             set_xdg_toplevel_attributes(surface_data, toplevel_state).location(loc!())?;

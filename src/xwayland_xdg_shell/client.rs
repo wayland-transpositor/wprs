@@ -246,7 +246,6 @@ impl CompositorHandler for WprsState {
             let xwayland_surface = self.surfaces.get_mut(compositor_surface_id).unwrap();
             if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
                 subsurface.pending_frame_callback = false;
-                subsurface.position_initialized = true;
             }
             if let Some(x11_surface) = &xwayland_surface.x11_surface {
                 if let Some(wl_surface) = x11_surface.wl_surface() {
@@ -360,7 +359,7 @@ impl WindowHandler for WprsState {
 
         xdg_toplevel.configured = true;
 
-        xwayland_surface.try_attach_buffer(&self.client_state.qh);
+        xwayland_surface.commit_buffer(&self.client_state.qh);
     }
 }
 
@@ -418,7 +417,7 @@ impl PopupHandler for WprsState {
         //     .xdg_surface()
         //     .set_window_geometry(0, 0, geo.size.w, geo.size.h);
 
-        xwayland_surface.try_attach_buffer(&self.client_state.qh);
+        xwayland_surface.commit_buffer(&self.client_state.qh);
     }
 
     fn done(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _popup: &Popup) {
@@ -1273,7 +1272,6 @@ pub struct XWaylandSubSurface {
     pub move_pointer_location: (f64, f64),
     pub pending_frame_callback: bool,
     pub buffer_attached: bool,
-    pub position_initialized: bool,
 }
 
 impl XWaylandSubSurface {
@@ -1334,29 +1332,36 @@ impl XWaylandSubSurface {
             move_pointer_location: (0 as f64, 0 as f64),
             pending_frame_callback: false,
             buffer_attached: false,
-            position_initialized: false,
         };
         surface.role = Some(Role::SubSurface(new_subsurface));
 
+        // the initial commit must include both the subsurface position and the buffer
+        // to prevent desyncs
         if let Some(Role::SubSurface(subsurface)) = &mut surface.role {
-            subsurface.move_(geometry.loc.x, geometry.loc.y, qh);
+            subsurface.move_without_commit(geometry.loc.x, geometry.loc.y, qh);
         }
 
         Ok(())
     }
 
-    pub(crate) fn move_(&mut self, x: i32, y: i32, qh: &QueueHandle<WprsState>) {
+    pub(crate) fn move_without_commit(&mut self, x: i32, y: i32, qh: &QueueHandle<WprsState>) {
         if !self.pending_frame_callback {
-            let local_wl_surface = self.local_subsurface.surface.wl_surface();
+            let local_wl_surface = self.wl_surface();
 
             self.local_subsurface
                 .subsurface
                 .set_position(x + self.parent_offset.x, y + self.parent_offset.y);
             local_wl_surface.frame(qh, local_wl_surface.clone());
-            local_wl_surface.commit();
             self.parent_surface.commit();
 
             self.pending_frame_callback = true;
+        }
+    }
+
+    pub(crate) fn move_(&mut self, x: i32, y: i32, qh: &QueueHandle<WprsState>) {
+        if !self.pending_frame_callback {
+            self.move_without_commit(x, y, qh);
+            self.wl_surface().commit();
         }
     }
 }

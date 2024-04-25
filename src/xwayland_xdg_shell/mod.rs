@@ -123,7 +123,6 @@ impl XWaylandSurface {
         match &self.role {
             Some(Role::XdgToplevel(toplevel)) if !toplevel.configured => false,
             Some(Role::XdgPopup(popup)) if !popup.configured => false,
-            Some(Role::SubSurface(subsurface)) if !subsurface.position_initialized => false,
             _ => self.x11_surface.is_some() || matches!(self.role, Some(Role::Cursor)),
         }
     }
@@ -136,7 +135,7 @@ impl XWaylandSurface {
         }
     }
 
-    fn try_attach_buffer(&mut self, qh: &QueueHandle<WprsState>) {
+    fn try_attach_buffer(&mut self) {
         if !self.buffer_attached {
             if let Some(buffer) = &self.buffer {
                 let surface = self.wl_surface();
@@ -144,11 +143,18 @@ impl XWaylandSurface {
                 // ignore.
                 _ = buffer.active_buffer.attach_to(surface);
                 surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                self.frame(qh);
-                self.wl_surface().commit();
 
                 self.buffer_attached = true;
             }
+        }
+    }
+
+    fn commit_buffer(&mut self, qh: &QueueHandle<WprsState>) {
+        if !self.buffer_attached && self.buffer.is_some() {
+            self.try_attach_buffer();
+
+            self.frame(qh);
+            self.commit();
         }
     }
 

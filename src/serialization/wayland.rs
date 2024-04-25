@@ -498,7 +498,7 @@ impl PointerEvent {
 #[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SubSurfaceState {
     pub parent: WlSurfaceId,
-    pub position: Point<i32>,
+    pub location: Point<i32>,
     pub sync: bool,
 }
 
@@ -506,7 +506,7 @@ impl SubSurfaceState {
     pub fn new(parent: &WlSurface) -> Self {
         Self {
             parent: WlSurfaceId::new(parent),
-            position: (0, 0).into(),
+            location: (0, 0).into(),
             sync: true,
         }
     }

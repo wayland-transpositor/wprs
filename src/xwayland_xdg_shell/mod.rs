@@ -45,6 +45,7 @@ use tracing::Span;
 
 use crate::args;
 use crate::prelude::*;
+use crate::serialization::geometry::Point;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
@@ -162,6 +163,7 @@ impl XWaylandSurface {
     fn update_x11_surface(
         &mut self,
         x11_surface: X11Surface,
+        x11_offset: Point<i32>,
         parent: Option<X11Parent>,
         fallback_parent: &Option<X11Parent>,
         xdg_shell_state: &XdgShell,
@@ -238,7 +240,7 @@ impl XWaylandSurface {
                 self.parent.clone_from(&parent_if_toplevel);
                 XWaylandXdgToplevel::set_role(
                     self,
-                    parent_if_toplevel.and_then(|p| p.for_toplevel).as_ref(),
+                    x11_offset,
                     xdg_shell_state,
                     shm_state,
                     subcompositor_state,
@@ -254,7 +256,7 @@ impl XWaylandSurface {
                 self.parent = None;
                 XWaylandXdgToplevel::set_role(
                     self,
-                    None,
+                    x11_offset,
                     xdg_shell_state,
                     shm_state,
                     subcompositor_state,
@@ -367,24 +369,6 @@ impl WprsState {
                 parent_xwayland_surface
                     .children
                     .retain(|child_surface_id| child_surface_id != surface_id);
-            }
-
-            // last_focused_window holds a handle to the window, not just an id, so
-            // if we don't do this, the window doesn't get destroyed until a
-            // different window is focused.
-            if let (
-                Some(Role::XdgToplevel(toplevel)),
-                Some(X11Parent {
-                    for_toplevel: Some(window),
-                    ..
-                }),
-            ) = (
-                xwayland_surface.role,
-                &self.client_state.last_focused_window,
-            ) {
-                if window == &toplevel.local_window {
-                    self.client_state.last_focused_window = None;
-                }
             }
         }
     }

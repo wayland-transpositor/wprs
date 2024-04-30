@@ -66,7 +66,6 @@ use smithay::xwayland::XWaylandEvent;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as SctkWlSurface;
 use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
-use smithay_client_toolkit::shell::xdg::window::Window;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
 
@@ -108,6 +107,8 @@ pub struct WprsCompositorState {
 
     pub xwayland: XWayland,
     pub xwm: Option<X11Wm>,
+
+    pub x11_screen_offset: Option<Point<i32>>,
 
     /// unpaired x11 surfaces
     pub x11_surfaces: Vec<X11Surface>,
@@ -177,6 +178,8 @@ impl WprsCompositorState {
 
             xwayland,
             xwm: None,
+
+            x11_screen_offset: None,
 
             x11_surfaces: Vec::new(),
         }
@@ -285,19 +288,19 @@ pub fn commit(surface: &WlSurface, state: &mut WprsState) -> Result<()> {
 pub(crate) struct X11ParentForPopup {
     pub(crate) surface_id: ObjectId,
     pub(crate) xdg_surface: xdg_surface::XdgSurface,
-    pub(crate) offset: Point<i32>,
+    pub(crate) x11_offset: Point<i32>,
+    pub(crate) wl_offset: Point<i32>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct X11ParentForSubsurface {
     pub(crate) surface: SctkWlSurface,
-    pub(crate) offset: Point<i32>,
+    pub(crate) x11_offset: Point<i32>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct X11Parent {
     pub(crate) surface_id: ObjectId,
-    pub(crate) for_toplevel: Option<Window>,
     pub(crate) for_popup: Option<X11ParentForPopup>,
     pub(crate) for_subsurface: X11ParentForSubsurface,
 }
@@ -322,45 +325,49 @@ pub(crate) fn find_x11_parent(
                 error!("parent {parent:?} has no attached x11 surface");
                 return None;
             };
-            let geo = parent_x11_surface.geometry();
+            let parent_geo = parent_x11_surface.geometry();
+
             match &parent.role {
                 Some(Role::XdgToplevel(toplevel)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
-                    for_toplevel: Some(toplevel.local_window.clone()),
                     for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: toplevel.xdg_surface().clone(),
-                        offset: (
-                            -geo.loc.x + toplevel.frame_offset.x,
-                            -geo.loc.y + toplevel.frame_offset.y,
+                        x11_offset: (
+                            -parent_geo.loc.x + toplevel.frame_offset.x,
+                            -parent_geo.loc.y + toplevel.frame_offset.y,
+                        )
+                            .into(),
+                        wl_offset: (
+                            -parent_geo.loc.x + toplevel.frame_offset.x - toplevel.x11_offset.x,
+                            -parent_geo.loc.y + toplevel.frame_offset.y - toplevel.x11_offset.y,
                         )
                             .into(),
                     }),
                     for_subsurface: X11ParentForSubsurface {
                         surface: toplevel.wl_surface().clone(),
-                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                        x11_offset: (-parent_geo.loc.x, -parent_geo.loc.y).into(),
                     },
                 }),
                 Some(Role::XdgPopup(popup)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
-                    for_toplevel: None,
                     for_popup: Some(X11ParentForPopup {
                         surface_id: parent_id.clone(),
                         xdg_surface: popup.xdg_surface().clone(),
-                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                        x11_offset: (-parent_geo.loc.x, -parent_geo.loc.y).into(),
+                        wl_offset: (-parent_geo.loc.x, -parent_geo.loc.y).into(),
                     }),
                     for_subsurface: X11ParentForSubsurface {
                         surface: popup.wl_surface().clone(),
-                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                        x11_offset: (-parent_geo.loc.x, -parent_geo.loc.y).into(),
                     },
                 }),
                 Some(Role::SubSurface(subsurface)) => Some(X11Parent {
                     surface_id: parent_id.clone(),
-                    for_toplevel: None, // subsurface cannot be parent to toplevel
-                    for_popup: None,    // subsurface cannot be parent to popup
+                    for_popup: None, // subsurface cannot be parent to popup
                     for_subsurface: X11ParentForSubsurface {
                         surface: subsurface.wl_surface().clone(),
-                        offset: (-geo.loc.x, -geo.loc.y).into(),
+                        x11_offset: (-parent_geo.loc.x, -parent_geo.loc.y).into(),
                     },
                 }),
                 Some(Role::Cursor) => unreachable!("Cursors cannot have child surfaces."),
@@ -413,28 +420,33 @@ pub fn commit_inner(
     let xwayland_surface = state.surfaces.entry(surface.id()).or_default();
 
     if let Some(x11_surface) = x11_surface {
-        xwayland_surface
-            .update_local_surface(
-                surface,
-                parent.as_ref().map(|parent| &parent.for_subsurface.surface),
-                &state.client_state.compositor_state,
-                &state.client_state.qh,
-                &mut state.surface_bimap,
-            )
-            .location(loc!())?;
+        if xwayland_surface.local_surface.is_none() {
+            xwayland_surface
+                .update_local_surface(
+                    surface,
+                    parent.as_ref().map(|parent| &parent.for_subsurface.surface),
+                    &state.client_state.compositor_state,
+                    &state.client_state.qh,
+                    &mut state.surface_bimap,
+                )
+                .location(loc!())?;
+        }
 
-        xwayland_surface
-            .update_x11_surface(
-                x11_surface,
-                parent,
-                &state.client_state.last_focused_window,
-                &state.client_state.xdg_shell_state,
-                &state.client_state.shm_state,
-                state.client_state.subcompositor_state.clone(),
-                &state.client_state.qh,
-                state.compositor_state.decoration_behavior,
-            )
-            .location(loc!())?;
+        if let Some(x11_offset) = state.compositor_state.x11_screen_offset {
+            xwayland_surface
+                .update_x11_surface(
+                    x11_surface,
+                    x11_offset,
+                    parent,
+                    &state.client_state.last_focused_window,
+                    &state.client_state.xdg_shell_state,
+                    &state.client_state.shm_state,
+                    state.client_state.subcompositor_state.clone(),
+                    &state.client_state.qh,
+                    state.compositor_state.decoration_behavior,
+                )
+                .location(loc!())?;
+        }
     }
 
     debug!("buffer assignment: {:?}", &surface_attributes.buffer);
@@ -608,8 +620,18 @@ pub(crate) fn handle_output(state: &mut WprsState, output: OutputInfo) {
         size: (0, 0).into(),
         refresh: 0,
     });
+
+    // We are lying to xwayland about the size of the display and offsetting all our x11 windows
+    // by the accordingly. This is because xwayland will not let us move cursors beyond the bounds of the
+    // screen. Since wayland surfaces do not know where they are placed, we will sometimes receive
+    // events that either enter the negative coordinate space (because the wayland window is not aligned
+    // with the topleft corner) or are beyond the size of the screen (because the window partially overlaps
+    // the edge of the screen.)
+    let expanded_dimensions = (16_384, 16_384).into();
+    state.compositor_state.x11_screen_offset = Some((-8_192, -8_192).into());
+
     let received_mode = Mode {
-        size: output.mode.dimensions.into(),
+        size: expanded_dimensions,
         refresh: output.mode.refresh_rate,
     };
     if current_mode != received_mode {

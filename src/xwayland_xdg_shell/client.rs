@@ -791,15 +791,19 @@ impl PointerHandler for WprsState {
                             .unwrap();
                         self.client_state.last_focused_window = Some(X11Parent {
                             surface_id: parent_id.clone(),
-                            for_toplevel: Some(toplevel.local_window.clone()),
                             for_popup: Some(X11ParentForPopup {
                                 surface_id: parent_id.clone(),
                                 xdg_surface: toplevel.xdg_surface().clone(),
-                                offset: toplevel.frame_offset,
+                                x11_offset: (
+                                    toplevel.frame_offset.x + toplevel.x11_offset.x,
+                                    toplevel.frame_offset.y + toplevel.x11_offset.y,
+                                )
+                                    .into(),
+                                wl_offset: toplevel.frame_offset,
                             }),
                             for_subsurface: X11ParentForSubsurface {
                                 surface: toplevel.wl_surface().clone(),
-                                offset: (0, 0).into(),
+                                x11_offset: toplevel.x11_offset,
                             },
                         });
                     }
@@ -1056,6 +1060,7 @@ pub struct XWaylandXdgToplevel {
     pub frame_offset: Point<i32>,
     pub configured: bool,
     pub decoration_behavior: DecorationBehavior,
+    pub x11_offset: Point<i32>,
 }
 
 impl XWaylandXdgToplevel {
@@ -1106,7 +1111,7 @@ impl XWaylandXdgToplevel {
         // dimensions. And don't worry about border_width. /sigh
         x11_surface
             .configure(Rectangle::from_loc_and_size(
-                (0, 0),
+                (-self.x11_offset.x, -self.x11_offset.y),
                 (width as i32, height as i32),
             ))
             .location(loc!())?;
@@ -1158,7 +1163,10 @@ impl XWaylandXdgToplevel {
         };
 
         x11_surface
-            .configure(Rectangle::from_loc_and_size((0, 0), (width, height)))
+            .configure(Rectangle::from_loc_and_size(
+                (-self.x11_offset.x, -self.x11_offset.y),
+                (width, height),
+            ))
             .location(loc!())?;
 
         self.local_window
@@ -1193,7 +1201,7 @@ impl XWaylandXdgToplevel {
 
     pub fn set_role(
         surface: &mut XWaylandSurface,
-        parent: Option<&Window>,
+        x11_offset: Point<i32>,
         xdg_shell_state: &XdgShell,
         shm_state: &Shm,
         subcompositor_state: Arc<SubcompositorState>,
@@ -1215,8 +1223,6 @@ impl XWaylandXdgToplevel {
             local_window.set_min_size(Some((min_size.w as u32, min_size.h as u32)));
         }
 
-        local_window.set_parent(parent);
-
         // TODO: decorations
 
         local_window.commit();
@@ -1232,6 +1238,7 @@ impl XWaylandXdgToplevel {
             frame_offset: (0, 0).into(),
             configured: false,
             decoration_behavior,
+            x11_offset,
         };
         surface.role = Some(Role::XdgToplevel(new_toplevel));
         Ok(())
@@ -1266,7 +1273,7 @@ impl WaylandSurface for SubSurface {
 pub struct XWaylandSubSurface {
     pub local_subsurface: SubSurface,
     pub parent_surface: WlSurface,
-    pub parent_offset: Point<i32>,
+    pub offset: Point<i32>,
     pub frame: Option<FallbackFrame<WprsState>>,
     pub move_active: bool,
     pub move_pointer_location: (f64, f64),
@@ -1283,7 +1290,6 @@ impl XWaylandSubSurface {
         qh: &QueueHandle<WprsState>,
     ) -> Result<()> {
         let local_surface = surface.local_surface.take().unwrap();
-
         let subsurface = subcompositor_state
             .subsurface_from_surface(local_surface.wl_surface(), qh)
             .unwrap();
@@ -1323,10 +1329,11 @@ impl XWaylandSubSurface {
 
         x11_surface.configure(None).location(loc!())?;
 
+        // TODO: it seems like we should probably also include frame offset of our window decorations somehwere
         let new_subsurface = Self {
             local_subsurface,
             parent_surface: parent.surface,
-            parent_offset: parent.offset,
+            offset: parent.x11_offset,
             frame,
             move_active: false,
             move_pointer_location: (0 as f64, 0 as f64),
@@ -1350,7 +1357,7 @@ impl XWaylandSubSurface {
 
             self.local_subsurface
                 .subsurface
-                .set_position(x + self.parent_offset.x, y + self.parent_offset.y);
+                .set_position(x + self.offset.x, y + self.offset.y);
             local_wl_surface.frame(qh, local_wl_surface.clone());
             self.parent_surface.commit();
 
@@ -1391,9 +1398,12 @@ impl XWaylandXdgPopup {
         let positioner = XdgPositioner::new(xdg_shell_state).unwrap();
         let geometry = x11_surface.geometry();
         positioner.set_size(geometry.size.w, geometry.size.h);
-        let x = geometry.loc.x + parent.offset.x;
-        let y = geometry.loc.y + parent.offset.y;
-        positioner.set_anchor_rect(x, y, 1, 1);
+        positioner.set_anchor_rect(
+            geometry.loc.x + parent.x11_offset.x,
+            geometry.loc.y + parent.x11_offset.y,
+            1,
+            1,
+        );
         positioner.set_anchor(Anchor::TopLeft);
         positioner.set_gravity(Gravity::BottomRight);
 
@@ -1401,7 +1411,10 @@ impl XWaylandXdgPopup {
             None
         } else {
             Some(Rectangle::from_loc_and_size(
-                (x, y),
+                (
+                    geometry.loc.x + parent.wl_offset.x,
+                    geometry.loc.y + parent.wl_offset.x,
+                ),
                 (geometry.size.w, geometry.size.h),
             ))
         };

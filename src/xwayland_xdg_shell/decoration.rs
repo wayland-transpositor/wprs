@@ -131,7 +131,8 @@ pub trait FramedSurface {
         if let (Some(new_cursor), cur_cursor) =
             (new_cursor, client_state.cursor_icon.unwrap_or_default())
         {
-            if new_cursor != cur_cursor {
+            // when entering a surface, the current cursor is always undefined
+            if new_cursor != cur_cursor || matches!(event.kind, PointerEventKind::Enter { .. }) {
                 client_state.cursor_icon = Some(new_cursor);
                 let _ = client_state
                     .seat_objects

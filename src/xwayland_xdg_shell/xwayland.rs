@@ -92,24 +92,60 @@ impl XwmHandler for WprsState {
         _reorder: Option<Reorder>,
     ) {
         let mut geo = window.geometry();
-        if let Some(x) = x {
-            if x != 0 {
-                geo.loc.x = x;
+
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+            if let Some(role) = &xwayland_surface.role {
+                // toplevel windows are not allowed to move themselves
+                if !matches!(role, Role::XdgToplevel { .. }) {
+                    if let Some(x) = x {
+                        if x != 0 {
+                            geo.loc.x = x;
+                        }
+                    }
+                    if let Some(y) = y {
+                        if y != 0 {
+                            geo.loc.y = y;
+                        }
+                    }
+                }
+
+                // toplevels are also not allowed to resize themselves after they are configured,
+                // or else their frame will desync with their surface
+                if !matches!(role, Role::XdgToplevel(toplevel) if toplevel.configured) {
+                    if let Some(w) = w {
+                        if w > 1 {
+                            geo.size.w = w as i32;
+                        }
+                    }
+                    if let Some(h) = h {
+                        if h > 1 {
+                            geo.size.h = h as i32;
+                        }
+                    }
+                }
             }
-        }
-        if let Some(y) = y {
-            if y != 0 {
-                geo.loc.y = y;
+        } else {
+            // we don't know when we will be assigned a role, so accept any requested
+            // dimensions.
+            if let Some(x) = x {
+                if x != 0 {
+                    geo.loc.x = x;
+                }
             }
-        }
-        if let Some(w) = w {
-            if w > 1 {
-                geo.size.w = w as i32;
+            if let Some(y) = y {
+                if y != 0 {
+                    geo.loc.y = y;
+                }
             }
-        }
-        if let Some(h) = h {
-            if h > 1 {
-                geo.size.h = h as i32;
+            if let Some(w) = w {
+                if w > 1 {
+                    geo.size.w = w as i32;
+                }
+            }
+            if let Some(h) = h {
+                if h > 1 {
+                    geo.size.h = h as i32;
+                }
             }
         }
 

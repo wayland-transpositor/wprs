@@ -24,6 +24,7 @@ use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::selection::SelectionTarget;
 use smithay::xwayland::xwm::Reorder;
 use smithay::xwayland::xwm::ResizeEdge as X11ResizeEdge;
+use smithay::xwayland::xwm::WmWindowProperty;
 use smithay::xwayland::xwm::XwmId;
 use smithay::xwayland::X11Surface;
 use smithay::xwayland::X11Wm;
@@ -355,5 +356,15 @@ impl XwmHandler for WprsState {
 
     fn cleared_selection(&mut self, _xwm: XwmId, _selection: SelectionTarget) {
         // TODO
+    }
+
+    fn property_notify(&mut self, _xwm: XwmId, window: X11Surface, property: WmWindowProperty) {
+        if property == WmWindowProperty::Title {
+            if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
+                if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
+                    toplevel.local_window.set_title(window.title());
+                }
+            }
+        }
     }
 }

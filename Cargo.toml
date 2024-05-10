@@ -22,7 +22,7 @@ bimap = "0.6.3"
 bpaf = "0.9.3"
 bytemuck = { version = "1.13.1", features = ["extern_crate_alloc"] }
 crossbeam-channel = "0.5.8"
-divbuf = { git = "https://github.com/nicolasavru/divbuf.git", branch = "extract-vec" }
+divbuf = { git = "https://github.com/asomers/divbuf" }
 enum-as-inner = "0.6.0"
 fallible-iterator = "0.3.0"
 home = "0.5.5"
@@ -36,14 +36,24 @@ ron = "0.8.1"
 serde = "1.0.188"
 serde_derive = "1.0.188"
 serde_json = "1.0.107"
-smithay = { git = "https://github.com/Smithay/smithay.git", default-features = false, features = ["desktop", "xwayland", "wayland_frontend"] }
+smithay = { git = "https://github.com/Smithay/smithay.git", default-features = false, features = [
+    "desktop",
+    "xwayland",
+    "wayland_frontend",
+] }
 smithay-client-toolkit = { git = "https://github.com/Smithay/client-toolkit.git" }
 static_assertions = "1.1.0"
 sysctl = "0.5.4"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
-tracing-tracy = { version = "0.10.2", optional = true, features = ["only-localhost", "ondemand"] }
-tracy-client = { version = "0.16.3", optional = true, features = ["only-localhost", "ondemand"] }
+tracing-tracy = { version = "0.10.2", optional = true, features = [
+    "only-localhost",
+    "ondemand",
+] }
+tracy-client = { version = "0.16.3", optional = true, features = [
+    "only-localhost",
+    "ondemand",
+] }
 whoami = "1.4.1"
 x11rb = "0.12.0"
 zstd = { version = "0.12.4" }

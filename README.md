@@ -154,7 +154,7 @@ lossless image compression algorithm:
    correlation.
 4. Compress the data with zstd.
 This algorithm was designed for reasonably good compression ratios while being
-extremely last: single-digit milliseconds per frame. Decompression is done by
+extremely fast: single-digit milliseconds per frame. Decompression is done by
 inverting those steps.
 
 This protocol is *not stable*: there is no guarantee that different versions of

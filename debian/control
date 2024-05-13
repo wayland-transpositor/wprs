@@ -1,0 +1,15 @@
+Source: wprs
+Section: unknown
+Priority: optional
+Maintainer: Nicolas Avrutin <rasputin@google.com>
+Standards-Version: 4.0.0
+Build-Depends: build-essential, debhelper-compat (= 13), pkg-config, libxkbcommon-dev, libwayland-dev
+Vcs-browser: https://github.com/wayland-transpositor/wprs
+Homepage: https://github.com/wayland-transpositor/wprs
+Rules-Requires-Root: no
+
+Package: wprs
+Architecture: i386 amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: python3, python3-psutil, openssh-client, openssh-server
+Description: xpra, but for wayland, and written in rust

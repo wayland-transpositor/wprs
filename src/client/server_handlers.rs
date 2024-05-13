@@ -232,60 +232,35 @@ impl WprsClientState {
             warn!("received request for unknown surface");
             return Ok(());
         };
-        match request.payload {
-            ToplevelRequestPayload::Destroyed => {
-                surface.role = None;
-            },
-            ToplevelRequestPayload::SetMaximized => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .set_maximized();
-            },
-            ToplevelRequestPayload::UnsetMaximized => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .unset_maximized();
-            },
-            ToplevelRequestPayload::SetFullscreen => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .set_fullscreen(None);
-            },
-            ToplevelRequestPayload::UnsetFullscreen => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .unset_fullscreen();
-            },
-            ToplevelRequestPayload::SetMinimized => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .set_minimized();
-            },
-            ToplevelRequestPayload::Move(xdg_shell::Move { serial }) => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .xdg_toplevel()
-                    ._move(&self.seat_state.seats().next().location(loc!())?, serial);
-            },
-            ToplevelRequestPayload::Resize(xdg_shell::Resize { serial, edge }) => {
-                surface
-                    .xdg_toplevel()
-                    .location(loc!())?
-                    .local_window
-                    .xdg_toplevel()
-                    .resize(
+
+        if let Some(Role::XdgToplevel(toplevel)) = &surface.role {
+            match request.payload {
+                ToplevelRequestPayload::Destroyed => {
+                    surface.role = None;
+                },
+                ToplevelRequestPayload::SetMaximized => {
+                    toplevel.local_window.set_maximized();
+                },
+                ToplevelRequestPayload::UnsetMaximized => {
+                    toplevel.local_window.unset_maximized();
+                },
+                ToplevelRequestPayload::SetFullscreen => {
+                    toplevel.local_window.set_fullscreen(None);
+                },
+                ToplevelRequestPayload::UnsetFullscreen => {
+                    toplevel.local_window.unset_fullscreen();
+                },
+                ToplevelRequestPayload::SetMinimized => {
+                    toplevel.local_window.set_minimized();
+                },
+                ToplevelRequestPayload::Move(xdg_shell::Move { serial }) => {
+                    toplevel
+                        .local_window
+                        .xdg_toplevel()
+                        ._move(&self.seat_state.seats().next().location(loc!())?, serial);
+                },
+                ToplevelRequestPayload::Resize(xdg_shell::Resize { serial, edge }) => {
+                    toplevel.local_window.xdg_toplevel().resize(
                         &self.seat_state.seats().next().location(loc!())?,
                         serial,
                         // The error type is (). :(
@@ -293,7 +268,8 @@ impl WprsClientState {
                             .map_err(|_| anyhow!("invalid edge"))
                             .location(loc!())?,
                     );
-            },
+                },
+            }
         }
         Ok(())
     }

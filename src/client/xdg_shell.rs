@@ -95,6 +95,22 @@ impl RemoteXdgToplevel {
                         .local_window,
                 ));
             }
+
+            if let Some(maximized) = toplevel_state.maximized {
+                if maximized {
+                    local_window.set_maximized();
+                } else {
+                    local_window.unset_maximized();
+                }
+            }
+
+            if let Some(fullscreen) = toplevel_state.fullscreen {
+                if fullscreen {
+                    local_window.set_fullscreen(None);
+                } else {
+                    local_window.unset_fullscreen();
+                }
+            }
         }
 
         object_bimap.insert(

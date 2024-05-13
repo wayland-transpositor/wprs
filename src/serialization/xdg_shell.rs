@@ -213,6 +213,8 @@ pub struct XdgToplevelState {
     pub title: Option<String>,
     pub app_id: Option<String>,
     pub decoration_mode: Option<DecorationMode>,
+    pub maximized: Option<bool>,
+    pub fullscreen: Option<bool>,
 }
 
 impl XdgToplevelState {
@@ -223,6 +225,8 @@ impl XdgToplevelState {
             title: None,
             app_id: None,
             decoration_mode: None,
+            maximized: None,
+            fullscreen: None,
         }
     }
 }

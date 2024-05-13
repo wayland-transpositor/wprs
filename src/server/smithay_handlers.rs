@@ -140,7 +140,7 @@ impl BufferHandler for WprsServerState {
 }
 
 impl WprsServerState {
-    fn send_toplevel_request(&self, toplevel: ToplevelSurface, payload: ToplevelRequestPayload) {
+    fn send_toplevel_request(&self, toplevel: &ToplevelSurface, payload: ToplevelRequestPayload) {
         let surface = toplevel.wl_surface();
         self.serializer
             .writer()
@@ -149,6 +149,36 @@ impl WprsServerState {
                 surface: (&surface.id()).into(),
                 payload,
             })))
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn update_state_and_send_toplevel_request<F>(
+        &mut self,
+        surface: &ToplevelSurface,
+        mut toplevel_state_mutator: F,
+        payload_to_send: ToplevelRequestPayload,
+    ) where
+        F: FnMut(&mut XdgToplevelState),
+    {
+        // Changing maximized/fullscreen is not idempotent, and can be ignored be the compositor,
+        // so we must send every request we receive.  However, in case we need to resync the client surface
+        // (e.g. if the client reconnects or a toplevel request is sent before the initial commit)
+        // we also keep track of the current state.
+        compositor::with_states(surface.wl_surface(), |surface_data| {
+            let surface_state = &mut surface_data
+                .data_map
+                .get::<LockedSurfaceState>()
+                .unwrap()
+                .0
+                .lock()
+                .unwrap();
+
+            if let Some(Role::XdgToplevel(toplevel_state)) = &mut surface_state.role {
+                toplevel_state_mutator(toplevel_state);
+            }
+
+            self.send_toplevel_request(surface, payload_to_send);
+        });
     }
 }
 
@@ -184,7 +214,7 @@ impl XdgShellHandler for WprsServerState {
         // appropriate message would have been sent to the client, so we don't
         // need to worry about destroying the toplevel,
         if surface.wl_surface().client().is_some() {
-            self.send_toplevel_request(surface, ToplevelRequestPayload::Destroyed);
+            self.send_toplevel_request(&surface, ToplevelRequestPayload::Destroyed);
         }
     }
 
@@ -244,11 +274,19 @@ impl XdgShellHandler for WprsServerState {
 
     // TODO: implement ClientId from WLSurface constructor
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        self.send_toplevel_request(surface, ToplevelRequestPayload::SetMaximized);
+        self.update_state_and_send_toplevel_request(
+            &surface,
+            |toplevel_state| toplevel_state.maximized = Some(true),
+            ToplevelRequestPayload::SetMaximized,
+        );
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        self.send_toplevel_request(surface, ToplevelRequestPayload::UnsetMaximized);
+        self.update_state_and_send_toplevel_request(
+            &surface,
+            |toplevel_state| toplevel_state.maximized = Some(false),
+            ToplevelRequestPayload::UnsetMaximized,
+        );
     }
 
     fn fullscreen_request(
@@ -259,15 +297,23 @@ impl XdgShellHandler for WprsServerState {
         // TODO: do anything with output? Probably not, but also depends on how
         // exactly we handle output enter/exit events and updating outputs
         // between client reconnections.
-        self.send_toplevel_request(surface, ToplevelRequestPayload::SetFullscreen);
+        self.update_state_and_send_toplevel_request(
+            &surface,
+            |toplevel_state| toplevel_state.fullscreen = Some(true),
+            ToplevelRequestPayload::SetFullscreen,
+        );
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        self.send_toplevel_request(surface, ToplevelRequestPayload::UnsetFullscreen);
+        self.update_state_and_send_toplevel_request(
+            &surface,
+            |toplevel_state| toplevel_state.fullscreen = Some(false),
+            ToplevelRequestPayload::UnsetFullscreen,
+        );
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
-        self.send_toplevel_request(surface, ToplevelRequestPayload::SetMinimized);
+        self.send_toplevel_request(&surface, ToplevelRequestPayload::SetMinimized);
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, serial: Serial) {
@@ -277,7 +323,7 @@ impl XdgShellHandler for WprsServerState {
         };
 
         self.send_toplevel_request(
-            surface,
+            &surface,
             ToplevelRequestPayload::Move(Move {
                 serial: client_serial,
             }),
@@ -297,7 +343,7 @@ impl XdgShellHandler for WprsServerState {
         };
 
         self.send_toplevel_request(
-            surface,
+            &surface,
             ToplevelRequestPayload::Resize(Resize {
                 serial: client_serial,
                 edge: edges.into(),

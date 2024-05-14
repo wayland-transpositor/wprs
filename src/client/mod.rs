@@ -366,12 +366,6 @@ impl RemoteSurface {
         })
     }
 
-    fn set_title_prefix(&mut self, title_prefix: impl Into<String>) {
-        if let Some(Role::XdgToplevel(xdg_toplevel)) = &mut self.role {
-            xdg_toplevel.title_prefix = title_prefix.into();
-        }
-    }
-
     fn reorder_children(
         &mut self,
         new_order: &[SubsurfacePosition],

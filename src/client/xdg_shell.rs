@@ -64,6 +64,7 @@ impl RemoteXdgToplevel {
         xdg_shell_state: &XdgShell,
         qh: &QueueHandle<WprsClientState>,
         object_bimap: &mut ObjectBimap,
+        title_prefix: &str,
     ) -> Result<()> {
         let local_surface = {
             let surface = surfaces.get_mut(&surface_id).location(loc!())?;
@@ -107,7 +108,7 @@ impl RemoteXdgToplevel {
             local_window,
             configured: false,
             title: None,
-            title_prefix: String::new(),
+            title_prefix: title_prefix.to_owned(),
             app_id: None,
             decoration_mode: None,
             max_size: (0, 0).into(),
@@ -210,6 +211,7 @@ impl RemoteXdgToplevel {
         xdg_shell_state: &XdgShell,
         qh: &QueueHandle<WprsClientState>,
         object_bimap: &mut ObjectBimap,
+        title_prefix: &str,
     ) -> Result<()> {
         Self::set_role(
             client_id,
@@ -219,6 +221,7 @@ impl RemoteXdgToplevel {
             xdg_shell_state,
             qh,
             object_bimap,
+            title_prefix,
         )
         .location(loc!())?;
         let surface = surfaces.get_mut(&surface_id).location(loc!())?;

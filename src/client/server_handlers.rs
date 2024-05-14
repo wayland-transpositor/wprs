@@ -101,8 +101,6 @@ impl WprsClientState {
                 .set_opaque_region(surface_state.opaque_region.take(), &self.compositor_state)
                 .location(loc!())?;
 
-            remote_surface.set_title_prefix(&self.title_prefix);
-
             remote_surface.frame_callback_completed
         };
 
@@ -139,6 +137,7 @@ impl WprsClientState {
                 &self.xdg_shell_state,
                 &self.qh,
                 &mut self.object_bimap,
+                &self.title_prefix,
             )
             .location(loc!())?,
             Some(wayland::Role::XdgPopup(_)) => RemoteXdgPopup::apply(

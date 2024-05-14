@@ -445,7 +445,7 @@ checksum = "96a6ac251f4a2aca6b3f91340350eab87ae57c3f127ffeb585e92bd336717991"
 [[package]]
 name = "divbuf"
 version = "0.3.2-pre"
-source = "git+https://github.com/nicolasavru/divbuf.git?branch=extract-vec#2976d292a2d87660ab03d7773537b4a5102d23d8"
+source = "git+https://github.com/asomers/divbuf#5cceb37e40a7e50b0fb9a1dad4b0c3585160c247"
 
 [[package]]
 name = "dlib"

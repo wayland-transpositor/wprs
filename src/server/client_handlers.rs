@@ -38,9 +38,13 @@ use smithay::output::Mode as OutputMode;
 use smithay::output::Output;
 use smithay::output::PhysicalProperties;
 use smithay::output::Scale;
+use smithay::reexports::wayland_server::backend::ObjectId;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::Client;
 use smithay::utils::Rectangle;
 use smithay::utils::Serial;
 use smithay::utils::SERIAL_COUNTER;
+use smithay::wayland::compositor;
 use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
@@ -59,6 +63,8 @@ use crate::serialization::wayland::OutputInfo;
 use crate::serialization::wayland::PointerEvent;
 use crate::serialization::wayland::PointerEventKind;
 use crate::serialization::wayland::RepeatInfo;
+use crate::serialization::wayland::SurfaceEvent;
+use crate::serialization::wayland::SurfaceEventPayload;
 use crate::serialization::wayland::SurfaceRequest;
 use crate::serialization::wayland::SurfaceRequestPayload;
 use crate::serialization::wayland::WlSurfaceId;
@@ -75,32 +81,50 @@ use crate::server::smithay_handlers::DndGrab;
 use crate::server::LockedSurfaceState;
 use crate::server::WprsServerState;
 
+enum UnknownSurfaceErr {
+    UnknownObjectId(WlSurfaceId),
+    UnknownClient(ObjectId),
+}
+
 impl WprsServerState {
+    fn object_client_surface_from_id(
+        &self,
+        surface_id: &WlSurfaceId,
+    ) -> Result<(ObjectId, Client, WlSurface), UnknownSurfaceErr> {
+        let object_id = match self.object_map.get(surface_id) {
+            Some(object_id) => object_id.clone(),
+            None => {
+                return Err(UnknownSurfaceErr::UnknownObjectId(*surface_id));
+            },
+        };
+        let Ok(client) = self.dh.get_client(object_id.clone()) else {
+            return Err(UnknownSurfaceErr::UnknownClient(object_id));
+        };
+
+        let Ok(surface) = client.object_from_protocol_id(&self.dh, object_id.protocol_id()) else {
+            return Err(UnknownSurfaceErr::UnknownClient(object_id));
+        };
+
+        Ok((object_id, client, surface))
+    }
+
     #[instrument(skip_all, level = "debug")]
     fn handle_pointer_frame(&mut self, events: Vec<PointerEvent>) -> Result<()> {
         let pointer = self.seat.get_pointer().location(loc!())?;
 
         for event in events {
-            let object_id = match self.object_map.get(&event.surface_id) {
-                Some(object_id) => object_id.clone(),
-                None => {
-                    warn!(
+            let (_, _, surface) = self
+                .object_client_surface_from_id(&event.surface_id)
+                .map_err(|err| match err {
+                    UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
                         "Ignoring pointer event for unknown surface {:?}",
-                        &event.surface_id
-                    );
-                    return Ok(());
-                },
-            };
-            let Ok(client) = self.dh.get_client(object_id.clone()) else {
-                warn!("Ignoring keyboard event for unknown client of surface {object_id:?}.");
-                return Ok(());
-            };
-
-            let Ok(surface) = client.object_from_protocol_id(&self.dh, object_id.protocol_id())
-            else {
-                warn!("Ignoring keyboard event for unknown client of surface {object_id:?}.");
-                return Ok(());
-            };
+                        surface_id
+                    ),
+                    UnknownSurfaceErr::UnknownClient(object_id) => {
+                        anyhow!("Ignoring pointer event for unknown client {:?}", object_id)
+                    },
+                })
+                .warn(loc!())?;
 
             let time = self.start_time.elapsed().as_millis() as u32;
 
@@ -294,28 +318,24 @@ impl WprsServerState {
                 }
 
                 let serial = self.serial_map.insert(serial);
-                let object_id = match self.object_map.get(&surface_id) {
-                    Some(object_id) => object_id.clone(),
-                    None => {
-                        warn!("Ignoring keyboard event for unknown surface {surface_id:?}");
-                        return Ok(());
-                    },
-                };
-                let Ok(client) = self.dh.get_client(object_id.clone()) else {
-                    warn!("Ignoring keyboard event for unknown client of surface {object_id:?}.");
-                    return Ok(());
-                };
 
-                if let Ok(surface) =
-                    client.object_from_protocol_id(&self.dh, object_id.protocol_id())
-                {
-                    debug!("setting keyboard focus to surface {surface:?}");
-                    keyboard.set_focus(self, Some(surface), serial);
-                    data_device::set_data_device_focus(&self.dh, &self.seat, Some(client.clone()));
-                    primary_selection::set_primary_focus(&self.dh, &self.seat, Some(client));
-                } else {
-                    warn!("Received keyboard enter event for (probably) already-destroyed surface {surface_id:?}.");
-                }
+                let (_, client, surface) = self
+                    .object_client_surface_from_id(&surface_id)
+                    .map_err(|err| match err {
+                        UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
+                            "Ignoring keyboard event for unknown surface {:?}",
+                            surface_id
+                        ),
+                        UnknownSurfaceErr::UnknownClient(object_id) => {
+                            anyhow!("Ignoring keyboard event for unknown client {:?}", object_id)
+                        },
+                    })
+                    .warn(loc!())?;
+
+                debug!("setting keyboard focus to surface {surface:?}");
+                keyboard.set_focus(self, Some(surface), serial);
+                data_device::set_data_device_focus(&self.dh, &self.seat, Some(client.clone()));
+                primary_selection::set_primary_focus(&self.dh, &self.seat, Some(client));
             },
             KeyboardEvent::Leave { serial } => {
                 let serial = self.serial_map.insert(serial);
@@ -683,24 +703,21 @@ impl WprsServerState {
                 // TODO: remove? after taking another pass at data device code.
             },
             DataEvent::DestinationEvent(DataDestinationEvent::DnDEnter(drag_enter)) => {
-                let Some(object_id) = self.object_map.get(&drag_enter.surface) else {
-                    warn!(
-                        "Ignoring DnDEnter for unknown surface {:?}.",
-                        &drag_enter.surface
-                    );
-                    return Ok(());
-                };
-                let Ok(client) = self.dh.get_client(object_id.clone()) else {
-                    warn!("Ignoring DnDEnter for unknown client of surface {object_id:?}.");
-                    return Ok(());
-                };
+                let (_, _, surface) = self
+                    .object_client_surface_from_id(&drag_enter.surface)
+                    .map_err(|err| match err {
+                        UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
+                            "Ignoring DnDEnter event for unknown surface {:?}",
+                            surface_id
+                        ),
+                        UnknownSurfaceErr::UnknownClient(object_id) => {
+                            anyhow!("Ignoring DnDEnter event for unknown client {:?}", object_id)
+                        },
+                    })
+                    .warn(loc!())?;
+
                 let serial = self.serial_map.insert(drag_enter.serial);
                 let pointer = self.seat.get_pointer().location(loc!())?;
-                let Ok(surface) = client.object_from_protocol_id(&self.dh, object_id.protocol_id())
-                else {
-                    warn!("Ignoring DnDEnter for unknown client of surface {object_id:?}.");
-                    return Ok(());
-                };
                 let grab = DndGrab::new(Some((surface, (0, 0).into())), 0, drag_enter.loc.into());
                 pointer.set_grab(self, grab, serial, Focus::Keep);
                 let drag_start_data = pointer.grab_start_data();
@@ -807,6 +824,67 @@ impl WprsServerState {
         Ok(())
     }
 
+    #[instrument(skip_all, level = "debug")]
+    fn handle_surface_event(&mut self, surface_event: SurfaceEvent) -> Result<()> {
+        let (_, _, surface) = self
+            .object_client_surface_from_id(&surface_event.surface_id)
+            .map_err(|err| match err {
+                UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
+                    "Ignoring {:?} event for unknown surface {:?}",
+                    surface_event.payload,
+                    surface_id
+                ),
+                UnknownSurfaceErr::UnknownClient(object_id) => {
+                    anyhow!(
+                        "Ignoring {:?} event for unknown client {:?}",
+                        surface_event.payload,
+                        object_id
+                    )
+                },
+            })
+            .warn(loc!())?;
+
+        match surface_event.payload {
+            SurfaceEventPayload::OutputsChanged(outputs) => {
+                compositor::with_states(&surface, |surface_data| {
+                    let surface_state = &mut surface_data
+                        .data_map
+                        .get::<LockedSurfaceState>()
+                        .unwrap()
+                        .0
+                        .lock()
+                        .unwrap();
+
+                    let new_ids: HashSet<u32> =
+                        HashSet::from_iter(outputs.iter().map(|output| output.id));
+                    let old_ids = HashSet::from_iter(surface_state.output_ids.iter().cloned());
+
+                    let entered_ids = new_ids.difference(&old_ids);
+                    let left_ids = old_ids.difference(&new_ids);
+
+                    // careful, a surface can be on multiple outputs, and the surface scale is the largest scale among them
+                    for id in entered_ids {
+                        let output = self.outputs.get(id);
+                        if let Some((output, _)) = output {
+                            output.enter(&surface);
+                        }
+                    }
+
+                    for id in left_ids {
+                        let output = self.outputs.get(id);
+                        if let Some((output, _)) = output {
+                            output.leave(&surface);
+                        }
+                    }
+
+                    surface_state.output_ids = new_ids.iter().cloned().collect();
+                });
+            },
+        }
+
+        Ok(())
+    }
+
     #[instrument(skip(self), level = "debug")]
     pub fn handle_event(&mut self, event: RecvType<Event>) {
         match event {
@@ -817,6 +895,9 @@ impl WprsServerState {
             RecvType::Object(Event::PointerFrame(events)) => self.handle_pointer_frame(events),
             RecvType::Object(Event::Output(output)) => self.handle_output(output),
             RecvType::Object(Event::Data(data_event)) => self.handle_data_event(data_event),
+            RecvType::Object(Event::Surface(surface_event)) => {
+                self.handle_surface_event(surface_event)
+            },
             RecvType::RawBuffer(_) => unreachable!(),
         }
         .log_and_ignore(loc!());

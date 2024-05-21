@@ -65,7 +65,7 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
 
     /// # Safety
     /// * `ptr` must be non-null, aligned, and valid for reads of `len` elements for
-    /// the lifetime of the BufferPointer.
+    ///   the lifetime of the BufferPointer.
     pub unsafe fn new(ptr: &'a *const T, len: usize) -> Self {
         unsafe { Self::new_impl(ptr.to_owned(), len, PhantomData::<&'a T>) }
     }

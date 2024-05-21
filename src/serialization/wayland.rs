@@ -605,6 +605,7 @@ pub struct SurfaceState {
     pub opaque_region: Option<Region>,
     pub input_region: Option<Region>,
     pub z_ordered_children: Vec<SubsurfacePosition>,
+    pub output_ids: Vec<u32>,
 
     // Interfaces
     pub xdg_surface_state: Option<xdg_shell::XdgSurfaceState>,
@@ -624,6 +625,7 @@ impl SurfaceState {
             // TODO: insert own id into z_ordered_children after figuring out
             // client isolation.
             z_ordered_children: Vec::new(),
+            output_ids: Vec::new(),
 
             xdg_surface_state: None,
         })
@@ -1014,4 +1016,23 @@ pub enum DataEvent {
     // // E.g.: accept mime type, request data transfer.
     // DestinationRequest(DataDestinationRequest),
     TransferData(DataSource, DataToTransfer),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
+#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
+pub struct Output {
+    pub id: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
+#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
+pub enum SurfaceEventPayload {
+    OutputsChanged(Vec<Output>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
+#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
+pub struct SurfaceEvent {
+    pub surface_id: WlSurfaceId,
+    pub payload: SurfaceEventPayload,
 }

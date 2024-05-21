@@ -31,6 +31,7 @@ use smithay::xwayland::X11Surface;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::compositor::SurfaceData;
+use smithay_client_toolkit::output::OutputData;
 use smithay_client_toolkit::reexports::client::backend::ObjectId as ClientObjectId;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as ClientWlSurface;
@@ -73,6 +74,7 @@ pub struct XWaylandSurface {
     pub(crate) role: Option<Role>,
     pub(crate) parent: Option<X11Parent>,
     pub(crate) children: HashSet<CompositorObjectId>,
+    pub(crate) output_ids: HashSet<u32>,
 }
 
 impl XWaylandSurface {
@@ -99,6 +101,7 @@ impl XWaylandSurface {
             role: None,
             parent: None,
             children: HashSet::new(),
+            output_ids: HashSet::new(),
         })
     }
 
@@ -415,6 +418,61 @@ impl WprsState {
         }
 
         Ok(())
+    }
+
+    pub fn sync_surface_outputs(&mut self, surface: &ClientWlSurface) {
+        let (Some(compositor_surface), Some(xwayland_surface), Some(outputs)) = (
+            self.compositor_surface_from_client_surface(surface),
+            xsurface_from_client_surface(&self.surface_bimap, &mut self.surfaces, surface),
+            surface.data::<SurfaceData>().map(SurfaceData::outputs),
+        ) else {
+            return;
+        };
+
+        let old_ids = &xwayland_surface.output_ids;
+        let new_ids: HashSet<u32> = HashSet::from_iter(outputs.filter_map(|output| {
+            output
+                .data::<OutputData>()
+                .map(|data| data.with_output_info(|info| (info.id)))
+        }));
+
+        let entered_ids = new_ids.difference(old_ids);
+        let left_ids = old_ids.difference(&new_ids);
+
+        // careful, a surface can be on multiple outputs, and the surface scale is the largest scale among them
+        for id in entered_ids {
+            let output = self.outputs.get(id);
+            if let Some(output) = output {
+                output.enter(&compositor_surface);
+            }
+        }
+
+        for id in left_ids {
+            let output = self.outputs.get(id);
+            if let Some(output) = output {
+                output.leave(&compositor_surface);
+            }
+        }
+        xwayland_surface.output_ids = new_ids;
+    }
+
+    pub fn compositor_surface_from_client_surface(
+        &self,
+        client_surface: &ClientWlSurface,
+    ) -> Option<CompositorWlSurface> {
+        let compositor_surface_id = self.surface_bimap.get_by_right(&client_surface.id())?;
+
+        let Ok(client) = self.dh.get_client(compositor_surface_id.clone()) else {
+            return None;
+        };
+
+        let Ok(surface) =
+            client.object_from_protocol_id(&self.dh, compositor_surface_id.protocol_id())
+        else {
+            return None;
+        };
+
+        Some(surface)
     }
 }
 

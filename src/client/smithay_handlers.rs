@@ -16,11 +16,13 @@
 use smithay::reexports::wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1;
 use smithay::reexports::wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1;
 use smithay_client_toolkit::compositor::CompositorHandler;
+use smithay_client_toolkit::compositor::SurfaceData;
 use smithay_client_toolkit::data_device_manager::data_device::DataDeviceHandler;
 use smithay_client_toolkit::data_device_manager::data_offer::DataOfferHandler;
 use smithay_client_toolkit::data_device_manager::data_offer::DragOffer;
 use smithay_client_toolkit::data_device_manager::data_source::DataSourceHandler;
 use smithay_client_toolkit::data_device_manager::WritePipe;
+use smithay_client_toolkit::output::OutputData;
 use smithay_client_toolkit::output::OutputHandler;
 use smithay_client_toolkit::output::OutputState;
 use smithay_client_toolkit::primary_selection::device::PrimarySelectionDeviceHandler;
@@ -83,7 +85,10 @@ use crate::serialization::wayland::DragEnter;
 use crate::serialization::wayland::KeyInner;
 use crate::serialization::wayland::KeyState;
 use crate::serialization::wayland::KeyboardEvent;
+use crate::serialization::wayland::Output;
 use crate::serialization::wayland::SourceMetadata;
+use crate::serialization::wayland::SurfaceEvent;
+use crate::serialization::wayland::SurfaceEventPayload::OutputsChanged;
 use crate::serialization::xdg_shell::PopupConfigure;
 use crate::serialization::xdg_shell::PopupEvent;
 use crate::serialization::xdg_shell::ToplevelConfigure;
@@ -91,25 +96,53 @@ use crate::serialization::xdg_shell::ToplevelEvent;
 use crate::serialization::Event;
 use crate::serialization::SendType;
 
+impl WprsClientState {
+    fn send_surface_outputs(&self, surface: &WlSurface) {
+        let Some((_, surface_id)) = self.object_bimap.get_wl_surface_id(&surface.id()) else {
+            return;
+        };
+        let outputs = surface.data::<SurfaceData>().map(SurfaceData::outputs);
+
+        if let Some(outputs) = outputs {
+            let outputs = outputs
+                .filter_map(|output| {
+                    output.data::<OutputData>().map(|data| Output {
+                        id: data.with_output_info(|info| (info.id)),
+                    })
+                })
+                .collect();
+
+            self.serializer
+                .writer()
+                .send(SendType::Object(Event::Surface(SurfaceEvent {
+                    surface_id,
+                    payload: OutputsChanged(outputs),
+                })));
+        }
+    }
+}
+
 impl CompositorHandler for WprsClientState {
+    #[instrument(skip(self, _conn, _qh, _new_factor), level = "debug")]
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _surface: &WlSurface,
+        surface: &WlSurface,
         _new_factor: i32,
     ) {
-        // TODO: implement this
+        self.send_surface_outputs(surface);
     }
 
+    #[instrument(skip(self, _conn, _qh, _new_transform), level = "debug")]
     fn transform_changed(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _surface: &WlSurface,
+        surface: &WlSurface,
         _new_transform: Transform,
     ) {
-        // TODO: implement this
+        self.send_surface_outputs(surface);
     }
 
     #[instrument(skip(self, _conn, qh, _time), level = "debug")]

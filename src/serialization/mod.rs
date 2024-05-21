@@ -135,6 +135,7 @@ pub enum Event {
     Toplevel(xdg_shell::ToplevelEvent),
     Popup(xdg_shell::PopupEvent),
     Data(wayland::DataEvent),
+    Surface(wayland::SurfaceEvent),
 }
 
 // TODO: test that object ids with same value from different clients hash

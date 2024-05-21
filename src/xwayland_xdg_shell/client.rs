@@ -214,24 +214,26 @@ impl WprsClientState {
 }
 
 impl CompositorHandler for WprsState {
+    #[instrument(skip(self, _conn, _qh, _new_factor), level = "debug")]
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _surface: &WlSurface,
+        surface: &WlSurface,
         _new_factor: i32,
     ) {
-        // TODO: implement this
+        self.sync_surface_outputs(surface);
     }
 
+    #[instrument(skip(self, _conn, _qh, _new_transform), level = "debug")]
     fn transform_changed(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _surface: &WlSurface,
+        surface: &WlSurface,
         _new_transform: Transform,
     ) {
-        // TODO: implement this
+        self.sync_surface_outputs(surface);
     }
 
     #[instrument(skip(self, _conn, _qh), level = "debug")]

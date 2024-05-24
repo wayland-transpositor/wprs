@@ -280,18 +280,22 @@ impl OutputHandler for WprsState {
         &mut self.client_state.output_state
     }
 
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
     fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
         let output_info = self.output_state().info(&output).unwrap();
-        debug!("NEW OUTPUT {:?}", &output_info);
-        crate::xwayland_xdg_shell::compositor::handle_output(self, output_info.into());
+        self.compositor_state.new_output(output_info.into());
     }
 
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
-        // TODO
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
+    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
+        let output_info = self.output_state().info(&output).unwrap();
+        self.compositor_state.update_output(output_info.into());
     }
 
-    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
-        // TODO
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
+    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
+        let output_info = self.output_state().info(&output).unwrap();
+        self.compositor_state.destroy_output(output_info.into());
     }
 }
 

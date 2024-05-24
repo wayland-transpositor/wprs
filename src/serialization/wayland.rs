@@ -605,6 +605,7 @@ pub struct SurfaceState {
     pub opaque_region: Option<Region>,
     pub input_region: Option<Region>,
     pub z_ordered_children: Vec<SubsurfacePosition>,
+    // server-side only
     pub output_ids: Vec<u32>,
 
     // Interfaces
@@ -1016,6 +1017,14 @@ pub enum DataEvent {
     // // E.g.: accept mime type, request data transfer.
     // DestinationRequest(DataDestinationRequest),
     TransferData(DataSource, DataToTransfer),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
+#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
+pub enum OutputEvent {
+    New(OutputInfo),
+    Update(OutputInfo),
+    Destroy(OutputInfo),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]

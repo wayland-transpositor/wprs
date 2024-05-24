@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::fd::OwnedFd;
@@ -26,10 +27,8 @@ use smithay::input::pointer::CursorImageSurfaceData;
 use smithay::input::Seat;
 use smithay::input::SeatHandler;
 use smithay::input::SeatState;
-use smithay::output::Mode;
 use smithay::output::Output;
 use smithay::output::PhysicalProperties;
-use smithay::output::Scale;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::backend::ObjectId;
@@ -182,6 +181,59 @@ impl WprsCompositorState {
             x11_screen_offset: None,
 
             x11_surfaces: Vec::new(),
+        }
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    pub(crate) fn new_output(&mut self, output: OutputInfo) {
+        let (local_output, _) = self.outputs.entry(output.id).or_insert_with_key(|id| {
+            let new_output = Output::new(
+                format!(
+                    "{}_{}",
+                    id,
+                    output.name.clone().unwrap_or("None".to_string())
+                ),
+                PhysicalProperties {
+                    size: output.physical_size.into(),
+                    subpixel: output.subpixel.into(),
+                    make: output.make.clone(),
+                    model: output.model.clone(),
+                },
+            );
+            let global_id = new_output.create_global::<WprsState>(&self.dh);
+            (new_output, global_id)
+        });
+
+        // We are lying to xwayland about the size of the display and offsetting all our x11 windows
+        // by the accordingly. This is because xwayland will not let us move cursors beyond the bounds of the
+        // screen. Since wayland surfaces do not know where they are placed, we will sometimes receive
+        // events that either enter the negative coordinate space (because the wayland window is not aligned
+        // with the topleft corner) or are beyond the size of the screen (because the window partially overlaps
+        // the edge of the screen.)
+        let mut expanded_output = output;
+        expanded_output.mode.dimensions = (16_384, 16_384).into();
+        self.x11_screen_offset = Some((-8_192, -8_192).into());
+
+        compositor_utils::update_output(local_output, expanded_output);
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    pub(crate) fn update_output(&mut self, output: OutputInfo) {
+        let (local_output, _) = match self.outputs.entry(output.id) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(_) => {
+                warn!("update to unknown display {:?}", output.id);
+                return;
+            },
+        };
+
+        compositor_utils::update_output(local_output, output);
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    pub(crate) fn destroy_output(&mut self, output: OutputInfo) {
+        if let Some((_, (_, global_id))) = self.outputs.remove_entry(&output.id) {
+            self.dh.remove_global::<WprsState>(global_id);
         }
     }
 }
@@ -593,62 +645,6 @@ impl SeatHandler for WprsState {
 }
 
 impl OutputHandler for WprsState {}
-
-// TODO: dedupe with the one in server
-// TODO: should this be in a trait?
-#[instrument(skip(state), level = "debug")]
-pub(crate) fn handle_output(state: &mut WprsState, output: OutputInfo) {
-    let (local_output, _) = state
-        .compositor_state
-        .outputs
-        .entry(output.id)
-        .or_insert_with_key(|id| {
-            let new_output = Output::new(
-                format!("{}_{}", id, output.name.unwrap_or("None".to_string())),
-                PhysicalProperties {
-                    size: output.physical_size.into(),
-                    subpixel: output.subpixel.into(),
-                    make: output.make,
-                    model: output.model,
-                },
-            );
-            let global_id = new_output.create_global::<WprsState>(&state.compositor_state.dh);
-            (new_output, global_id)
-        });
-
-    let current_mode = local_output.current_mode().unwrap_or(Mode {
-        size: (0, 0).into(),
-        refresh: 0,
-    });
-
-    // We are lying to xwayland about the size of the display and offsetting all our x11 windows
-    // by the accordingly. This is because xwayland will not let us move cursors beyond the bounds of the
-    // screen. Since wayland surfaces do not know where they are placed, we will sometimes receive
-    // events that either enter the negative coordinate space (because the wayland window is not aligned
-    // with the topleft corner) or are beyond the size of the screen (because the window partially overlaps
-    // the edge of the screen.)
-    let expanded_dimensions = (16_384, 16_384).into();
-    state.compositor_state.x11_screen_offset = Some((-8_192, -8_192).into());
-
-    let received_mode = Mode {
-        size: expanded_dimensions,
-        refresh: output.mode.refresh_rate,
-    };
-    if current_mode != received_mode {
-        local_output.delete_mode(current_mode);
-    }
-
-    local_output.change_current_state(
-        Some(received_mode),
-        Some(output.transform.into()),
-        Some(Scale::Integer(output.scale_factor)),
-        Some(output.location.into()),
-    );
-
-    if output.mode.preferred {
-        local_output.set_preferred(received_mode);
-    }
-}
 
 smithay::delegate_compositor!(WprsState);
 smithay::delegate_shm!(WprsState);

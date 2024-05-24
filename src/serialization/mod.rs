@@ -129,7 +129,7 @@ pub enum Request {
 #[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Event {
     WprsClientConnect,
-    Output(wayland::OutputInfo),
+    Output(wayland::OutputEvent),
     PointerFrame(Vec<wayland::PointerEvent>),
     KeyboardEvent(wayland::KeyboardEvent),
     Toplevel(xdg_shell::ToplevelEvent),

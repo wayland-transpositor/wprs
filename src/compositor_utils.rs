@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use smithay::output::Mode;
+use smithay::output::Output;
+use smithay::output::Scale;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
@@ -26,6 +30,7 @@ use smithay::wayland::shm::BufferData;
 
 use crate::buffer_pointer::BufferPointer;
 use crate::prelude::*;
+use crate::serialization::wayland::OutputInfo;
 
 /// # Panics
 /// If smithay has a bug and with_buffer_contents gives us an invalid pointer.
@@ -93,4 +98,56 @@ pub fn send_frames(
         }
     }
     Ok(())
+}
+
+pub fn update_output(local_output: &mut Output, output: OutputInfo) {
+    let current_mode = local_output.current_mode().unwrap_or(Mode {
+        size: (0, 0).into(),
+        refresh: 0,
+    });
+    let received_mode = Mode {
+        size: output.mode.dimensions.into(),
+        refresh: output.mode.refresh_rate,
+    };
+    if current_mode != received_mode {
+        local_output.delete_mode(current_mode);
+    }
+
+    local_output.change_current_state(
+        Some(received_mode),
+        Some(output.transform.into()),
+        Some(Scale::Integer(output.scale_factor)),
+        Some(output.location.into()),
+    );
+
+    if output.mode.preferred {
+        local_output.set_preferred(received_mode);
+    }
+}
+
+pub fn update_surface_outputs<'a, F>(
+    surface: &WlSurface,
+    new_ids: &HashSet<u32>,
+    old_ids: &HashSet<u32>,
+    output_accessor: F,
+) where
+    F: Fn(&u32) -> Option<&'a Output>,
+{
+    let entered_ids = new_ids.difference(old_ids);
+    let left_ids = old_ids.difference(new_ids);
+
+    // careful, a surface can be on multiple outputs, and the surface scale is the largest scale among them
+    for id in entered_ids {
+        let output = output_accessor(id);
+        if let Some(output) = output {
+            output.enter(surface);
+        }
+    }
+
+    for id in left_ids {
+        let output = output_accessor(id);
+        if let Some(output) = output {
+            output.leave(surface);
+        }
+    }
 }

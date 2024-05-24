@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::hash_map::Entry;
 /// Handlers for events from the wprs client.
 use std::collections::HashSet;
 use std::fs::File;
@@ -34,10 +35,8 @@ use smithay::input::pointer::AxisFrame;
 use smithay::input::pointer::ButtonEvent;
 use smithay::input::pointer::Focus;
 use smithay::input::pointer::MotionEvent;
-use smithay::output::Mode as OutputMode;
 use smithay::output::Output;
 use smithay::output::PhysicalProperties;
-use smithay::output::Scale;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Client;
@@ -50,6 +49,7 @@ use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
 
 use crate::args;
+use crate::compositor_utils;
 use crate::prelude::*;
 use crate::serialization::wayland::DataDestinationEvent;
 use crate::serialization::wayland::DataEvent;
@@ -59,7 +59,7 @@ use crate::serialization::wayland::DataSourceEvent;
 use crate::serialization::wayland::DataToTransfer;
 use crate::serialization::wayland::KeyInner;
 use crate::serialization::wayland::KeyboardEvent;
-use crate::serialization::wayland::OutputInfo;
+use crate::serialization::wayland::OutputEvent;
 use crate::serialization::wayland::PointerEvent;
 use crate::serialization::wayland::PointerEventKind;
 use crate::serialization::wayland::RepeatInfo;
@@ -82,8 +82,9 @@ use crate::server::LockedSurfaceState;
 use crate::server::WprsServerState;
 
 enum UnknownSurfaceErr {
-    UnknownObjectId(WlSurfaceId),
-    UnknownClient(ObjectId),
+    ObjectId(WlSurfaceId),
+    Client(ObjectId),
+    Surface(Client),
 }
 
 impl WprsServerState {
@@ -94,15 +95,15 @@ impl WprsServerState {
         let object_id = match self.object_map.get(surface_id) {
             Some(object_id) => object_id.clone(),
             None => {
-                return Err(UnknownSurfaceErr::UnknownObjectId(*surface_id));
+                return Err(UnknownSurfaceErr::ObjectId(*surface_id));
             },
         };
         let Ok(client) = self.dh.get_client(object_id.clone()) else {
-            return Err(UnknownSurfaceErr::UnknownClient(object_id));
+            return Err(UnknownSurfaceErr::Client(object_id));
         };
 
         let Ok(surface) = client.object_from_protocol_id(&self.dh, object_id.protocol_id()) else {
-            return Err(UnknownSurfaceErr::UnknownClient(object_id));
+            return Err(UnknownSurfaceErr::Surface(client));
         };
 
         Ok((object_id, client, surface))
@@ -116,12 +117,14 @@ impl WprsServerState {
             let (_, _, surface) = self
                 .object_client_surface_from_id(&event.surface_id)
                 .map_err(|err| match err {
-                    UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
-                        "Ignoring pointer event for unknown surface {:?}",
-                        surface_id
-                    ),
-                    UnknownSurfaceErr::UnknownClient(object_id) => {
+                    UnknownSurfaceErr::ObjectId(surface_id) => {
+                        anyhow!("Ignoring pointer event for unknown object {:?}", surface_id)
+                    },
+                    UnknownSurfaceErr::Client(object_id) => {
                         anyhow!("Ignoring pointer event for unknown client {:?}", object_id)
+                    },
+                    UnknownSurfaceErr::Surface(client) => {
+                        anyhow!("Ignoring pointer event for unknown surface {:?}", client)
                     },
                 })
                 .warn(loc!())?;
@@ -322,12 +325,15 @@ impl WprsServerState {
                 let (_, client, surface) = self
                     .object_client_surface_from_id(&surface_id)
                     .map_err(|err| match err {
-                        UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
-                            "Ignoring keyboard event for unknown surface {:?}",
+                        UnknownSurfaceErr::ObjectId(surface_id) => anyhow!(
+                            "Ignoring keyboard event for unknown object {:?}",
                             surface_id
                         ),
-                        UnknownSurfaceErr::UnknownClient(object_id) => {
+                        UnknownSurfaceErr::Client(object_id) => {
                             anyhow!("Ignoring keyboard event for unknown client {:?}", object_id)
+                        },
+                        UnknownSurfaceErr::Surface(client) => {
+                            anyhow!("Ignoring keyboard event for unknown surface {:?}", client)
                         },
                     })
                     .warn(loc!())?;
@@ -502,43 +508,46 @@ impl WprsServerState {
     }
 
     #[instrument(skip_all, level = "debug")]
-    fn handle_output(&mut self, output: OutputInfo) -> Result<()> {
-        let (local_output, _) = self.outputs.entry(output.id).or_insert_with_key(|id| {
-            let new_output = Output::new(
-                format!("{}_{}", id, output.name.unwrap_or("None".to_string())),
-                PhysicalProperties {
-                    size: output.physical_size.into(),
-                    subpixel: output.subpixel.into(),
-                    make: output.make,
-                    model: output.model,
-                },
-            );
-            let global_id = new_output.create_global::<Self>(&self.dh);
-            (new_output, global_id)
-        });
+    fn handle_output(&mut self, output_event: OutputEvent) -> Result<()> {
+        match output_event {
+            OutputEvent::New(output) => {
+                let (local_output, _) = self.outputs.entry(output.id).or_insert_with_key(|id| {
+                    let new_output = Output::new(
+                        format!(
+                            "{}_{}",
+                            id,
+                            output.name.clone().unwrap_or("None".to_string())
+                        ),
+                        PhysicalProperties {
+                            size: output.physical_size.into(),
+                            subpixel: output.subpixel.into(),
+                            make: output.make.clone(),
+                            model: output.model.clone(),
+                        },
+                    );
+                    let global_id = new_output.create_global::<Self>(&self.dh);
+                    (new_output, global_id)
+                });
 
-        let current_mode = local_output.current_mode().unwrap_or(OutputMode {
-            size: (0, 0).into(),
-            refresh: 0,
-        });
-        let received_mode = OutputMode {
-            size: output.mode.dimensions.into(),
-            refresh: output.mode.refresh_rate,
+                compositor_utils::update_output(local_output, output);
+            },
+            OutputEvent::Update(output) => {
+                let (local_output, _) = match self.outputs.entry(output.id) {
+                    Entry::Occupied(entry) => entry.into_mut(),
+                    Entry::Vacant(_) => {
+                        warn!("update to unknown display {:?}", output.id);
+                        return Ok(());
+                    },
+                };
+
+                compositor_utils::update_output(local_output, output);
+            },
+            OutputEvent::Destroy(output) => {
+                if let Some((_, (_, global_id))) = self.outputs.remove_entry(&output.id) {
+                    self.dh.remove_global::<Self>(global_id);
+                }
+            },
         };
-        if current_mode != received_mode {
-            local_output.delete_mode(current_mode);
-        }
-
-        local_output.change_current_state(
-            Some(received_mode),
-            Some(output.transform.into()),
-            Some(Scale::Integer(output.scale_factor)),
-            Some(output.location.into()),
-        );
-
-        if output.mode.preferred {
-            local_output.set_preferred(received_mode);
-        }
 
         Ok(())
     }
@@ -706,12 +715,15 @@ impl WprsServerState {
                 let (_, _, surface) = self
                     .object_client_surface_from_id(&drag_enter.surface)
                     .map_err(|err| match err {
-                        UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
-                            "Ignoring DnDEnter event for unknown surface {:?}",
+                        UnknownSurfaceErr::ObjectId(surface_id) => anyhow!(
+                            "Ignoring DnDEnter event for unknown object {:?}",
                             surface_id
                         ),
-                        UnknownSurfaceErr::UnknownClient(object_id) => {
+                        UnknownSurfaceErr::Client(object_id) => {
                             anyhow!("Ignoring DnDEnter event for unknown client {:?}", object_id)
+                        },
+                        UnknownSurfaceErr::Surface(client) => {
+                            anyhow!("Ignoring DnDEnter event for unknown surface {:?}", client)
                         },
                     })
                     .warn(loc!())?;
@@ -829,16 +841,23 @@ impl WprsServerState {
         let (_, _, surface) = self
             .object_client_surface_from_id(&surface_event.surface_id)
             .map_err(|err| match err {
-                UnknownSurfaceErr::UnknownObjectId(surface_id) => anyhow!(
-                    "Ignoring {:?} event for unknown surface {:?}",
+                UnknownSurfaceErr::ObjectId(surface_id) => anyhow!(
+                    "Ignoring {:?} event for unknown object {:?}",
                     surface_event.payload,
                     surface_id
                 ),
-                UnknownSurfaceErr::UnknownClient(object_id) => {
+                UnknownSurfaceErr::Client(object_id) => {
                     anyhow!(
                         "Ignoring {:?} event for unknown client {:?}",
                         surface_event.payload,
                         object_id
+                    )
+                },
+                UnknownSurfaceErr::Surface(client) => {
+                    anyhow!(
+                        "Ignoring {:?} event for unknown surface {:?}",
+                        surface_event.payload,
+                        client
                     )
                 },
             })
@@ -859,23 +878,9 @@ impl WprsServerState {
                         HashSet::from_iter(outputs.iter().map(|output| output.id));
                     let old_ids = HashSet::from_iter(surface_state.output_ids.iter().cloned());
 
-                    let entered_ids = new_ids.difference(&old_ids);
-                    let left_ids = old_ids.difference(&new_ids);
-
-                    // careful, a surface can be on multiple outputs, and the surface scale is the largest scale among them
-                    for id in entered_ids {
-                        let output = self.outputs.get(id);
-                        if let Some((output, _)) = output {
-                            output.enter(&surface);
-                        }
-                    }
-
-                    for id in left_ids {
-                        let output = self.outputs.get(id);
-                        if let Some((output, _)) = output {
-                            output.leave(&surface);
-                        }
-                    }
+                    compositor_utils::update_surface_outputs(&surface, &new_ids, &old_ids, |id| {
+                        self.outputs.get(id).map(|(output, _)| output)
+                    });
 
                     surface_state.output_ids = new_ids.iter().cloned().collect();
                 });
@@ -893,7 +898,7 @@ impl WprsServerState {
             RecvType::Object(Event::Popup(popup)) => self.handle_popup(popup),
             RecvType::Object(Event::KeyboardEvent(event)) => self.handle_keyboard_event(event),
             RecvType::Object(Event::PointerFrame(events)) => self.handle_pointer_frame(events),
-            RecvType::Object(Event::Output(output)) => self.handle_output(output),
+            RecvType::Object(Event::Output(output_event)) => self.handle_output(output_event),
             RecvType::Object(Event::Data(data_event)) => self.handle_data_event(data_event),
             RecvType::Object(Event::Surface(surface_event)) => {
                 self.handle_surface_event(surface_event)

@@ -86,6 +86,7 @@ use crate::serialization::wayland::KeyInner;
 use crate::serialization::wayland::KeyState;
 use crate::serialization::wayland::KeyboardEvent;
 use crate::serialization::wayland::Output;
+use crate::serialization::wayland::OutputEvent;
 use crate::serialization::wayland::SourceMetadata;
 use crate::serialization::wayland::SurfaceEvent;
 use crate::serialization::wayland::SurfaceEventPayload::OutputsChanged;
@@ -181,20 +182,34 @@ impl OutputHandler for WprsClientState {
         &mut self.output_state
     }
 
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
     fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
         let output_info = self.output_state().info(&output).unwrap();
-        debug!("NEW OUTPUT {:?}", &output_info);
         self.serializer
             .writer()
-            .send(SendType::Object(Event::Output(output_info.into())));
+            .send(SendType::Object(Event::Output(OutputEvent::New(
+                output_info.into(),
+            ))));
     }
 
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
-        // TODO
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
+    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
+        let output_info = self.output_state().info(&output).unwrap();
+        self.serializer
+            .writer()
+            .send(SendType::Object(Event::Output(OutputEvent::Update(
+                output_info.into(),
+            ))));
     }
 
-    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
-        // TODO
+    #[instrument(skip(self, _conn, _qh), level = "debug")]
+    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
+        let output_info = self.output_state().info(&output).unwrap();
+        self.serializer
+            .writer()
+            .send(SendType::Object(Event::Output(OutputEvent::Destroy(
+                output_info.into(),
+            ))));
     }
 }
 

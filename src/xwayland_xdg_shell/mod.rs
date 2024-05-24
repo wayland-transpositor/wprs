@@ -45,6 +45,7 @@ use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
 use crate::args;
+use crate::compositor_utils;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
@@ -420,42 +421,6 @@ impl WprsState {
         Ok(())
     }
 
-    pub fn sync_surface_outputs(&mut self, surface: &ClientWlSurface) {
-        let (Some(compositor_surface), Some(xwayland_surface), Some(outputs)) = (
-            self.compositor_surface_from_client_surface(surface),
-            xsurface_from_client_surface(&self.surface_bimap, &mut self.surfaces, surface),
-            surface.data::<SurfaceData>().map(SurfaceData::outputs),
-        ) else {
-            return;
-        };
-
-        let old_ids = &xwayland_surface.output_ids;
-        let new_ids: HashSet<u32> = HashSet::from_iter(outputs.filter_map(|output| {
-            output
-                .data::<OutputData>()
-                .map(|data| data.with_output_info(|info| (info.id)))
-        }));
-
-        let entered_ids = new_ids.difference(old_ids);
-        let left_ids = old_ids.difference(&new_ids);
-
-        // careful, a surface can be on multiple outputs, and the surface scale is the largest scale among them
-        for id in entered_ids {
-            let output = self.outputs.get(id);
-            if let Some(output) = output {
-                output.enter(&compositor_surface);
-            }
-        }
-
-        for id in left_ids {
-            let output = self.outputs.get(id);
-            if let Some(output) = output {
-                output.leave(&compositor_surface);
-            }
-        }
-        xwayland_surface.output_ids = new_ids;
-    }
-
     pub fn compositor_surface_from_client_surface(
         &self,
         client_surface: &ClientWlSurface,
@@ -473,6 +438,31 @@ impl WprsState {
         };
 
         Some(surface)
+    }
+
+    pub fn sync_surface_outputs(&mut self, surface: &ClientWlSurface) {
+        let (Some(compositor_surface), Some(xwayland_surface), Some(outputs)) = (
+            self.compositor_surface_from_client_surface(surface),
+            xsurface_from_client_surface(&self.surface_bimap, &mut self.surfaces, surface),
+            surface.data::<SurfaceData>().map(SurfaceData::outputs),
+        ) else {
+            return;
+        };
+
+        let new_ids: HashSet<u32> = HashSet::from_iter(outputs.filter_map(|output| {
+            output
+                .data::<OutputData>()
+                .map(|data| data.with_output_info(|info| (info.id)))
+        }));
+
+        compositor_utils::update_surface_outputs(
+            &compositor_surface,
+            &new_ids,
+            &xwayland_surface.output_ids,
+            |id| self.outputs.get(id),
+        );
+
+        xwayland_surface.output_ids = new_ids;
     }
 }
 

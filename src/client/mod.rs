@@ -33,6 +33,7 @@ use smithay_client_toolkit::primary_selection::selection::PrimarySelectionSource
 use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::reexports::client::backend::ObjectId as SctkObjectId;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
+use smithay_client_toolkit::reexports::client::protocol::wl_output::Transform;
 use smithay_client_toolkit::reexports::client::protocol::wl_subcompositor::WlSubcompositor;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 use smithay_client_toolkit::reexports::client::Connection;
@@ -519,8 +520,11 @@ impl RemoteSurface {
         Ok(())
     }
 
-    pub fn set_transformation(&mut self, scale: i32) {
-        self.wl_surface().set_buffer_scale(scale)
+    pub fn set_transformation(&mut self, scale: i32, transform: Option<Transform>) {
+        self.wl_surface().set_buffer_scale(scale);
+        if let Some(transform) = transform {
+            self.wl_surface().set_buffer_transform(transform);
+        }
     }
 
     pub fn set_input_region(

@@ -28,6 +28,7 @@ use smithay::backend::input::AxisSource as SmithayAxisSource;
 use smithay::backend::input::KeyState as SmithayKeyState;
 use smithay::output::Subpixel as SmithaySubpixel;
 use smithay::reexports::wayland_server::backend;
+use smithay::reexports::wayland_server::protocol::wl_output::Transform as SmithayWlTransform;
 use smithay::reexports::wayland_server::protocol::wl_shm::Format as SmithayBufferFormat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
@@ -583,6 +584,102 @@ impl Default for Region {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
+pub enum Transform {
+    Normal,
+    _90,
+    _180,
+    _270,
+    Flipped,
+    Flipped90,
+    Flipped180,
+    Flipped270,
+}
+
+impl From<SctkTransform> for Transform {
+    fn from(transform: SctkTransform) -> Self {
+        match transform {
+            SctkTransform::Normal => Self::Normal,
+            SctkTransform::_90 => Self::_90,
+            SctkTransform::_180 => Self::_180,
+            SctkTransform::_270 => Self::_270,
+            SctkTransform::Flipped => Self::Flipped,
+            SctkTransform::Flipped90 => Self::Flipped90,
+            SctkTransform::Flipped180 => Self::Flipped180,
+            SctkTransform::Flipped270 => Self::Flipped270,
+            _ => {
+                warn!("Unknown transformation {transform:?}, using Normal instead.");
+                Self::Normal
+            },
+        }
+    }
+}
+
+impl From<Transform> for SctkTransform {
+    fn from(transform: Transform) -> Self {
+        match transform {
+            Transform::Normal => Self::Normal,
+            Transform::_90 => Self::_90,
+            Transform::_180 => Self::_180,
+            Transform::_270 => Self::_270,
+            Transform::Flipped => Self::Flipped,
+            Transform::Flipped90 => Self::Flipped90,
+            Transform::Flipped180 => Self::Flipped180,
+            Transform::Flipped270 => Self::Flipped270,
+        }
+    }
+}
+
+impl From<SmithayTransform> for Transform {
+    fn from(transform: SmithayTransform) -> Self {
+        match transform {
+            SmithayTransform::Normal => Self::Normal,
+            SmithayTransform::_90 => Self::_90,
+            SmithayTransform::_180 => Self::_180,
+            SmithayTransform::_270 => Self::_270,
+            SmithayTransform::Flipped => Self::Flipped,
+            SmithayTransform::Flipped90 => Self::Flipped90,
+            SmithayTransform::Flipped180 => Self::Flipped180,
+            SmithayTransform::Flipped270 => Self::Flipped270,
+        }
+    }
+}
+
+impl From<SmithayWlTransform> for Transform {
+    fn from(transform: SmithayWlTransform) -> Self {
+        match transform {
+            SmithayWlTransform::Normal => Self::Normal,
+            SmithayWlTransform::_90 => Self::_90,
+            SmithayWlTransform::_180 => Self::_180,
+            SmithayWlTransform::_270 => Self::_270,
+            SmithayWlTransform::Flipped => Self::Flipped,
+            SmithayWlTransform::Flipped90 => Self::Flipped90,
+            SmithayWlTransform::Flipped180 => Self::Flipped180,
+            SmithayWlTransform::Flipped270 => Self::Flipped270,
+            _ => {
+                warn!("Unknown transformation {transform:?}, using Normal instead.");
+                Self::Normal
+            },
+        }
+    }
+}
+
+impl From<Transform> for SmithayTransform {
+    fn from(transform: Transform) -> Self {
+        match transform {
+            Transform::Normal => Self::Normal,
+            Transform::_90 => Self::_90,
+            Transform::_180 => Self::_180,
+            Transform::_270 => Self::_270,
+            Transform::Flipped => Self::Flipped,
+            Transform::Flipped90 => Self::Flipped90,
+            Transform::Flipped180 => Self::Flipped180,
+            Transform::Flipped270 => Self::Flipped270,
+        }
+    }
+}
+
 /// An entry for a vector of child surfaces. The (x, y) position is stored
 /// explicitly, the z position (stacking order) is stored implicitly based on
 /// the index of the item in the vector.
@@ -602,6 +699,7 @@ pub struct SurfaceState {
     pub role: Option<Role>,
     // TODO: include buffer_delta, transform from SurfaceAttributes
     pub buffer_scale: i32,
+    pub buffer_transform: Option<Transform>,
     pub opaque_region: Option<Region>,
     pub input_region: Option<Region>,
     pub z_ordered_children: Vec<SubsurfacePosition>,
@@ -620,6 +718,7 @@ impl SurfaceState {
             buffer,
             role: None,
             buffer_scale: 1,
+            buffer_transform: None,
             opaque_region: None,
             input_region: None,
 
@@ -712,53 +811,6 @@ impl From<Subpixel> for SmithaySubpixel {
             Subpixel::HorizontalBgr => Self::HorizontalBgr,
             Subpixel::VerticalRgb => Self::VerticalRgb,
             Subpixel::VerticalBgr => Self::VerticalBgr,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
-pub enum Transform {
-    Normal,
-    _90,
-    _180,
-    _270,
-    Flipped,
-    Flipped90,
-    Flipped180,
-    Flipped270,
-}
-
-impl From<SctkTransform> for Transform {
-    fn from(transform: SctkTransform) -> Self {
-        match transform {
-            SctkTransform::Normal => Self::Normal,
-            SctkTransform::_90 => Self::_90,
-            SctkTransform::_180 => Self::_180,
-            SctkTransform::_270 => Self::_270,
-            SctkTransform::Flipped => Self::Flipped,
-            SctkTransform::Flipped90 => Self::Flipped90,
-            SctkTransform::Flipped180 => Self::Flipped180,
-            SctkTransform::Flipped270 => Self::Flipped270,
-            _ => {
-                warn!("Unknown transformation {transform:?}, using Normal instead.");
-                Self::Normal
-            },
-        }
-    }
-}
-
-impl From<Transform> for SmithayTransform {
-    fn from(transform: Transform) -> Self {
-        match transform {
-            Transform::Normal => Self::Normal,
-            Transform::_90 => Self::_90,
-            Transform::_180 => Self::_180,
-            Transform::_270 => Self::_270,
-            Transform::Flipped => Self::Flipped,
-            Transform::Flipped90 => Self::Flipped90,
-            Transform::Flipped180 => Self::Flipped180,
-            Transform::Flipped270 => Self::Flipped270,
         }
     }
 }

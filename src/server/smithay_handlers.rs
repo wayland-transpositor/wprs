@@ -648,6 +648,7 @@ pub fn set_transformation(
     surface_state: &mut SurfaceState,
 ) {
     surface_state.buffer_scale = surface_attributes.buffer_scale;
+    surface_state.buffer_transform = Some(surface_attributes.buffer_transform.into());
 }
 
 #[instrument(skip_all, level = "debug")]

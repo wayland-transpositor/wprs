@@ -92,7 +92,10 @@ impl WprsClientState {
                 )
                 .location(loc!())?;
 
-            remote_surface.set_transformation(surface_state.buffer_scale);
+            remote_surface.set_transformation(
+                surface_state.buffer_scale,
+                surface_state.buffer_transform.map(Into::into),
+            );
 
             remote_surface
                 .set_input_region(surface_state.input_region.take(), &self.compositor_state)

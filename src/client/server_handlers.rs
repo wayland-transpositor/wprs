@@ -104,6 +104,14 @@ impl WprsClientState {
                 .set_opaque_region(surface_state.opaque_region.take(), &self.compositor_state)
                 .location(loc!())?;
 
+            if let Some(mut damage) = surface_state.damage.take() {
+                if let Some(frame_damage) = &mut remote_surface.frame_damage {
+                    frame_damage.append(damage.as_mut())
+                } else {
+                    remote_surface.frame_damage = Some(damage);
+                }
+            }
+
             remote_surface.frame_callback_completed
         };
 
@@ -168,7 +176,7 @@ impl WprsClientState {
                     popup.commit();
                 },
                 _ => remote_surface
-                    .attach_damage_frame_commit(&self.qh)
+                    .draw_buffer_send_frame(&self.qh)
                     .location(loc!())?,
             }
         }

@@ -68,6 +68,7 @@ use smithay::wayland::compositor::BufferAssignment as SmithayBufferAssignment;
 use smithay::wayland::compositor::CompositorClientState;
 use smithay::wayland::compositor::CompositorHandler;
 use smithay::wayland::compositor::CompositorState;
+use smithay::wayland::compositor::Damage;
 use smithay::wayland::compositor::SubsurfaceCachedState;
 use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::compositor::SurfaceData;
@@ -116,6 +117,7 @@ use crate::serialization::wayland::SubsurfacePosition;
 use crate::serialization::wayland::SurfaceRequest;
 use crate::serialization::wayland::SurfaceRequestPayload;
 use crate::serialization::wayland::SurfaceState;
+use crate::serialization::wayland::Transform;
 use crate::serialization::wayland::WlSurfaceId;
 use crate::serialization::xdg_shell::DecorationMode;
 use crate::serialization::xdg_shell::Move;
@@ -743,7 +745,6 @@ pub fn commit_impl(
     });
 
     let mut surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
-
     let mut frame_callbacks = mem::take(&mut surface_attributes.frame_callbacks);
 
     if !frame_callbacks.is_empty() {
@@ -860,6 +861,23 @@ pub fn commit_impl(
             }
         },
     }
+
+    let damage = mem::take(&mut surface_attributes.damage)
+        .iter()
+        .map(|damage| match damage {
+            Damage::Buffer(rect) => *rect,
+            Damage::Surface(rect) => rect.to_buffer(
+                surface_state.buffer_scale,
+                surface_state
+                    .buffer_transform
+                    .unwrap_or(Transform::Normal)
+                    .into(),
+                &rect.size,
+            ),
+        })
+        .map(Into::into)
+        .collect();
+    surface_state_to_send.damage = Some(damage);
 
     state
         .serializer

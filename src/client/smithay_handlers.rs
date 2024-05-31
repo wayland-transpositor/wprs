@@ -172,7 +172,9 @@ impl CompositorHandler for WprsClientState {
         surface.frame_callback_completed = true;
         match &surface.role {
             Some(Role::SubSurface(subsurface)) if subsurface.sync => {},
-            _ => surface.attach_damage_frame_commit(qh).unwrap(),
+            _ => {
+                surface.draw_buffer_send_frame(qh).log_and_ignore(loc!());
+            },
         }
     }
 }
@@ -241,9 +243,7 @@ impl WindowHandler for WprsClientState {
 
         if !toplevel.configured {
             toplevel.configured = true;
-            surface
-                .attach_damage_frame_commit(qh)
-                .log_and_ignore(loc!());
+            surface.draw_buffer_send_frame(qh).log_and_ignore(loc!());
         }
 
         self.serializer
@@ -273,9 +273,7 @@ impl popup::PopupHandler for WprsClientState {
         let remote_popup = surface.role.as_mut().unwrap().as_xdg_popup_mut().unwrap();
         if !remote_popup.configured {
             remote_popup.configured = true;
-            surface
-                .attach_damage_frame_commit(qh)
-                .log_and_ignore(loc!());
+            surface.draw_buffer_send_frame(qh).log_and_ignore(loc!());
         }
 
         self.serializer

@@ -54,6 +54,7 @@ use crate::client_utils::SeatObject;
 use crate::filtering;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
+use crate::serialization::geometry::Rectangle;
 use crate::serialization::wayland::Buffer;
 use crate::serialization::wayland::BufferAssignment;
 use crate::serialization::wayland::BufferMetadata;
@@ -334,6 +335,7 @@ pub struct RemoteSurface {
     pub input_region: Option<Region>,
     pub z_ordered_children: Vec<SubsurfacePosition>,
     pub frame_callback_completed: bool,
+    pub frame_damage: Option<Vec<Rectangle<i32>>>,
 }
 
 impl RemoteSurface {
@@ -364,6 +366,7 @@ impl RemoteSurface {
                 position: (0, 0).into(),
             }],
             frame_callback_completed: true,
+            frame_damage: None,
         })
     }
 
@@ -486,7 +489,7 @@ impl RemoteSurface {
         Ok(())
     }
 
-    pub fn attach_damage_commit(&mut self) -> Result<()> {
+    pub fn draw_buffer(&mut self) -> Result<()> {
         let wl_surface = &self.wl_surface().clone();
         if let Some(buffer) = &mut self.buffer {
             if buffer.dirty {
@@ -494,7 +497,18 @@ impl RemoteSurface {
                     loc!(),
                     "attaching a buffer failed, this probably means we're leaking buffers",
                 )?;
-                wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                if let Some(damage_rects) = self.frame_damage.take() {
+                    for damage_rect in damage_rects {
+                        wl_surface.damage_buffer(
+                            damage_rect.loc.x,
+                            damage_rect.loc.y,
+                            damage_rect.size.w,
+                            damage_rect.size.h,
+                        );
+                    }
+                } else {
+                    wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                }
                 buffer.dirty = false;
             }
         }
@@ -502,7 +516,7 @@ impl RemoteSurface {
         Ok(())
     }
 
-    pub fn attach_damage_frame_commit(&mut self, qh: &QueueHandle<WprsClientState>) -> Result<()> {
+    pub fn draw_buffer_send_frame(&mut self, qh: &QueueHandle<WprsClientState>) -> Result<()> {
         let wl_surface = &self.wl_surface().clone();
         if let Some(buffer) = &mut self.buffer {
             if buffer.dirty {
@@ -510,7 +524,18 @@ impl RemoteSurface {
                     loc!(),
                     "attaching a buffer failed, this probably means we're leaking buffers",
                 )?;
-                wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                if let Some(damage_rects) = self.frame_damage.take() {
+                    for damage_rect in damage_rects {
+                        wl_surface.damage_buffer(
+                            damage_rect.loc.x,
+                            damage_rect.loc.y,
+                            damage_rect.size.w,
+                            damage_rect.size.h,
+                        );
+                    }
+                } else {
+                    wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                }
                 buffer.dirty = false;
                 self.frame(qh);
                 self.frame_callback_completed = false;

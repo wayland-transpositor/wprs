@@ -83,7 +83,7 @@ fn commit_sync_children_impl(
         .sync;
     let is_sync = parent_is_sync | surface_is_sync;
     if is_sync {
-        remote_surface.attach_damage_commit()?;
+        remote_surface.draw_buffer()?;
     }
 
     let children = surfaces

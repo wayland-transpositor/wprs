@@ -703,6 +703,7 @@ pub struct SurfaceState {
     pub opaque_region: Option<Region>,
     pub input_region: Option<Region>,
     pub z_ordered_children: Vec<SubsurfacePosition>,
+    pub damage: Option<Vec<Rectangle<i32>>>,
     // server-side only
     pub output_ids: Vec<u32>,
 
@@ -721,12 +722,11 @@ impl SurfaceState {
             buffer_transform: None,
             opaque_region: None,
             input_region: None,
-
             // TODO: insert own id into z_ordered_children after figuring out
             // client isolation.
             z_ordered_children: Vec::new(),
+            damage: None,
             output_ids: Vec::new(),
-
             xdg_surface_state: None,
         })
     }

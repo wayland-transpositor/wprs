@@ -50,6 +50,8 @@ pub struct WprscConfig {
     config_file: PathBuf,
     pub socket: PathBuf,
     pub control_socket: PathBuf,
+    // Optional fields don't get wrapped unless we specify it ourselves
+    #[optional_wrap]
     pub log_file: Option<PathBuf>,
     pub stderr_log_level: SerializableLevel,
     pub file_log_level: SerializableLevel,

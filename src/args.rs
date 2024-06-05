@@ -207,7 +207,7 @@ pub fn file_log_level() -> impl Parser<Option<SerializableLevel>> {
         .optional()
 }
 
-pub fn log_file() -> impl Parser<Option<PathBuf>> {
+pub fn log_file() -> impl Parser<Option<Option<PathBuf>>> {
     // let argv0 = PathBuf::from(env::args().next().unwrap());
     // let argv0_basename = Path::new(argv0.components().last().unwrap().as_os_str());
     // let tmp_dir = env::temp_dir();
@@ -216,6 +216,7 @@ pub fn log_file() -> impl Parser<Option<PathBuf>> {
     bpaf::long("log-file")
         .argument::<PathBuf>("PATH")
         .optional()
+        .map(|log_file| log_file.map(Some))
 }
 
 pub fn framerate() -> impl Parser<Option<u32>> {

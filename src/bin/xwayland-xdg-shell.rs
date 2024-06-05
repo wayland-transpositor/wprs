@@ -51,6 +51,8 @@ pub struct XwaylandXdgShellConfig {
     config_file: PathBuf,
     wayland_display: String,
     display: u32,
+    // Optional fields don't get wrapped unless we specify it ourselves
+    #[optional_wrap]
     log_file: Option<PathBuf>,
     stderr_log_level: SerializableLevel,
     file_log_level: SerializableLevel,

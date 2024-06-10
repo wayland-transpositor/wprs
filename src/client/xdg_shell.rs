@@ -281,7 +281,11 @@ impl RemoteXdgPopup {
                 .map_err(|_| anyhow!("invalid anchor"))
                 .location(loc!())?,
         );
-        new_positioner.set_constraint_adjustment(positioner.constraint_adjustment);
+        new_positioner.set_constraint_adjustment(
+            xdg_positioner::ConstraintAdjustment::from_bits_retain(
+                positioner.constraint_adjustment,
+            ),
+        );
         new_positioner.set_offset(positioner.offset.x, positioner.offset.y);
         if positioner.reactive {
             new_positioner.set_reactive();

@@ -38,6 +38,7 @@ use wprs::args::SerializableLevel;
 use wprs::prelude::*;
 use wprs::utils;
 use wprs::xwayland_xdg_shell::compositor::DecorationBehavior;
+use wprs::xwayland_xdg_shell::compositor::XwaylandOptions;
 use wprs::xwayland_xdg_shell::WprsState;
 
 #[optional_struct]
@@ -182,6 +183,18 @@ pub fn main() -> Result<()> {
     let conn = Connection::connect_to_env().location(loc!())?;
     let (globals, event_queue) = registry_queue_init(&conn).location(loc!())?;
 
+    let xwayland_options = XwaylandOptions {
+        env: vec![(
+            "WAYLAND_DEBUG",
+            if config.xwayland_wayland_debug {
+                "1"
+            } else {
+                "0"
+            },
+        )],
+        display: Some(config.display),
+    };
+
     let mut state = WprsState::new(
         display.handle(),
         &globals,
@@ -189,6 +202,7 @@ pub fn main() -> Result<()> {
         conn.clone(),
         event_loop.handle(),
         config.decoration_behavior,
+        xwayland_options,
     )
     .location(loc!())?;
 
@@ -200,25 +214,6 @@ pub fn main() -> Result<()> {
         .add_keyboard(Default::default(), 200, 200)
         .location(loc!())?;
     let _pointer = seat.add_pointer();
-
-    state
-        .compositor_state
-        .xwayland
-        .start(
-            state.event_loop_handle.clone(),
-            config.display,
-            vec![(
-                "WAYLAND_DEBUG",
-                if config.xwayland_wayland_debug {
-                    "1"
-                } else {
-                    "0"
-                },
-            )],
-            false,
-            |_| {},
-        )
-        .context(loc!(), "Error starting Xwayland.")?;
 
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())

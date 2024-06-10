@@ -224,17 +224,17 @@ impl WprsServerState {
                     source,
                 } => {
                     debug!("axis event: horizontal {horizontal:?}, vertical {vertical:?}, source {source:?}");
-                    let axis_frame = AxisFrame::new(time)
+                    let mut axis_frame = AxisFrame::new(time)
                         .source(source.into())
                         .value(Axis::Horizontal, horizontal.absolute)
                         .value(Axis::Vertical, vertical.absolute)
                         .v120(Axis::Horizontal, horizontal.discrete)
                         .v120(Axis::Vertical, vertical.discrete);
                     if horizontal.stop {
-                        axis_frame.stop(Axis::Horizontal);
+                        axis_frame = axis_frame.stop(Axis::Horizontal);
                     }
                     if vertical.stop {
-                        axis_frame.stop(Axis::Vertical);
+                        axis_frame = axis_frame.stop(Axis::Vertical);
                     }
                     pointer.axis(self, axis_frame);
                 },

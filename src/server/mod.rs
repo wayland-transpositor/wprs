@@ -48,9 +48,9 @@ use crate::serialization::wayland::SurfaceState;
 use crate::serialization::wayland::WlSurfaceId;
 use crate::serialization::Event;
 use crate::serialization::Request;
+use crate::serialization::SendType;
 use crate::serialization::Serializer;
 use crate::utils::SerialMap;
-use crate::serialization::SendType;
 
 pub mod client_handlers;
 pub mod smithay_handlers;

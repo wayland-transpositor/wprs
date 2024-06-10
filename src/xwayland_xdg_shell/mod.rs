@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::sync::Arc;
 
 use bimap::BiMap;
@@ -64,6 +65,7 @@ use client::XWaylandXdgToplevel;
 use compositor::DecorationBehavior;
 use compositor::WprsCompositorState;
 use compositor::X11Parent;
+use compositor::XwaylandOptions;
 
 #[derive(Debug, Default)]
 pub struct XWaylandSurface {
@@ -336,19 +338,30 @@ pub struct WprsState {
 }
 
 impl WprsState {
-    pub fn new(
+    pub fn new<K, V, I>(
         dh: DisplayHandle,
         globals: &GlobalList,
         qh: QueueHandle<Self>,
         conn: Connection,
         event_loop_handle: LoopHandle<'static, Self>,
         decoration_behavior: DecorationBehavior,
-    ) -> Result<Self> {
+        xwayland_options: XwaylandOptions<K, V, I>,
+    ) -> Result<Self>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
         Ok(Self {
             dh: dh.clone(),
             event_loop_handle: event_loop_handle.clone(),
             client_state: WprsClientState::new(globals, qh, conn).location(loc!())?,
-            compositor_state: WprsCompositorState::new(dh, event_loop_handle, decoration_behavior),
+            compositor_state: WprsCompositorState::new(
+                dh,
+                event_loop_handle,
+                decoration_behavior,
+                xwayland_options,
+            ),
             surface_bimap: BiMap::new(),
             surfaces: HashMap::new(),
             outputs: HashMap::new(),

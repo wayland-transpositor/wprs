@@ -131,9 +131,9 @@ use crate::serialization::xdg_shell::XdgPositioner;
 use crate::serialization::xdg_shell::XdgSurfaceState;
 use crate::serialization::xdg_shell::XdgToplevelState;
 use crate::serialization::Request;
+use crate::serialization::SendType;
 use crate::server::LockedSurfaceState;
 use crate::server::WprsServerState;
-use crate::serialization::SendType;
 use crate::vec4u8::Vec4u8s;
 
 impl BufferHandler for WprsServerState {
@@ -1179,6 +1179,9 @@ impl PointerGrab<WprsServerState> for DndGrab {
         event: &GestureHoldEndEvent,
     ) {
     }
+
+    #[instrument(skip(self, _data), level = "debug")]
+    fn unset(&mut self, _data: &mut WprsServerState) {}
 }
 
 pub struct ClientState {

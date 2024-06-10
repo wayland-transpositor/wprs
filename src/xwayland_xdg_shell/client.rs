@@ -130,10 +130,10 @@ use crate::xwayland_xdg_shell::compositor::DecorationBehavior;
 use crate::xwayland_xdg_shell::compositor::X11Parent;
 use crate::xwayland_xdg_shell::compositor::X11ParentForPopup;
 use crate::xwayland_xdg_shell::compositor::X11ParentForSubsurface;
+use crate::xwayland_xdg_shell::decoration::handle_window_frame_pointer_event;
 use crate::xwayland_xdg_shell::xsurface_from_client_surface;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
-use crate::xwayland_xdg_shell::decoration::handle_window_frame_pointer_event;
 
 #[derive(Debug)]
 pub struct WprsClientState {
@@ -272,6 +272,26 @@ impl CompositorHandler for WprsState {
                 }
             }
         }
+    }
+
+    fn surface_enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &WlSurface,
+        _output: &WlOutput,
+    ) {
+        // handled by scale_factor_changed/transform_changed, which only process when the scaling actually changes.
+    }
+
+    fn surface_leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &WlSurface,
+        _output: &WlOutput,
+    ) {
+        // handled by scale_factor_changed/transform_changed, which only process when the scaling actually changes.
     }
 }
 

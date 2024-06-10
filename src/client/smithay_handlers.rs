@@ -177,6 +177,26 @@ impl CompositorHandler for WprsClientState {
             },
         }
     }
+
+    fn surface_enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &WlSurface,
+        _output: &WlOutput,
+    ) {
+        // handled by scale_factor_changed/transform_changed, which only process when the scaling actually changes.
+    }
+
+    fn surface_leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &WlSurface,
+        _output: &WlOutput,
+    ) {
+        // handled by scale_factor_changed/transform_changed, which only process when the scaling actually changes.
+    }
 }
 
 impl OutputHandler for WprsClientState {

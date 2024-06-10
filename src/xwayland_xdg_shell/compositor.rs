@@ -15,7 +15,9 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::os::fd::OwnedFd;
+use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -57,6 +59,8 @@ use smithay::wayland::selection::SelectionSource;
 use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::xwayland_shell::XWaylandShellHandler;
+use smithay::wayland::xwayland_shell::XWaylandShellState;
 use smithay::xwayland::X11Surface;
 use smithay::xwayland::X11Wm;
 use smithay::xwayland::XWayland;
@@ -67,6 +71,7 @@ use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
+use x11rb::protocol::xproto::Window;
 
 use crate::compositor_utils;
 use crate::fallible_entry::FallibleEntryExt;
@@ -87,6 +92,16 @@ pub enum DecorationBehavior {
     AlwaysDisabled,
 }
 
+pub struct XwaylandOptions<K, V, I>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    pub display: Option<u32>,
+    pub env: I,
+}
+
 #[derive(Debug)]
 pub struct WprsCompositorState {
     pub dh: DisplayHandle,
@@ -95,6 +110,7 @@ pub struct WprsCompositorState {
     pub shm_state: ShmState,
     pub seat_state: SeatState<WprsState>,
     pub data_device_state: DataDeviceState,
+    pub xwayland_shell_state: XWaylandShellState,
     pub primary_selection_state: PrimarySelectionState,
     pub decoration_behavior: DecorationBehavior,
 
@@ -104,7 +120,6 @@ pub struct WprsCompositorState {
     pub(crate) serial_map: SerialMap,
     pub(crate) pressed_keys: HashSet<u32>,
 
-    pub xwayland: XWayland,
     pub xwm: Option<X11Wm>,
 
     pub x11_screen_offset: Option<Point<i32>>,
@@ -116,50 +131,56 @@ pub struct WprsCompositorState {
 impl WprsCompositorState {
     /// # Panics
     /// On failure launching xwayland.
-    pub fn new(
+    pub fn new<K, V, I>(
         dh: DisplayHandle,
         event_loop_handle: LoopHandle<'static, WprsState>,
         decoration_behavior: DecorationBehavior,
-    ) -> Self {
+        xwayland_options: XwaylandOptions<K, V, I>,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
         let mut seat_state = SeatState::new();
         let seat = seat_state.new_wl_seat(&dh, "wprs");
 
-        let xwayland = {
-            let (xwayland, channel) = XWayland::new(&dh);
-            let dh = dh.clone();
-            let ret = event_loop_handle.insert_source(channel, move |event, _, data| match event {
-                XWaylandEvent::Ready {
-                    connection,
-                    client,
-                    client_fd: _,
-                    display,
-                } => {
-                    let wm = X11Wm::start_wm(
-                        data.event_loop_handle.clone(),
-                        dh.clone(),
-                        connection,
-                        client,
-                    )
-                    .expect("Failed to attach X11 Window Manager.");
+        let (xwayland, client) = XWayland::spawn(
+            &dh,
+            xwayland_options.display,
+            xwayland_options.env,
+            false,
+            Stdio::inherit(),
+            Stdio::inherit(),
+            |_| {},
+        )
+        .expect("failed to start xwayland.");
 
-                    // Oh Java...
-                    wmname::set_wmname(Some(&format!(":{}", display)), "LG3D")
-                        .expect("Failed to set WM name.");
+        let ret = event_loop_handle.insert_source(xwayland, move |event, _, data| match event {
+            XWaylandEvent::Ready {
+                x11_socket,
+                display_number,
+            } => {
+                let wm =
+                    X11Wm::start_wm(data.event_loop_handle.clone(), x11_socket, client.clone())
+                        .expect("Failed to attach X11 Window Manager.");
 
-                    data.compositor_state.xwm = Some(wm);
-                },
-                XWaylandEvent::Exited => {
-                    let _ = data.compositor_state.xwm.take();
-                },
-            });
-            if let Err(e) = ret {
-                error!(
-                    "Failed to insert the XWaylandSource into the event loop: {}",
-                    e
-                );
-            }
-            xwayland
-        };
+                // Oh Java...
+                wmname::set_wmname(Some(&format!(":{}", display_number)), "LG3D")
+                    .expect("Failed to set WM name.");
+
+                data.compositor_state.xwm = Some(wm);
+            },
+            XWaylandEvent::Error => {
+                let _ = data.compositor_state.xwm.take();
+            },
+        });
+        if let Err(e) = ret {
+            error!(
+                "Failed to insert the XWaylandSource into the event loop: {}",
+                e
+            );
+        }
 
         Self {
             dh: dh.clone(),
@@ -167,6 +188,7 @@ impl WprsCompositorState {
             start_time: Instant::now(),
             shm_state: ShmState::new::<WprsState>(&dh, Vec::new()),
             seat_state,
+            xwayland_shell_state: XWaylandShellState::new::<WprsState>(&dh),
             data_device_state: DataDeviceState::new::<WprsState>(&dh),
             primary_selection_state: PrimarySelectionState::new::<WprsState>(&dh),
             decoration_behavior,
@@ -174,12 +196,8 @@ impl WprsCompositorState {
             outputs: HashMap::new(),
             serial_map: SerialMap::new(),
             pressed_keys: HashSet::new(),
-
-            xwayland,
             xwm: None,
-
             x11_screen_offset: None,
-
             x11_surfaces: Vec::new(),
         }
     }
@@ -290,6 +308,20 @@ impl PrimarySelectionHandler for WprsState {
 impl ClientDndGrabHandler for WprsState {}
 impl ServerDndGrabHandler for WprsState {}
 
+impl XWaylandShellHandler for WprsState {
+    fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
+        &mut self.compositor_state.xwayland_shell_state
+    }
+
+    fn surface_associated(&mut self, surface: WlSurface, window: Window) {
+        // TODO: we should implement this and get rid of the deferring commit logic below
+        debug!(
+            "X11 window {:?} associated with surface {:?}",
+            window, surface
+        )
+    }
+}
+
 fn execute_or_defer_commit(state: &mut WprsState, surface: WlSurface) -> Result<()> {
     commit(&surface, state).location(loc!())?;
 
@@ -299,7 +331,7 @@ fn execute_or_defer_commit(state: &mut WprsState, surface: WlSurface) -> Result<
     // defer if that is the case.
     if !xwayland_surface.is_some_and(XWaylandSurface::ready) {
         debug!("deferring commit");
-        X11Wm::commit_hook::<WprsState>(&surface);
+        X11Wm::commit_hook::<WprsState>(state, &surface);
         state.event_loop_handle.insert_idle(|state| {
             execute_or_defer_commit(state, surface).log_and_ignore(loc!());
         });
@@ -652,3 +684,4 @@ smithay::delegate_seat!(WprsState);
 smithay::delegate_data_device!(WprsState);
 smithay::delegate_output!(WprsState);
 smithay::delegate_primary_selection!(WprsState);
+smithay::delegate_xwayland_shell!(WprsState);

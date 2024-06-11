@@ -66,7 +66,8 @@ pub fn configure_tracing<P: AsRef<Path>>(
 
     #[cfg(feature = "tracy")]
     {
-        layers.push(tracing_tracy::TracyLayer::new().boxed());
+        layers
+            .push(tracing_tracy::TracyLayer::new(tracing_tracy::DefaultConfig::default()).boxed());
     }
 
     tracing_subscriber::registry().with(layers).init();

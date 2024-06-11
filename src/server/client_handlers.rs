@@ -19,8 +19,6 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::os::fd::AsFd;
-use std::os::fd::FromRawFd;
-use std::os::fd::OwnedFd;
 use std::thread;
 
 use nix::fcntl::OFlag;
@@ -601,11 +599,6 @@ impl WprsServerState {
                 mime,
             )) => {
                 let (recv_fd, send_fd) = unistd::pipe2(OFlag::O_CLOEXEC).location(loc!())?; // TODO: handle error
-
-                // SAFETY: we just opened the fds and they don't require any special
-                // cleanup.
-                let (recv_fd, send_fd) =
-                    unsafe { (OwnedFd::from_raw_fd(recv_fd), OwnedFd::from_raw_fd(send_fd)) };
                 let mut f = File::from(recv_fd);
 
                 {

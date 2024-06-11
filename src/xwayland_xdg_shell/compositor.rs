@@ -331,7 +331,6 @@ fn execute_or_defer_commit(state: &mut WprsState, surface: WlSurface) -> Result<
     // defer if that is the case.
     if !xwayland_surface.is_some_and(XWaylandSurface::ready) {
         debug!("deferring commit");
-        X11Wm::commit_hook::<WprsState>(state, &surface);
         state.event_loop_handle.insert_idle(|state| {
             execute_or_defer_commit(state, surface).log_and_ignore(loc!());
         });

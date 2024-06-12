@@ -86,7 +86,6 @@ Then update the `wprsc.ron` and `wprsd.ron` files with your desired settings.
 Currently only the the Core and XDG shell protocols are implemented. In
 particular, hardware rendering/dmabuf support is not yet implemented.
 
-- Damage passthough is not yet implemented.
 - Touch event support is not yet implemented.
 - Drag-and-drop may be wonky in some cases.
 - XWayland drag-and-drop is not (yet?) implemented.

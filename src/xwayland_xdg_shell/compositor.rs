@@ -247,7 +247,10 @@ impl WprsCompositorState {
             },
         };
 
-        compositor_utils::update_output(local_output, output);
+        let mut expanded_output = output;
+        expanded_output.mode.dimensions = (16_384, 16_384).into();
+
+        compositor_utils::update_output(local_output, expanded_output);
     }
 
     #[instrument(skip(self), level = "debug")]

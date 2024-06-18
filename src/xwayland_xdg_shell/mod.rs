@@ -47,6 +47,7 @@ use tracing::Span;
 
 use crate::args;
 use crate::compositor_utils;
+use crate::constants;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
@@ -153,13 +154,18 @@ impl XWaylandSurface {
                 // ignore.
                 _ = buffer.active_buffer.attach_to(&surface);
                 if let Some(damage_rects) = &self.damage.take() {
-                    for damage_rect in damage_rects {
-                        surface.damage_buffer(
-                            damage_rect.loc.x,
-                            damage_rect.loc.y,
-                            damage_rect.size.w,
-                            damage_rect.size.h,
-                        );
+                    // avoid overwhelming wayland connection
+                    if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
+                        for damage_rect in damage_rects {
+                            surface.damage_buffer(
+                                damage_rect.loc.x,
+                                damage_rect.loc.y,
+                                damage_rect.size.w,
+                                damage_rect.size.h,
+                            );
+                        }
+                    } else {
+                        surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
                     }
                 } else {
                     surface.damage_buffer(0, 0, i32::MAX, i32::MAX);

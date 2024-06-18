@@ -49,6 +49,7 @@ use crate::args;
 use crate::compositor_utils;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
+use crate::serialization::geometry::Rectangle;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
@@ -78,6 +79,7 @@ pub struct XWaylandSurface {
     pub(crate) parent: Option<X11Parent>,
     pub(crate) children: HashSet<CompositorObjectId>,
     pub(crate) output_ids: HashSet<u32>,
+    pub(crate) damage: Option<Vec<Rectangle<i32>>>,
 }
 
 impl XWaylandSurface {
@@ -105,6 +107,7 @@ impl XWaylandSurface {
             parent: None,
             children: HashSet::new(),
             output_ids: HashSet::new(),
+            damage: None,
         })
     }
 
@@ -142,14 +145,25 @@ impl XWaylandSurface {
         }
     }
 
-    fn try_attach_buffer(&mut self) {
+    fn try_draw_buffer(&mut self) {
         if !self.buffer_attached {
             if let Some(buffer) = &self.buffer {
-                let surface = self.wl_surface();
+                let surface = self.wl_surface().clone();
                 // The only possible error here is AlreadyActive, which we can
                 // ignore.
-                _ = buffer.active_buffer.attach_to(surface);
-                surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                _ = buffer.active_buffer.attach_to(&surface);
+                if let Some(damage_rects) = &self.damage.take() {
+                    for damage_rect in damage_rects {
+                        surface.damage_buffer(
+                            damage_rect.loc.x,
+                            damage_rect.loc.y,
+                            damage_rect.size.w,
+                            damage_rect.size.h,
+                        );
+                    }
+                } else {
+                    surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                }
 
                 self.buffer_attached = true;
             }
@@ -158,7 +172,7 @@ impl XWaylandSurface {
 
     fn commit_buffer(&mut self, qh: &QueueHandle<WprsState>) {
         if !self.buffer_attached && self.buffer.is_some() {
-            self.try_attach_buffer();
+            self.try_draw_buffer();
 
             self.frame(qh);
             self.commit();

@@ -16,6 +16,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::mem;
 use std::os::fd::OwnedFd;
 use std::process::Stdio;
 use std::time::Duration;
@@ -45,6 +46,7 @@ use smithay::wayland::compositor::BufferAssignment;
 use smithay::wayland::compositor::CompositorClientState;
 use smithay::wayland::compositor::CompositorHandler;
 use smithay::wayland::compositor::CompositorState;
+use smithay::wayland::compositor::Damage;
 use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::compositor::SurfaceData;
 use smithay::wayland::output::OutputHandler;
@@ -569,6 +571,25 @@ pub fn commit_inner(
         }
     }
 
+    let damage = &mut mem::take(&mut surface_attributes.damage)
+        .iter()
+        .map(|damage| match damage {
+            Damage::Buffer(rect) => *rect,
+            Damage::Surface(rect) => rect.to_buffer(
+                surface_attributes.buffer_scale,
+                surface_attributes.buffer_transform.into(),
+                &rect.size,
+            ),
+        })
+        .map(Into::into)
+        .collect();
+
+    if let Some(surface_damage) = &mut xwayland_surface.damage {
+        surface_damage.append(damage);
+    } else {
+        xwayland_surface.damage = Some(damage.to_vec());
+    }
+
     if xwayland_surface.ready() {
         if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
             if !subsurface.pending_frame_callback {
@@ -578,7 +599,7 @@ pub fn commit_inner(
             xwayland_surface.frame(&state.client_state.qh);
         }
 
-        xwayland_surface.try_attach_buffer();
+        xwayland_surface.try_draw_buffer();
     }
 
     if xwayland_surface.ready() || xwayland_surface.needs_configure() {

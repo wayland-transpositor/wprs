@@ -19,6 +19,7 @@ pub mod channel_utils;
 pub mod client;
 pub mod client_utils;
 pub mod compositor_utils;
+pub mod constants;
 pub mod control_server;
 pub mod error_utils;
 pub mod fallible_entry;

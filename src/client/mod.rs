@@ -51,6 +51,7 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 use smithay_client_toolkit::shm::Shm;
 
 use crate::client_utils::SeatObject;
+use crate::constants;
 use crate::filtering;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
@@ -498,13 +499,18 @@ impl RemoteSurface {
                     "attaching a buffer failed, this probably means we're leaking buffers",
                 )?;
                 if let Some(damage_rects) = self.frame_damage.take() {
-                    for damage_rect in damage_rects {
-                        wl_surface.damage_buffer(
-                            damage_rect.loc.x,
-                            damage_rect.loc.y,
-                            damage_rect.size.w,
-                            damage_rect.size.h,
-                        );
+                    // avoid overwhelming wayland connection
+                    if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
+                        for damage_rect in damage_rects {
+                            wl_surface.damage_buffer(
+                                damage_rect.loc.x,
+                                damage_rect.loc.y,
+                                damage_rect.size.w,
+                                damage_rect.size.h,
+                            );
+                        }
+                    } else {
+                        wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
                     }
                 } else {
                     wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);

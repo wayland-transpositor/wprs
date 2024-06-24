@@ -230,9 +230,13 @@ impl WprsCompositorState {
         // events that either enter the negative coordinate space (because the wayland window is not aligned
         // with the topleft corner) or are beyond the size of the screen (because the window partially overlaps
         // the edge of the screen.)
-        let mut expanded_output = output;
-        expanded_output.mode.dimensions = (16_384, 16_384).into();
-        self.x11_screen_offset = Some((-8_192, -8_192).into());
+        // However, Xwayland seems to run into performance bottlenecks as we increase the screen size,
+        // even if an app's window size doesn't change. So we want to choose the minimal size possible.
+        let mut expanded_output = output.clone();
+        expanded_output.mode.dimensions =
+            (output.mode.dimensions.w * 3, output.mode.dimensions.h * 3).into();
+        self.x11_screen_offset =
+            Some((-output.mode.dimensions.w, -output.mode.dimensions.h).into());
 
         compositor_utils::update_output(local_output, expanded_output);
     }
@@ -247,7 +251,16 @@ impl WprsCompositorState {
             },
         };
 
-        compositor_utils::update_output(local_output, output);
+        let mut expanded_output = output.clone();
+        expanded_output.mode.dimensions = (
+            expanded_output.mode.dimensions.w * 3,
+            expanded_output.mode.dimensions.h * 3,
+        )
+            .into();
+        self.x11_screen_offset =
+            Some((-output.mode.dimensions.w, -output.mode.dimensions.h).into());
+
+        compositor_utils::update_output(local_output, expanded_output);
     }
 
     #[instrument(skip(self), level = "debug")]

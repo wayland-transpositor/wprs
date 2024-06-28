@@ -135,6 +135,8 @@ use crate::xwayland_xdg_shell::xsurface_from_client_surface;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 
+const DEFAULT_WINDOW_SIZE: (i32, i32) = (512, 256);
+
 #[derive(Debug)]
 pub struct WprsClientState {
     pub qh: QueueHandle<WprsState>,
@@ -1097,6 +1099,10 @@ impl XWaylandXdgToplevel {
         configure: Option<&WindowConfigure>,
         buffer_metadata: Option<&BufferMetadata>,
     ) -> Result<(i32, i32)> {
+        let default_window_size = (
+            NonZeroU32::new(DEFAULT_WINDOW_SIZE.0 as u32),
+            NonZeroU32::new(DEFAULT_WINDOW_SIZE.1 as u32),
+        );
         let window_frame = &mut self.window_frame;
         window_frame.set_hidden(false);
         if let Some(configure) = configure {
@@ -1119,7 +1125,8 @@ impl XWaylandXdgToplevel {
                 NonZeroU32::new(buffer_metadata.height as u32),
             ),
             _ => {
-                bail!("Unable to get size from either configure or buffer_metadata")
+                warn!("Unable to get size from either configure or buffer_metadata, using default size: {:?}", default_window_size);
+                default_window_size
             },
         };
 
@@ -1170,6 +1177,7 @@ impl XWaylandXdgToplevel {
         configure: Option<&WindowConfigure>,
         buffer_metadata: Option<&BufferMetadata>,
     ) -> Result<(i32, i32)> {
+        let default_window_size = DEFAULT_WINDOW_SIZE;
         let window_frame = &mut self.window_frame;
         window_frame.set_hidden(true);
         self.frame_offset = (0, 0).into();
@@ -1184,7 +1192,8 @@ impl XWaylandXdgToplevel {
             ) => (width.get() as i32, height.get() as i32),
             (_, Some(buffer_metadata)) => (buffer_metadata.width, buffer_metadata.height),
             _ => {
-                bail!("Unable to get size from either configure or buffer_metadata")
+                warn!("Unable to get size from either configure or buffer_metadata, using default size: {:?}", default_window_size);
+                default_window_size
             },
         };
 

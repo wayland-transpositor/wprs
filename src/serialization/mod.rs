@@ -320,10 +320,7 @@ where
 
         // read frame header
         let n_shards = non_zero_usize_from_u32_as_u8_4(array_ref!(u32_buf, 0, 4))
-            .map_err(|err| {
-                error!("n_shards was 0");
-                err
-            })
+            .inspect_err(|_| error!("n_shards was 0"))
             .location(loc!())?;
         debug!("read n_shards: {}", n_shards);
         let uncompressed_size = usize_from_u32_as_u8_4(array_ref!(u32_buf, 4, 4));

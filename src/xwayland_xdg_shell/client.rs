@@ -1304,6 +1304,12 @@ impl WaylandSurface for SubSurface {
     }
 }
 
+impl Drop for SubSurface {
+    fn drop(&mut self) {
+        self.subsurface.destroy();
+    }
+}
+
 #[derive(Debug)]
 pub struct XWaylandSubSurface {
     pub local_subsurface: SubSurface,
@@ -1330,10 +1336,10 @@ impl XWaylandSubSurface {
             .unwrap();
 
         let local_subsurface = SubSurface {
-            subsurface: subsurface.clone(),
+            subsurface,
             surface: local_surface,
         };
-        subsurface.set_desync();
+        local_subsurface.subsurface.set_desync();
 
         let x11_surface = surface.get_x11_surface().location(loc!())?;
         let geometry = x11_surface.geometry();

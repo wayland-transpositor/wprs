@@ -399,7 +399,6 @@ impl WprsState {
             self.remove_surface(&child);
         }
 
-        self.surface_bimap.remove_by_left(surface_id);
         if let Some(xwayland_surface) = self.surfaces.remove(surface_id) {
             if let Some(parent) = xwayland_surface.parent {
                 let parent_xwayland_surface = self.surfaces.get_mut(&parent.surface_id).unwrap();
@@ -408,6 +407,12 @@ impl WprsState {
                     .retain(|child_surface_id| child_surface_id != surface_id);
             }
         }
+
+        // this MUST come after removing xwayland_surface, because xwayland_surface's role needs
+        // to be destroyed before it's client wl_surface.
+        // ultimately, the wayland object should be destroyed in order from:
+        // xdg_popup/xdg_toplevel -> xdg_surface -> wl_surface
+        self.surface_bimap.remove_by_left(surface_id);
     }
 
     #[instrument(

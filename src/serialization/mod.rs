@@ -45,10 +45,13 @@ use nix::sys::socket::sockopt::RcvBuf;
 use nix::sys::socket::sockopt::SndBuf;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
+use rkyv::api::high::HighDeserializer;
+use rkyv::api::high::HighSerializer;
+use rkyv::api::high::HighValidator;
 use rkyv::bytecheck;
-use rkyv::de::deserializers::SharedDeserializeMap;
-use rkyv::ser::serializers::AllocSerializer;
-use rkyv::validation::validators::DefaultValidator;
+use rkyv::rancor::Error as RancorError;
+use rkyv::ser::allocator::ArenaHandle;
+use rkyv::util::AlignedVec;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
@@ -75,7 +78,6 @@ pub mod wayland;
 pub mod xdg_shell;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct ClientId(pub u64);
 
 impl ClientId {
@@ -97,7 +99,6 @@ impl From<&backend::ClientId> for ClientId {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum ObjectId {
     WlSurface(wayland::WlSurfaceId),
     XdgSurface(xdg_shell::XdgSurfaceId),
@@ -106,7 +107,6 @@ pub enum ObjectId {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize, serde_derive::Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Capabilities {
     pub xwayland: bool,
 }
@@ -114,7 +114,6 @@ pub struct Capabilities {
 // TODO: https://github.com/rust-lang/rfcs/pull/2593 - simplify all the enums.
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Request {
     Surface(wayland::SurfaceRequest),
     CursorImage(wayland::CursorImage),
@@ -126,7 +125,6 @@ pub enum Request {
 }
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Event {
     WprsClientConnect,
     Output(wayland::OutputEvent),
@@ -146,16 +144,23 @@ pub fn hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
-const SERIALIZE_SCRATCH_SPACE: usize = 1024 * 1024;
 const CHANNEL_SIZE: usize = 1024;
 
 pub trait Serializable:
-    Debug + Send + Archive + Serialize<AllocSerializer<SERIALIZE_SCRATCH_SPACE>> + 'static
+    Debug
+    + Send
+    + Archive
+    + for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>
+    + 'static
 {
 }
 
 impl<T> Serializable for T where
-    T: Debug + Send + Archive + Serialize<AllocSerializer<SERIALIZE_SCRATCH_SPACE>> + 'static
+    T: Debug
+        + Send
+        + Archive
+        + for<'a> Serialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>
+        + 'static
 {
 }
 
@@ -246,8 +251,8 @@ impl Version {
 pub enum SendType<ST>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     Object(ST),
     RawBuffer(Arc<dyn AsRef<[u8]> + Send + Sync>),
@@ -256,8 +261,8 @@ where
 impl<ST> fmt::Debug for SendType<ST>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -270,8 +275,8 @@ where
 pub enum RecvType<RT>
 where
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     Object(RT),
     RawBuffer(Vec<u8>),
@@ -280,8 +285,8 @@ where
 impl<RT> fmt::Debug for RecvType<RT>
 where
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -302,8 +307,8 @@ fn read_loop<R, RT>(mut stream: R, output_channel: channel::SyncSender<RecvType<
 where
     R: Read,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     // TODO: try tuning this based on the number of cpus the machine has.
     let n_decompressors = NonZeroUsize::new(8).unwrap();
@@ -380,8 +385,8 @@ fn write_loop<W, ST>(
 where
     W: Write,
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     let (_, wmem_max) = socket_buffer_limits().location(loc!())?;
     let mut stream = BufWriter::with_capacity(
@@ -423,7 +428,7 @@ where
             SendType::Object(obj) => (
                 ArcSlice::new(
                     debug_span!("serialize")
-                        .in_scope(|| rkyv::to_bytes::<_, SERIALIZE_SCRATCH_SPACE>(obj))
+                        .in_scope(|| rkyv::to_bytes::<RancorError>(obj))
                         .location(loc!())?,
                 ),
                 MessageType::Object.into(),
@@ -503,11 +508,11 @@ fn spawn_rw_loops<'scope, ST, RT>(
 )>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     let read_stream = stream.try_clone().location(loc!())?;
     let read_thread = scope.spawn(move || read_loop(read_stream, read_channel_tx));
@@ -526,11 +531,11 @@ fn accept_loop<ST, RT>(
     other_end_connected: Arc<AtomicBool>,
 ) where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     thread::scope(|scope| {
         loop {
@@ -570,11 +575,11 @@ fn client_loop<ST, RT>(
 ) -> Result<()>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     thread::scope(|scope| {
         let (read_thread, _) = spawn_rw_loops(
@@ -602,11 +607,11 @@ where
 pub struct Serializer<ST, RT>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     read_handle: Option<Channel<RecvType<RT>>>,
     write_handle: DiscardingSender<Sender<SendType<ST>>>,
@@ -616,11 +621,11 @@ where
 impl<ST, RT> Serializer<ST, RT>
 where
     ST: Serializable,
-    ST::Archived:
-        Deserialize<ST, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
     RT: Serializable,
-    RT::Archived:
-        Deserialize<RT, SharedDeserializeMap> + for<'a> bytecheck::CheckBytes<DefaultValidator<'a>>,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     pub fn new_server<P: AsRef<Path>>(sock_path: P) -> Result<Self> {
         let listener = utils::bind_user_socket(sock_path).location(loc!())?;

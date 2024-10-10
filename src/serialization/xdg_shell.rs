@@ -15,7 +15,6 @@
 use std::fmt::Debug;
 use std::num::NonZeroU32;
 
-use rkyv::bytecheck;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
@@ -46,7 +45,6 @@ use crate::serialization::wayland::WlSurfaceId;
 use crate::serialization::ClientId;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgSurfaceId(pub u64);
 
 impl XdgSurfaceId {
@@ -56,7 +54,6 @@ impl XdgSurfaceId {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgToplevelId(pub u64);
 
 impl XdgToplevelId {
@@ -72,7 +69,6 @@ impl From<&backend::ObjectId> for XdgToplevelId {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgPopupId(pub u64);
 
 impl XdgPopupId {
@@ -94,7 +90,6 @@ impl From<&backend::ObjectId> for XdgPopupId {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgPositioner {
     pub width: i32,
     pub height: i32,
@@ -126,7 +121,6 @@ impl XdgPositioner {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgSurfaceState {
     pub window_geometry: Option<Rectangle<i32>>,
     pub max_size: Size<i32>,
@@ -150,7 +144,6 @@ impl Default for XdgSurfaceState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DecorationMode {
     Client,
     Server,
@@ -206,7 +199,6 @@ impl TryFrom<KdeDecorationMode> for DecorationMode {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgToplevelState {
     pub id: XdgToplevelId,
     pub parent: Option<WlSurfaceId>,
@@ -232,7 +224,6 @@ impl XdgToplevelState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct XdgPopupState {
     pub id: XdgPopupId,
     pub parent_surface_id: WlSurfaceId,
@@ -252,7 +243,6 @@ impl XdgPopupState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct WindowState(u16);
 
 impl From<WindowState> for ToplevelStateSet {
@@ -288,7 +278,6 @@ impl From<WindowState> for ToplevelStateSet {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct ToplevelConfigure {
     pub surface_id: WlSurfaceId,
     pub new_size: Size<Option<NonZeroU32>>,
@@ -311,7 +300,6 @@ impl ToplevelConfigure {
 
 // TODO: do we need this? We're never reading it.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum PopupConfigureKind {
     Initial,
     Reactive,
@@ -332,7 +320,6 @@ impl From<ConfigureKind> for PopupConfigureKind {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct PopupConfigure {
     pub surface_id: WlSurfaceId,
     pub position: Point<i32>,
@@ -354,20 +341,17 @@ impl PopupConfigure {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Move {
     pub serial: u32,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Resize {
     pub serial: u32,
     pub edge: u32,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum ToplevelRequestPayload {
     Destroyed,
 
@@ -390,7 +374,6 @@ pub enum ToplevelRequestPayload {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct ToplevelRequest {
     pub client: ClientId,
     pub surface: WlSurfaceId,
@@ -398,19 +381,16 @@ pub struct ToplevelRequest {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum ToplevelEvent {
     Configure(ToplevelConfigure),
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum PopupRequestPayload {
     Destroyed,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct PopupRequest {
     pub client: ClientId,
     pub surface: WlSurfaceId,
@@ -418,7 +398,6 @@ pub struct PopupRequest {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum PopupEvent {
     Configure(PopupConfigure),
 }

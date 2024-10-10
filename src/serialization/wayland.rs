@@ -19,8 +19,6 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use enum_as_inner::EnumAsInner;
-use rkyv::bytecheck;
-use rkyv::with::Raw;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
@@ -66,7 +64,6 @@ use crate::serialization::ClientId;
 use crate::vec4u8::Vec4u8s;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct WlSurfaceId(pub u64);
 
 impl WlSurfaceId {
@@ -83,7 +80,6 @@ impl From<&backend::ObjectId> for WlSurfaceId {
 
 // TODO: consider removing
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct ClientSurface {
     pub client: ClientId,
     pub surface: WlSurfaceId,
@@ -99,7 +95,6 @@ impl ClientSurface {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SubSurfaceId(pub u64);
 
 impl SubSurfaceId {
@@ -109,14 +104,12 @@ impl SubSurfaceId {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, EnumAsInner, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum BufferFormat {
     Argb8888,
     Xrgb8888,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct BufferMetadata {
     pub width: i32,
     pub height: i32,
@@ -184,7 +177,6 @@ impl BufferMetadata {
 // an empty Vec4u8s, which is otherwise bogus. Making data an option would be a
 // bit more correct, but even more annoying.
 #[derive(Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Buffer {
     pub metadata: BufferMetadata,
     pub data: Arc<Vec4u8s>,
@@ -245,14 +237,12 @@ impl fmt::Debug for Buffer {
 // TODO: consider splitting SurfaceState, this only really makes sense for the
 // surface state we're sending, not the one we're storing.
 #[derive(Debug, Clone, Eq, PartialEq, EnumAsInner, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum BufferAssignment {
     New(Buffer),
     Removed,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum CursorImageStatus {
     Hidden,
     Named(String),
@@ -263,14 +253,12 @@ pub enum CursorImageStatus {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct CursorImage {
     pub serial: u32,
     pub status: CursorImageStatus,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum KeyState {
     Released,
     Pressed,
@@ -286,7 +274,6 @@ impl From<KeyState> for SmithayKeyState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum RepeatInfo {
     Repeat { rate: NonZeroU32, delay: u32 },
     Disable,
@@ -303,7 +290,6 @@ impl From<SctkRepeatInfo> for RepeatInfo {
 
 // Make this a separate struct so we can override debug just for this variant instead of the entire enum.
 #[derive(Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct KeyInner {
     pub serial: u32,
     pub raw_code: u32,
@@ -328,7 +314,6 @@ impl fmt::Debug for KeyInner {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct ModifierState {
     pub ctrl: bool,
     pub alt: bool,
@@ -352,7 +337,6 @@ impl From<SmithayModifiers> for ModifierState {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum KeyboardEvent {
     Enter {
         serial: u32,
@@ -373,7 +357,6 @@ pub enum KeyboardEvent {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct AxisScroll {
     pub absolute: f64,
     pub discrete: i32,
@@ -391,7 +374,6 @@ impl From<SctkAxisScroll> for AxisScroll {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum AxisSource {
     Finger,
     Continuous,
@@ -423,7 +405,6 @@ impl From<AxisSource> for SmithayAxisSource {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum PointerEventKind {
     Enter {
         serial: u32,
@@ -478,7 +459,6 @@ impl From<SctkPointerEventKind> for PointerEventKind {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct PointerEvent {
     pub surface_id: WlSurfaceId,
     pub position: Point<f64>,
@@ -496,7 +476,6 @@ impl PointerEvent {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SubSurfaceState {
     pub parent: WlSurfaceId,
     pub location: Point<i32>,
@@ -514,7 +493,6 @@ impl SubSurfaceState {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, EnumAsInner, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Role {
     Cursor(Point<i32>),
     SubSurface(SubSurfaceState),
@@ -523,7 +501,6 @@ pub enum Role {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum RectangleKind {
     Add,
     Subtract,
@@ -539,7 +516,6 @@ impl From<&SmithayRectangleKind> for RectangleKind {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Region {
     rects: Vec<Tuple2<RectangleKind, Rectangle<i32>>>,
 }
@@ -585,7 +561,6 @@ impl Default for Region {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Transform {
     Normal,
     _90,
@@ -684,14 +659,12 @@ impl From<Transform> for SmithayTransform {
 /// explicitly, the z position (stacking order) is stored implicitly based on
 /// the index of the item in the vector.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SubsurfacePosition {
     pub id: WlSurfaceId,
     pub position: Point<i32>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SurfaceState {
     pub client: ClientId,
     pub id: WlSurfaceId,
@@ -778,7 +751,6 @@ impl SurfaceState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum Subpixel {
     Unknown,
     None,
@@ -816,7 +788,6 @@ impl From<Subpixel> for SmithaySubpixel {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Mode {
     pub dimensions: Size<i32>,
     pub refresh_rate: i32,
@@ -836,7 +807,6 @@ impl From<&SctkMode> for Mode {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct OutputInfo {
     pub id: u32,
     pub model: String,
@@ -876,14 +846,12 @@ impl From<SctkOutputInfo> for OutputInfo {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum SurfaceRequestPayload {
     Commit(SurfaceState),
     Destroyed,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SurfaceRequest {
     pub client: ClientId,
     pub surface: WlSurfaceId,
@@ -901,7 +869,6 @@ impl SurfaceRequest {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SourceMetadata {
     pub mime_types: Vec<String>,
     pub dnd_actions: u32,
@@ -933,7 +900,6 @@ impl From<SmithaySourceMetadata> for SourceMetadata {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataSource {
     Selection,
     DnD,
@@ -941,7 +907,6 @@ pub enum DataSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct DragEnter {
     pub serial: u32,
     pub surface: WlSurfaceId,
@@ -952,8 +917,7 @@ pub struct DragEnter {
 }
 
 #[derive(Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
-pub struct DataToTransfer(#[with(Raw)] pub Vec<u8>);
+pub struct DataToTransfer(pub Vec<u8>);
 
 impl fmt::Debug for DataToTransfer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -971,7 +935,6 @@ impl fmt::Debug for DataToTransfer {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataSourceRequest {
     // wl_data_source requests
     // DnDSetSourceActions(u32),
@@ -982,7 +945,6 @@ pub enum DataSourceRequest {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataSourceEvent {
     // wl_data_source events
     DnDMimeTypeAcceptedByDestination(Option<String>),
@@ -994,7 +956,6 @@ pub enum DataSourceEvent {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataDestinationRequest {
     // wl_data_offer requests
     DnDAcceptMimeType(Option<String>),
@@ -1004,7 +965,6 @@ pub enum DataDestinationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataDestinationEvent {
     // wl_data_offer events
     // DnDActionsOfferedBySource(u32),
@@ -1019,7 +979,6 @@ pub enum DataDestinationEvent {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataRequest {
     // source is remote application, destination is local application
     // Requests from remote source application to local compositor.
@@ -1045,7 +1004,6 @@ pub enum DataRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum DataEvent {
     // source is remote application, destination is local application
     // Feedback from local compositor to remote source application.
@@ -1072,7 +1030,6 @@ pub enum DataEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum OutputEvent {
     New(OutputInfo),
     Update(OutputInfo),
@@ -1080,19 +1037,16 @@ pub enum OutputEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct Output {
     pub id: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub enum SurfaceEventPayload {
     OutputsChanged(Vec<Output>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 pub struct SurfaceEvent {
     pub surface_id: WlSurfaceId,
     pub payload: SurfaceEventPayload,

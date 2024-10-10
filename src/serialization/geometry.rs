@@ -16,7 +16,6 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result;
 
-use rkyv::bytecheck;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
@@ -24,7 +23,6 @@ use smithay::utils;
 use smithay::utils::Coordinate;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes))]
 pub struct Point<N> {
     pub x: N,
     pub y: N,
@@ -68,7 +66,6 @@ impl<N, T> From<utils::Point<N, T>> for Point<N> {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes))]
 pub struct Size<N> {
     pub w: N,
     pub h: N,
@@ -112,7 +109,6 @@ impl<N, T> From<utils::Size<N, T>> for Size<N> {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes))]
 pub struct Rectangle<N> {
     pub loc: Point<N>,
     pub size: Size<N>,

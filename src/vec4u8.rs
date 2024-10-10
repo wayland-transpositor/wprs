@@ -16,8 +16,6 @@
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use itertools::izip;
-use rkyv::bytecheck;
-use rkyv::with::Raw;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
@@ -25,7 +23,6 @@ use static_assertions::assert_eq_size;
 
 /// Convenience layer for operating on arrays of u8s that represent 4-vectors.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
 #[repr(C, packed)]
 pub struct Vec4u8(pub u8, pub u8, pub u8, pub u8);
 
@@ -58,8 +55,7 @@ impl Default for Vec4u8 {
 ///
 /// Not interchangable with `Vec<Vec4u8>`, that is in array-of-struct format.
 #[derive(Clone, Debug, Eq, PartialEq, Archive, Deserialize, Serialize)]
-#[archive_attr(derive(bytecheck::CheckBytes, Debug))]
-pub struct Vec4u8s(#[with(Raw)] Vec<u8>);
+pub struct Vec4u8s(Vec<u8>);
 
 impl Vec4u8s {
     pub fn new() -> Self {

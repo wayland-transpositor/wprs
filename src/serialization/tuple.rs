@@ -20,13 +20,11 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result;
 
-use rkyv::bytecheck;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
-#[archive_attr(derive(bytecheck::CheckBytes))]
 pub struct Tuple2<T1, T2>(pub T1, pub T2);
 
 impl<T1, T2> Debug for ArchivedTuple2<T1, T2>

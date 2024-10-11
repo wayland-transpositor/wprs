@@ -102,6 +102,7 @@ impl<S: Sender> Sender for DiscardingSender<S> {
 }
 
 /// A sender whose channnel is promised (as opposed to guaranteed) to be open.
+///
 /// Useful when the lifetime of the sender and receiver (including clones
 /// thereof) are known to be the same according to program logic but that can't
 /// be proven with lifetimes due to the endpoints being cloned.

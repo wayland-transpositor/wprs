@@ -993,11 +993,8 @@ impl XWaylandBuffer {
 
 impl XWaylandSurface {
     pub fn write_data(&mut self, data: BufferPointer<u8>, pool: &mut SlotPool) -> Result<()> {
-        match &mut self.buffer {
-            Some(buffer) => {
-                buffer.write_data(data, pool).location(loc!())?;
-            },
-            None => {},
+        if let Some(buffer) = &mut self.buffer {
+            buffer.write_data(data, pool).location(loc!())?;
         }
         Ok(())
     }

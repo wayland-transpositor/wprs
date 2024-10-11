@@ -115,9 +115,11 @@ pub fn prefix_sum_scalar(a: &mut [u8], prior_sum: u8) {
     }
 }
 
-/// Computes the prefix sum of `arr` in-place. BS bytes will be processed at a
-/// time; small sizes will cause pipeline stalls and large sizes will cause
-/// cache misses. `BS` must be non-zero and a multiple of 32.
+/// Computes the prefix sum of `arr` in-place.
+///
+/// BS bytes will be processed at a time; small sizes will cause pipeline
+/// stalls and large sizes will cause cache misses. `BS` must be non-zero
+/// and a multiple of 32.
 ///
 /// # Safety
 /// * avx2 and sse2 must be available.

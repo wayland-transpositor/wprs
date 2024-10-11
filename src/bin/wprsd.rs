@@ -215,7 +215,7 @@ fn start_xwayland_xdg_shell(
     xwayland_xdg_shell_wayland_debug: bool,
     xwayland_xdg_shell_args: &[String],
 ) {
-    Command::new(xwayland_xdg_shell_path)
+    let mut child = Command::new(xwayland_xdg_shell_path)
         .env("WAYLAND_DISPLAY", wayland_display)
         .env(
             "WAYLAND_DEBUG",
@@ -227,7 +227,11 @@ fn start_xwayland_xdg_shell(
         )
         .args(xwayland_xdg_shell_args)
         .spawn()
-        .expect("error starting xwayland-xdg-shell");
+        .expect("failed executing xwayland-xdg-shell");
+
+    std::thread::spawn(move || {
+        child.wait().expect("failed waiting xwayland-xdg-shell");
+    });
 }
 
 #[allow(clippy::missing_panics_doc)]

@@ -248,7 +248,7 @@ impl<'a, T: 'a> Iterator for Chunks<'a, T> {
     }
 }
 
-impl<'a, T: 'a> ExactSizeIterator for Chunks<'_, T> {}
+impl<T> ExactSizeIterator for Chunks<'_, T> {}
 
 #[cfg(test)]
 mod tests {

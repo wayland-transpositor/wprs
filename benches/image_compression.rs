@@ -227,6 +227,7 @@ fn mean(numbers: &[f64]) -> f64 {
 }
 
 fn compression_benchmark(c: &mut Criterion) {
+    // TODO: replace file path with in-memory image (or add an image that is safe to distribute with the codebase)
     // https://qoiformat.org/benchmark/
     let files = fs::read_dir("/home/rasputin/qoi_benchmark_images/screenshot_web/")
         .unwrap()

@@ -80,6 +80,11 @@ trybuild = "1.0.96"
 name = "prefix_sum"
 harness = false
 
+# TODO: Fix bench
+# [[bench]]
+# name = "image_compression"
+# harness = false
+
 [[bench]]
-name = "image_compression"
+name = "serialize"
 harness = false

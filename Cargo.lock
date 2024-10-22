@@ -192,23 +192,22 @@ checksum = "9ac0150caa2ae65ca5bd83f25c7de183dea78d4d366469f148435e2acfbad0da"
 
 [[package]]
 name = "calloop"
-version = "0.13.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b99da2f8558ca23c71f4fd15dc57c906239752dd27ff3c00a1d56b685b7cbfec"
+checksum = "a1ead1e1514bce44c0f40e027899fbc595907fc112635bed21b3b5d975c0a5e7"
 dependencies = [
  "bitflags 2.6.0",
- "log",
  "polling",
  "rustix",
  "slab",
- "thiserror",
+ "tracing",
 ]
 
 [[package]]
 name = "calloop-wayland-source"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95a66a987056935f7efce4ab5668920b5d0dac4a7c99991a67395f13702ddd20"
+checksum = "876a7a1dbbe026a55ef47a500b123af5a9a0914520f061d467914cf21be95daf"
 dependencies = [
  "calloop",
  "rustix",
@@ -1364,12 +1363,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scan_fmt"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b53b0a5db882a8e2fdaae0a43f7b39e7e9082389e978398bdf223a55b581248"
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1467,7 +1460,7 @@ checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/Smithay/smithay.git#6169b213fb663d85d2e139d3bbe44dfae1ec9328"
+source = "git+https://github.com/Smithay/smithay.git#2cee41cdffd111a758b60d230b591367012887a7"
 dependencies = [
  "appendlist",
  "bitflags 2.6.0",
@@ -1479,13 +1472,11 @@ dependencies = [
  "encoding_rs",
  "errno",
  "indexmap",
- "lazy_static",
  "libc",
  "once_cell",
  "profiling",
  "rand",
  "rustix",
- "scan_fmt",
  "scopeguard",
  "smallvec",
  "tempfile",
@@ -1496,13 +1487,13 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-server",
  "x11rb",
- "xkbcommon",
+ "xkbcommon 0.8.0",
 ]
 
 [[package]]
 name = "smithay-client-toolkit"
-version = "0.19.1"
-source = "git+https://github.com/Smithay/client-toolkit.git#ac2c420cae253242dc5650b7a347573e2a036c86"
+version = "0.19.2"
+source = "git+https://github.com/Smithay/client-toolkit.git#618a876400cb6c6b07a8ac5d3557f404602ec077"
 dependencies = [
  "bitflags 2.6.0",
  "bytemuck",
@@ -1522,7 +1513,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-wlr",
  "wayland-scanner",
- "xkbcommon",
+ "xkbcommon 0.7.0",
  "xkeysym",
 ]
 
@@ -1689,6 +1680,7 @@ version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
@@ -2362,6 +2354,17 @@ checksum = "13867d259930edc7091a6c41b4ce6eee464328c6ff9659b7e4c668ca20d4c91e"
 dependencies = [
  "libc",
  "memmap2 0.8.0",
+ "xkeysym",
+]
+
+[[package]]
+name = "xkbcommon"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d66ca9352cbd4eecbbc40871d8a11b4ac8107cfc528a6e14d7c19c69d0e1ac9"
+dependencies = [
+ "libc",
+ "memmap2 0.9.5",
  "xkeysym",
 ]
 

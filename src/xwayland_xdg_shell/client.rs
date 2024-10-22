@@ -256,7 +256,8 @@ impl CompositorHandler for WprsState {
                     compositor::with_states(&wl_surface, |surface_data| {
                         for callback in surface_data
                             .cached_state
-                            .current::<SurfaceAttributes>()
+                            .get::<SurfaceAttributes>()
+                            .current()
                             .frame_callbacks
                             .drain(..)
                         {
@@ -844,7 +845,7 @@ impl PointerHandler for WprsState {
                     let serial = self.compositor_state.serial_map.insert(serial);
                     compositor_pointer.motion(
                         self,
-                        Some((x11_surface, (0, 0).into())),
+                        Some((x11_surface, (0 as f64, 0 as f64).into())),
                         &MotionEvent {
                             location: event.position.into(),
                             serial,
@@ -867,7 +868,7 @@ impl PointerHandler for WprsState {
                 PointerEventKind::Motion { time } => {
                     compositor_pointer.motion(
                         self,
-                        Some((x11_surface, (0, 0).into())),
+                        Some((x11_surface, (0 as f64, 0 as f64).into())),
                         &MotionEvent {
                             location: event.position.into(),
                             serial: 0.into(), // unused

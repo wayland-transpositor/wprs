@@ -435,7 +435,7 @@ impl WprsState {
 
         keyboard.input::<(), _>(
             self,
-            keycode,
+            keycode.into(),
             state,
             serial,
             self.compositor_state.start_time.elapsed().as_millis() as u32,

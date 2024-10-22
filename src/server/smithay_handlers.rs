@@ -596,7 +596,8 @@ pub fn get_child_positions(surface: &WlSurface) -> Vec<SubsurfacePosition> {
             position: compositor::with_states(child, |surface_data| {
                 surface_data
                     .cached_state
-                    .pending::<SubsurfaceCachedState>()
+                    .get::<SubsurfaceCachedState>()
+                    .pending()
                     .location
                     .into()
             }),
@@ -656,7 +657,9 @@ pub fn set_transformation(
 #[instrument(skip_all, level = "debug")]
 pub fn set_xdg_surface_attributes(surface_data: &SurfaceData, surface_state: &mut SurfaceState) {
     if surface_data.cached_state.has::<SurfaceCachedState>() {
-        let surface_cached_state = surface_data.cached_state.current::<SurfaceCachedState>();
+        let mut guard = surface_data.cached_state.get::<SurfaceCachedState>();
+        let surface_cached_state = guard.current();
+
         let xdg_surface_state = XdgSurfaceState {
             window_geometry: surface_cached_state
                 .geometry
@@ -744,7 +747,8 @@ pub fn commit_impl(
         position: (0, 0).into(),
     });
 
-    let mut surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
+    let mut guard = surface_data.cached_state.get::<SurfaceAttributes>();
+    let surface_attributes = guard.current();
     let mut frame_callbacks = mem::take(&mut surface_attributes.frame_callbacks);
 
     if !frame_callbacks.is_empty() {
@@ -786,8 +790,8 @@ pub fn commit_impl(
             .expect("timer registration should never fail");
     }
 
-    set_regions(&surface_attributes, surface_state);
-    set_transformation(&surface_attributes, surface_state);
+    set_regions(surface_attributes, surface_state);
+    set_transformation(surface_attributes, surface_state);
     set_xdg_surface_attributes(surface_data, surface_state);
 
     match &mut surface_state.role {
@@ -796,7 +800,8 @@ pub fn commit_impl(
             subsurface_state.sync = sync;
             subsurface_state.location = surface_data
                 .cached_state
-                .pending::<SubsurfaceCachedState>()
+                .get::<SubsurfaceCachedState>()
+                .pending()
                 .location
                 .into();
         },
@@ -1037,7 +1042,7 @@ impl DndGrab {
     pub fn new(
         focus: Option<(
             <WprsServerState as SeatHandler>::PointerFocus,
-            Point<i32, Logical>,
+            Point<f64, Logical>,
         )>,
         button: u32,
         location: (f64, f64),
@@ -1064,7 +1069,7 @@ impl PointerGrab<WprsServerState> for DndGrab {
         _handle: &mut PointerInnerHandle<'_, WprsServerState>,
         focus: Option<(
             <WprsServerState as SeatHandler>::PointerFocus,
-            Point<i32, Logical>,
+            Point<f64, Logical>,
         )>,
         event: &MotionEvent,
     ) {
@@ -1077,7 +1082,7 @@ impl PointerGrab<WprsServerState> for DndGrab {
         _handle: &mut PointerInnerHandle<'_, WprsServerState>,
         focus: Option<(
             <WprsServerState as SeatHandler>::PointerFocus,
-            Point<i32, Logical>,
+            Point<f64, Logical>,
         )>,
         event: &RelativeMotionEvent,
     ) {

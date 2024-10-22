@@ -703,7 +703,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -909,28 +909,19 @@ checksum = "0ab1bc2a289d34bd04a330323ac98a1b4bc82c9d9fcb1e66b63caa84da26b575"
 
 [[package]]
 name = "optional_struct"
-version = "0.3.2"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a6a5805fc07abb78282acc68420a70902e585f80538cc9050f20128129bc4af"
+checksum = "14199f59efce6ed2c5854f0abc725c32eedfbd02c6ef82c9733c726f3fc6dc91"
 dependencies = [
- "optional_struct_export",
+ "optional_struct_macro",
+ "serde",
 ]
 
 [[package]]
-name = "optional_struct_export"
-version = "0.3.2"
+name = "optional_struct_macro"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d104275df932249fcae2db0bd2e34b8e690be925aaee5cca5251b928fe71230a"
-dependencies = [
- "optional_struct_macro_impl",
- "quote",
-]
-
-[[package]]
-name = "optional_struct_macro_impl"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3314c27f4503e50bd5f7632cd51fef7ac7b1a4af161db616647f190052ffd92"
+checksum = "e5eba042d9efe5e108e0df9ce2f85c540fc4f94f41c6821cbcf70ed47c1221da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1552,9 +1543,9 @@ dependencies = [
 
 [[package]]
 name = "sysctl"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec7dddc5f0fee506baf8b9fdb989e242f17e4b11c61dfbb0635b705217199eea"
+checksum = "01198a2debb237c62b6826ec7081082d951f46dbb64b0e8c7649a452230d1dfc"
 dependencies = [
  "bitflags 2.5.0",
  "byteorder",

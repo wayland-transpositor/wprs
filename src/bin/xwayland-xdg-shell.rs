@@ -17,7 +17,6 @@ use std::path::PathBuf;
 
 use bpaf::Parser;
 use optional_struct::optional_struct;
-use optional_struct::Applyable;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::reexports::calloop::generic::Generic;

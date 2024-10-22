@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use bpaf::Parser;
-use optional_struct::Applyable;
+use optional_struct::Applicable;
 use ron::extensions::Extensions;
 use ron::Options;
 use serde::Deserialize;
@@ -50,7 +50,7 @@ pub trait Config: Debug + Default + Serialize {
 }
 
 pub trait OptionalConfig<Conf: Config>:
-    Debug + Default + Applyable<Conf> + for<'a> Deserialize<'a>
+    Debug + Default + Applicable<Base = Conf> + for<'a> Deserialize<'a>
 {
     fn parse_args() -> Self;
     fn print_default_config_and_exit(&self) -> Option<bool>;

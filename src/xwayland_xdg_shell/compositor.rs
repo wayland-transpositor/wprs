@@ -63,6 +63,7 @@ use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::xwayland_shell::XWaylandShellHandler;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
+use smithay::xwayland::xwm::XwmId;
 use smithay::xwayland::X11Surface;
 use smithay::xwayland::X11Wm;
 use smithay::xwayland::XWayland;
@@ -73,7 +74,6 @@ use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
-use x11rb::protocol::xproto::Window;
 
 use crate::compositor_utils;
 use crate::fallible_entry::FallibleEntryExt;
@@ -328,11 +328,11 @@ impl XWaylandShellHandler for WprsState {
         &mut self.compositor_state.xwayland_shell_state
     }
 
-    fn surface_associated(&mut self, surface: WlSurface, window: Window) {
+    fn surface_associated(&mut self, _xwm: XwmId, wl_surface: WlSurface, surface: X11Surface) {
         // TODO: we should implement this and get rid of the deferring commit logic below
         debug!(
             "X11 window {:?} associated with surface {:?}",
-            window, surface
+            surface, wl_surface
         )
     }
 }
@@ -488,7 +488,9 @@ pub fn commit_inner(
     surface_data: &SurfaceData,
     state: &mut WprsState,
 ) -> Result<()> {
-    let mut surface_attributes = surface_data.cached_state.current::<SurfaceAttributes>();
+    let mut guard = surface_data.cached_state.get::<SurfaceAttributes>();
+    let surface_attributes = guard.current();
+
     let x11_surface = state
         .compositor_state
         .x11_surfaces
@@ -624,7 +626,7 @@ pub fn commit_inner(
         compositor_utils::send_frames(
             surface,
             &surface_data.data_map,
-            &mut surface_attributes,
+            surface_attributes,
             state.compositor_state.start_time.elapsed(),
             Duration::ZERO,
         )

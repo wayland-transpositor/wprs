@@ -135,7 +135,7 @@ impl WprsServerState {
                     let serial = self.serial_map.insert(serial);
                     pointer.motion(
                         self,
-                        Some((surface, (0, 0).into())),
+                        Some((surface, (0 as f64, 0 as f64).into())),
                         &MotionEvent {
                             location: event.position.into(),
                             serial,
@@ -180,7 +180,7 @@ impl WprsServerState {
                     debug!("pointer moved to {:?}", event.position);
                     pointer.motion(
                         self,
-                        Some((surface, (0, 0).into())),
+                        Some((surface, (0 as f64, 0 as f64).into())),
                         &MotionEvent {
                             location: event.position.into(),
                             serial: 0.into(), // unused
@@ -257,7 +257,7 @@ impl WprsServerState {
 
         keyboard.input::<(), _>(
             self,
-            keycode,
+            keycode.into(),
             state,
             serial,
             self.start_time.elapsed().as_millis() as u32,
@@ -723,7 +723,11 @@ impl WprsServerState {
 
                 let serial = self.serial_map.insert(drag_enter.serial);
                 let pointer = self.seat.get_pointer().location(loc!())?;
-                let grab = DndGrab::new(Some((surface, (0, 0).into())), 0, drag_enter.loc.into());
+                let grab = DndGrab::new(
+                    Some((surface, (0 as f64, 0 as f64).into())),
+                    0,
+                    drag_enter.loc.into(),
+                );
                 pointer.set_grab(self, grab, serial, Focus::Keep);
                 let drag_start_data = pointer.grab_start_data();
                 debug!("DRAG GRAB: pointer.grab_start_data {:?}", drag_start_data);
@@ -767,7 +771,10 @@ impl WprsServerState {
                 if let Some(grab_start_data) = pointer.grab_start_data() {
                     pointer.motion(
                         self,
-                        Some((grab_start_data.focus.location(loc!())?.0, (0, 0).into())),
+                        Some((
+                            grab_start_data.focus.location(loc!())?.0,
+                            (0 as f64, 0 as f64).into(),
+                        )),
                         &MotionEvent {
                             location: drag_motion.into(),
                             serial: 0.into(), // unused

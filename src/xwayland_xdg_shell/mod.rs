@@ -435,7 +435,9 @@ impl WprsState {
 
         keyboard.input::<(), _>(
             self,
-            keycode.into(),
+            // our keycode is getting offset by 8 for reasons
+            // see https://github.com/Smithay/smithay/pull/1536
+            (keycode + 8).into(),
             state,
             serial,
             self.compositor_state.start_time.elapsed().as_millis() as u32,

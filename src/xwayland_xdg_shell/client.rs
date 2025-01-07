@@ -538,10 +538,14 @@ impl SeatHandler for WprsState {
         {
             match capability {
                 Capability::Keyboard => {
-                    seat_obj.keyboard.take().map(|k| k.release());
+                    if let Some(k) = seat_obj.keyboard.take() {
+                        k.release()
+                    }
                 },
                 Capability::Pointer => {
-                    seat_obj.pointer.take().map(|p| p.pointer().release());
+                    if let Some(p) = seat_obj.pointer.take() {
+                        p.pointer().release()
+                    }
                 },
                 _ => {},
             }

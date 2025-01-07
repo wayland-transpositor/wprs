@@ -381,7 +381,9 @@ impl SeatHandler for WprsClientState {
         if let Some(seat_obj) = self.seat_objects.iter_mut().find(|s| s.seat == seat) {
             match capability {
                 Capability::Keyboard => {
-                    seat_obj.keyboard.take().map(|k| k.release());
+                    if let Some(k) = seat_obj.keyboard.take() {
+                        k.release()
+                    }
                 },
                 Capability::Pointer => {
                     seat_obj.pointer.take();

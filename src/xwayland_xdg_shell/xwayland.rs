@@ -64,12 +64,11 @@ impl XwmHandler for WprsState {
             // Without this, xwayland still thinks the key that triggered the
             // window close is still held down and sends key repeat events.
             if let Some(keyboard) = self.compositor_state.seat.get_keyboard() {
-                if keyboard
-                    .current_focus()
-                    .map_or(false, |focus| focus == window)
-                {
-                    let serial = SERIAL_COUNTER.next_serial();
-                    keyboard.set_focus(self, None, serial);
+                if let Some(focus) = keyboard.current_focus() {
+                    if focus == window {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        keyboard.set_focus(self, None, serial);
+                    }
                 }
             }
         }

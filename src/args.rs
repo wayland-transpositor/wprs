@@ -65,8 +65,9 @@ pub trait OptionalConfig<Conf: Config>:
             return None;
         }
 
-        let config_str = fs::read_to_string(&config_file)
-            .expect("config file at path {config_file} exists but there was an error reading it");
+        let config_str = fs::read_to_string(&config_file).unwrap_or_else(|_| {
+            panic!("config file at path {config_file:?} exists but there was an error reading it")
+        });
         let config: Self = Options::default()
             .with_default_extension(Extensions::IMPLICIT_SOME)
             .from_str(&config_str)

@@ -232,7 +232,7 @@ fn compression_benchmark(c: &mut Criterion) {
     let files = fs::read_dir("/home/rasputin/qoi_benchmark_images/screenshot_web/")
         .unwrap()
         .map(|dirent| dirent.unwrap().path())
-        .filter(|path| path.extension().map_or(false, |ext| ext == "png"));
+        .filter(|path| path.extension().is_some_and(|ext| ext == "png"));
     let mut compression_ratios = Vec::new();
     let mut filter_compression_ratios = Vec::new();
     for file in files {

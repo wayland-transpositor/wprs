@@ -415,7 +415,7 @@ pub(crate) fn find_x11_parent(
                 .find(|(_, xwls)| {
                     xwls.x11_surface
                         .as_ref()
-                        .map_or(false, |s| s.window_id() == parent_id)
+                        .is_some_and(|s| s.window_id() == parent_id)
                 })
                 .unwrap();
 

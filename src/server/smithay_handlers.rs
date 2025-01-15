@@ -489,8 +489,8 @@ impl ClientDndGrabHandler for WprsServerState {
         }
     }
 
-    #[instrument(skip(self, _seat), level = "debug")]
-    fn dropped(&mut self, _seat: Seat<Self>) {}
+    #[instrument(skip(self, _target, _validated, _seat), level = "debug")]
+    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {}
 }
 
 impl ServerDndGrabHandler for WprsServerState {

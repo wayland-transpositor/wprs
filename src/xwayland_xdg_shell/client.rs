@@ -91,6 +91,7 @@ use smithay_client_toolkit::seat::keyboard::KeyboardHandler;
 use smithay_client_toolkit::seat::keyboard::Keymap;
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use smithay_client_toolkit::seat::keyboard::Modifiers;
+use smithay_client_toolkit::seat::keyboard::RawModifiers;
 use smithay_client_toolkit::seat::keyboard::RepeatInfo;
 use smithay_client_toolkit::seat::pointer::PointerEvent;
 use smithay_client_toolkit::seat::pointer::PointerEventKind;
@@ -412,9 +413,9 @@ impl PopupHandler for WprsState {
         let geo = if x11_surface.is_override_redirect() {
             None
         } else {
-            Some(Rectangle::from_loc_and_size(
-                configure.position,
-                (configure.width, configure.height),
+            Some(Rectangle::new(
+                configure.position.into(),
+                (configure.width, configure.height).into(),
             ))
         };
 
@@ -748,6 +749,7 @@ impl KeyboardHandler for WprsState {
         _keyboard: &WlKeyboard,
         _serial: u32,
         modifiers: Modifiers,
+        _raw_modifiers: RawModifiers,
         variant: u32,
     ) {
         let keyboard = log_and_return!(self
@@ -1145,9 +1147,9 @@ impl XWaylandXdgToplevel {
         // X11's ConfigureNotify wants the outer coordinates but the inner
         // dimensions. And don't worry about border_width. /sigh
         x11_surface
-            .configure(Rectangle::from_loc_and_size(
-                (-self.x11_offset.x, -self.x11_offset.y),
-                (width as i32, height as i32),
+            .configure(Rectangle::new(
+                (-self.x11_offset.x, -self.x11_offset.y).into(),
+                (width as i32, height as i32).into(),
             ))
             .location(loc!())?;
 
@@ -1200,9 +1202,9 @@ impl XWaylandXdgToplevel {
         };
 
         x11_surface
-            .configure(Rectangle::from_loc_and_size(
-                (-self.x11_offset.x, -self.x11_offset.y),
-                (width, height),
+            .configure(Rectangle::new(
+                (-self.x11_offset.x, -self.x11_offset.y).into(),
+                (width, height).into(),
             ))
             .location(loc!())?;
 
@@ -1453,12 +1455,13 @@ impl XWaylandXdgPopup {
         let configure_rect = if x11_surface.is_override_redirect() {
             None
         } else {
-            Some(Rectangle::from_loc_and_size(
+            Some(Rectangle::new(
                 (
                     geometry.loc.x + parent.wl_offset.x,
                     geometry.loc.y + parent.wl_offset.x,
-                ),
-                (geometry.size.w, geometry.size.h),
+                )
+                    .into(),
+                (geometry.size.w, geometry.size.h).into(),
             ))
         };
 

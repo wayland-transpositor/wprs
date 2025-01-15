@@ -52,6 +52,7 @@ use smithay_client_toolkit::seat::keyboard::KeyboardHandler;
 use smithay_client_toolkit::seat::keyboard::Keymap;
 use smithay_client_toolkit::seat::keyboard::Keysym;
 use smithay_client_toolkit::seat::keyboard::Modifiers;
+use smithay_client_toolkit::seat::keyboard::RawModifiers;
 use smithay_client_toolkit::seat::keyboard::RepeatInfo;
 use smithay_client_toolkit::seat::pointer::PointerEvent;
 use smithay_client_toolkit::seat::pointer::PointerEventKind;
@@ -532,7 +533,10 @@ impl KeyboardHandler for WprsClientState {
             )));
     }
 
-    #[instrument(skip(self, _conn, _qh, _keyboard, _serial), level = "debug")]
+    #[instrument(
+        skip(self, _conn, _qh, _keyboard, _serial, _raw_modifiers),
+        level = "debug"
+    )]
     fn update_modifiers(
         &mut self,
         _conn: &Connection,
@@ -540,6 +544,7 @@ impl KeyboardHandler for WprsClientState {
         _keyboard: &WlKeyboard,
         _serial: u32,
         modifiers: Modifiers,
+        _raw_modifiers: RawModifiers,
         variant: u32,
     ) {
         self.serializer

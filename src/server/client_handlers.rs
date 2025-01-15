@@ -485,9 +485,9 @@ impl WprsServerState {
                 let surface_id = WlSurfaceId::new(surface.wl_surface());
                 debug!("matched surface {surface_id:?}");
                 surface.with_pending_state(|ref mut state| {
-                    state.geometry = Rectangle::from_loc_and_size(
-                        configure.position,
-                        (configure.width, configure.height),
+                    state.geometry = Rectangle::new(
+                        configure.position.into(),
+                        (configure.width, configure.height).into(),
                     );
                 });
                 surface.send_configure().log_and_ignore(loc!());

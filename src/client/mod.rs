@@ -289,8 +289,9 @@ pub enum Role {
 impl WaylandSurface for RemoteSurface {
     fn wl_surface(&self) -> &WlSurface {
         match &self.role {
-            None | Some(Role::Cursor(_) | Role::SubSurface(_)) => {
-                self.local_surface.as_ref().unwrap().wl_surface()
+            None | Some(Role::Cursor(_)) => self.local_surface.as_ref().unwrap().wl_surface(),
+            Some(Role::SubSurface(remote_subsurface)) => {
+                remote_subsurface.local_surface.wl_surface()
             },
             Some(Role::XdgToplevel(remote_xdg_toplevel)) => {
                 remote_xdg_toplevel.local_window.wl_surface()

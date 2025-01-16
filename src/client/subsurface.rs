@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use smithay_client_toolkit::compositor::CompositorState;
+use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::reexports::client::protocol::wl_subcompositor::WlSubcompositor;
 use smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
@@ -187,6 +188,14 @@ pub struct RemoteSubSurface {
     pub(crate) parent: WlSurfaceId,
     pub(crate) sync: bool,
     local_subsurface: WlSubsurface,
+    pub(crate) local_surface: Surface,
+}
+
+impl Drop for RemoteSubSurface {
+    fn drop(&mut self) {
+        // subsurface needs to be destroyed before local_surface is dropped
+        self.local_subsurface.destroy();
+    }
 }
 
 impl RemoteSubSurface {
@@ -237,23 +246,23 @@ impl RemoteSubSurface {
             return Ok(());
         }
 
-        let local_subsurface = subcompositor.get_subsurface(
-            surface
-                .local_surface
-                .as_ref()
-                .location(loc!())?
-                .wl_surface(),
-            &parent,
-            qh,
-            SubSurfaceData,
-        );
+        if let Some(local_surface) = surface.local_surface.take() {
+            let local_subsurface = subcompositor.get_subsurface(
+                local_surface.wl_surface(),
+                &parent,
+                qh,
+                SubSurfaceData,
+            );
 
-        let remote_subsurface = Self {
-            parent: parent_id,
-            sync: true,
-            local_subsurface,
-        };
-        surface.role = Some(Role::SubSurface(remote_subsurface));
+            let remote_subsurface = Self {
+                parent: parent_id,
+                sync: true,
+                local_subsurface,
+                local_surface,
+            };
+            surface.role = Some(Role::SubSurface(remote_subsurface));
+        }
+
         Ok(())
     }
 

@@ -39,6 +39,7 @@ use smithay::wayland::shell::kde::decoration::KdeDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::viewporter::ViewporterState;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationMode;
 
 use crate::prelude::*;
@@ -96,6 +97,7 @@ pub struct WprsServerState {
     pub seat_state: SeatState<Self>,
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
+    pub viewport_state: ViewporterState,
 
     pub seat: Seat<Self>,
 
@@ -151,6 +153,7 @@ impl WprsServerState {
             seat_state,
             data_device_state: DataDeviceState::new::<Self>(&dh),
             primary_selection_state: PrimarySelectionState::new::<Self>(&dh),
+            viewport_state: ViewporterState::new::<Self>(&dh),
             seat,
             serializer,
             object_map: HashMap::new(),

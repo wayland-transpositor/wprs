@@ -22,7 +22,7 @@ bimap = "0.6.3"
 bpaf = "0.9.12"
 bytemuck = { version = "1.16.0", features = ["extern_crate_alloc"] }
 crossbeam-channel = "0.5.13"
-divbuf = { git = "https://github.com/asomers/divbuf" }
+divbuf = "0.4.0"
 enum-as-inner = "0.6.0"
 fallible-iterator = "0.3.0"
 home = "0.5.9"

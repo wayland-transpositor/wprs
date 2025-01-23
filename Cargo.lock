@@ -420,8 +420,9 @@ checksum = "96a6ac251f4a2aca6b3f91340350eab87ae57c3f127ffeb585e92bd336717991"
 
 [[package]]
 name = "divbuf"
-version = "0.3.2-pre"
-source = "git+https://github.com/asomers/divbuf#3c8428553e28f81d65019f3fb16bb0f3963f9338"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0809dcae8c7e9f3a1d7a70ea495427e09a2d494088b4276cb118b51d513c6af1"
 
 [[package]]
 name = "dlib"

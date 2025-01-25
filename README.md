@@ -29,6 +29,25 @@ The launcher (`wprs`) requires:
 This requires cargo and a rustc matching the one in rust-toolchain.toml to be
 installed. The debian rustc package is not used due to being too old.
 
+### Docker
+
+To build .deb files without installing the above dependencies, we supply a `Dockerfile`.
+
+To build the .deb and copy it locally:
+
+```shell
+docker build . -t wprs
+docker run --user $(id -u):$(id -g)  -v $(pwd):/deb --rm wprs:latest bash -c "cp *.deb /deb/"
+```
+
+By default, the `Dockerfile `builds against `debian:trixie` but you can use the `ARG`
+`BASE_IMAGE` to overwrite this to another distribution and/or release version.
+
+For example:
+
+```shell
+docker build --build-arg BASE_IMAGE=ubuntu . -t wprs
+```
 
 ## Usage
 

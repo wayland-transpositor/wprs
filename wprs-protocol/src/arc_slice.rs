@@ -28,7 +28,7 @@ use std::ops::Deref;
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::utils;
+use wprs_common::utils;
 
 pub struct ArcSlice<T> {
     // Ideally we'd make this generic over Send and Sync (i.e., ArcSlice would

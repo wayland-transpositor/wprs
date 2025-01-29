@@ -42,15 +42,15 @@ use smithay::wayland::shm::ShmState;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationMode;
 
 use crate::prelude::*;
-use crate::serialization::wayland::SurfaceRequest;
-use crate::serialization::wayland::SurfaceRequestPayload;
-use crate::serialization::wayland::SurfaceState;
-use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::Event;
-use crate::serialization::Request;
-use crate::serialization::SendType;
-use crate::serialization::Serializer;
-use crate::utils::SerialMap;
+use wprs_protocol::serialization::wayland::SurfaceRequest;
+use wprs_protocol::serialization::wayland::SurfaceRequestPayload;
+use wprs_protocol::serialization::wayland::SurfaceState;
+use wprs_protocol::serialization::wayland::WlSurfaceId;
+use wprs_protocol::serialization::Event;
+use wprs_protocol::serialization::Request;
+use wprs_protocol::serialization::SendType;
+use wprs_protocol::serialization::Serializer;
+use wprs_common::utils::SerialMap;
 
 pub mod client_handlers;
 pub mod smithay_handlers;

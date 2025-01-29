@@ -16,7 +16,7 @@ use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
-use wprs::prefix_sum;
+use wprs_common::prefix_sum;
 
 fn prefix_sum_benchmark(c: &mut Criterion) {
     let i: u32 = 100 * 1024 * 1024;

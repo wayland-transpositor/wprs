@@ -121,12 +121,12 @@ use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
 use crate::args;
-use crate::buffer_pointer::BufferPointer;
+use wprs_common::buffer_pointer::BufferPointer;
 use crate::client_utils::SeatObject;
 use crate::prelude::*;
-use crate::serialization;
-use crate::serialization::geometry::Point;
-use crate::serialization::wayland::BufferMetadata;
+use wprs_protocol::serialization;
+use wprs_protocol::serialization::geometry::Point;
+use wprs_protocol::serialization::wayland::BufferMetadata;
 use crate::xwayland_xdg_shell::compositor::DecorationBehavior;
 use crate::xwayland_xdg_shell::compositor::X11Parent;
 use crate::xwayland_xdg_shell::compositor::X11ParentForPopup;

@@ -16,7 +16,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 use rkyv::rancor::Error as RancorError;
-use wprs::serialization::wayland::DataToTransfer;
+use wprs_protocol::serialization::wayland::DataToTransfer;
 
 // benchmark to make sure we stay performant at serializing/deserializing large buffers.
 // this means there should be zero copy, zero validation.

@@ -61,6 +61,7 @@ use smithay::reexports::wayland_server::backend;
 use smithay::reexports::wayland_server::Client;
 use sysctl::Ctl;
 use sysctl::Sysctl;
+use wprs_common::utils;
 
 use crate::arc_slice::ArcSlice;
 use crate::channel_utils::DiscardingSender;
@@ -70,7 +71,6 @@ use crate::sharding_compression::CompressedShard;
 use crate::sharding_compression::ShardingCompressor;
 use crate::sharding_compression::ShardingDecompressor;
 use crate::sharding_compression::MIN_SIZE_TO_COMPRESS;
-use crate::utils;
 
 pub mod geometry;
 pub mod tuple;

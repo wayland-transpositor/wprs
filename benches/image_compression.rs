@@ -24,13 +24,13 @@ use criterion::Criterion;
 use png::BitDepth;
 use png::ColorType;
 use png::Decoder;
-use wprs::arc_slice::ArcSlice;
-use wprs::buffer_pointer::BufferPointer;
-use wprs::filtering;
-use wprs::sharding_compression::CompressedShard;
-use wprs::sharding_compression::ShardingCompressor;
-use wprs::sharding_compression::ShardingDecompressor;
-use wprs::vec4u8::Vec4u8s;
+use wprs_common::buffer_pointer::BufferPointer;
+use wprs_common::filtering;
+use wprs_common::vec4u8::Vec4u8s;
+use wprs_protocol::arc_slice::ArcSlice;
+use wprs_protocol::sharding_compression::CompressedShard;
+use wprs_protocol::sharding_compression::ShardingCompressor;
+use wprs_protocol::sharding_compression::ShardingDecompressor;
 
 // TODO: there a bunch of expensive clones being done in the benchmarks, try to
 // get rid of them. Until then, the runtime benchmarks are mostly useful for

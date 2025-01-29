@@ -44,13 +44,13 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
+use wprs_protocol::serialization::geometry::Point;
+use wprs_protocol::serialization::geometry::Rectangle;
 
 use crate::args;
 use crate::compositor_utils;
 use crate::constants;
 use crate::prelude::*;
-use crate::serialization::geometry::Point;
-use crate::serialization::geometry::Rectangle;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;

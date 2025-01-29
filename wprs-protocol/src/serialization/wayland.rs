@@ -15,6 +15,8 @@
 use std::fmt;
 use std::fmt::Debug;
 use std::num::NonZeroU32;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use anyhow::Error;
@@ -49,11 +51,11 @@ use smithay_client_toolkit::seat::keyboard::RepeatInfo as SctkRepeatInfo;
 use smithay_client_toolkit::seat::pointer::AxisScroll as SctkAxisScroll;
 use smithay_client_toolkit::seat::pointer::PointerEvent as SctkPointerEvent;
 use smithay_client_toolkit::seat::pointer::PointerEventKind as SctkPointerEventKind;
+use wprs_common::buffer_pointer::BufferPointer;
+use wprs_common::filtering;
+use wprs_common::vec4u8::Vec4u8s;
 
 use super::tuple::Tuple2;
-use crate::args;
-use crate::buffer_pointer::BufferPointer;
-use crate::filtering;
 use crate::prelude::*;
 use crate::serialization;
 use crate::serialization::geometry::Point;
@@ -61,7 +63,6 @@ use crate::serialization::geometry::Rectangle;
 use crate::serialization::geometry::Size;
 use crate::serialization::xdg_shell;
 use crate::serialization::ClientId;
-use crate::vec4u8::Vec4u8s;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct WlSurfaceId(pub u64);
@@ -302,7 +303,7 @@ impl fmt::Debug for KeyInner {
             .field("serial", &self.serial)
             .field(
                 "raw_code",
-                if args::get_log_priv_data() {
+                if get_log_priv_data() {
                     &self.raw_code
                 } else {
                     &"<redacted>"
@@ -924,7 +925,7 @@ impl fmt::Debug for DataToTransfer {
         f.debug_struct("DataToTransfer")
             .field(
                 "0",
-                if args::get_log_priv_data() {
+                if get_log_priv_data() {
                     &self.0
                 } else {
                     &"<redacted>"
@@ -1050,4 +1051,14 @@ pub enum SurfaceEventPayload {
 pub struct SurfaceEvent {
     pub surface_id: WlSurfaceId,
     pub payload: SurfaceEventPayload,
+}
+
+pub static LOG_PRIV_DATA: AtomicBool = AtomicBool::new(false);
+
+pub fn set_log_priv_data(val: bool) {
+    LOG_PRIV_DATA.store(val, Ordering::Relaxed);
+}
+
+pub fn get_log_priv_data() -> bool {
+    LOG_PRIV_DATA.load(Ordering::Relaxed)
 }

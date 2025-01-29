@@ -74,13 +74,13 @@ use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
+use wprs_common::utils::SerialMap;
+use wprs_protocol::serialization::geometry::Point;
+use wprs_protocol::serialization::wayland::OutputInfo;
 
 use crate::compositor_utils;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
-use crate::serialization::geometry::Point;
-use crate::serialization::wayland::OutputInfo;
-use crate::utils::SerialMap;
 use crate::xwayland_xdg_shell::client::Role;
 use crate::xwayland_xdg_shell::wmname;
 use crate::xwayland_xdg_shell::WprsState;

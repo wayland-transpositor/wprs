@@ -24,11 +24,11 @@ use crossbeam_channel::Sender;
 use divbuf::DivBufMut;
 use divbuf::DivBufShared;
 use fallible_iterator::FallibleIterator;
+use wprs_common::utils;
 use zstd::bulk;
 
 use crate::arc_slice::ArcSlice;
 use crate::prelude::*;
-use crate::utils;
 
 // TODO: benchmark this and pick a value based on that.
 pub const MIN_SIZE_TO_COMPRESS: usize = 4096;

@@ -34,9 +34,9 @@ use wprs::client::ClientOptions;
 use wprs::client::WprsClientState;
 use wprs::control_server;
 use wprs::prelude::*;
-use wprs::serialization;
-use wprs::serialization::Serializer;
-use wprs::utils;
+use wprs_common::utils;
+use wprs_protocol::serialization;
+use wprs_protocol::serialization::Serializer;
 
 #[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

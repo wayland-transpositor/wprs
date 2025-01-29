@@ -27,10 +27,10 @@ use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::shm;
 use smithay::wayland::shm::BufferAccessError;
 use smithay::wayland::shm::BufferData;
+use wprs_common::buffer_pointer::BufferPointer;
+use wprs_protocol::serialization::wayland::OutputInfo;
 
-use crate::buffer_pointer::BufferPointer;
 use crate::prelude::*;
-use crate::serialization::wayland::OutputInfo;
 
 /// # Panics
 /// If smithay has a bug and with_buffer_contents gives us an invalid pointer.

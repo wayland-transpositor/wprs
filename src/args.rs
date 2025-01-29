@@ -19,8 +19,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process;
 use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
 use bpaf::Parser;
 use optional_struct::Applicable;
@@ -30,6 +28,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tracing::metadata::ParseLevelError;
 use tracing::Level;
+use wprs_protocol::serialization;
 
 use crate::prelude::*;
 
@@ -237,12 +236,10 @@ pub fn title_prefix() -> impl Parser<Option<String>> {
         .optional()
 }
 
-pub static LOG_PRIV_DATA: AtomicBool = AtomicBool::new(false);
-
 pub fn set_log_priv_data(val: bool) {
-    LOG_PRIV_DATA.store(val, Ordering::Relaxed);
+    serialization::wayland::set_log_priv_data(val);
 }
 
 pub fn get_log_priv_data() -> bool {
-    LOG_PRIV_DATA.load(Ordering::Relaxed)
+    serialization::wayland::get_log_priv_data()
 }

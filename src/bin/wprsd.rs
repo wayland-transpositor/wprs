@@ -36,10 +36,10 @@ use wprs::args::Config;
 use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
 use wprs::prelude::*;
-use wprs::serialization::Serializer;
 use wprs::server::smithay_handlers::ClientState;
 use wprs::server::WprsServerState;
-use wprs::utils;
+use wprs_common::utils;
+use wprs_protocol::serialization::Serializer;
 
 #[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

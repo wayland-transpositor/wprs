@@ -23,21 +23,21 @@ use smithay_client_toolkit::shell::xdg::window::Window;
 use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
 use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
+use wprs_protocol::serialization::geometry::Size;
+use wprs_protocol::serialization::wayland::SurfaceState;
+use wprs_protocol::serialization::wayland::WlSurfaceId;
+use wprs_protocol::serialization::xdg_shell::DecorationMode;
+use wprs_protocol::serialization::xdg_shell::XdgPopupId;
+use wprs_protocol::serialization::xdg_shell::XdgPositioner;
+use wprs_protocol::serialization::xdg_shell::XdgToplevelId;
+use wprs_protocol::serialization::ClientId;
+use wprs_protocol::serialization::ObjectId;
 
 use crate::client::ObjectBimap;
 use crate::client::RemoteSurface;
 use crate::client::Role;
 use crate::client::WprsClientState;
 use crate::prelude::*;
-use crate::serialization::geometry::Size;
-use crate::serialization::wayland::SurfaceState;
-use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::xdg_shell::DecorationMode;
-use crate::serialization::xdg_shell::XdgPopupId;
-use crate::serialization::xdg_shell::XdgPositioner;
-use crate::serialization::xdg_shell::XdgToplevelId;
-use crate::serialization::ClientId;
-use crate::serialization::ObjectId;
 
 #[derive(Debug)]
 pub struct RemoteXdgToplevel {

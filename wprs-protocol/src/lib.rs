@@ -1,4 +1,4 @@
-// Copyright 2024 Google LLC
+// Copyright 2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,21 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod args;
-pub mod client;
-pub mod client_utils;
-pub mod compositor_utils;
-pub mod constants;
-pub mod control_server;
-pub mod fallible_entry;
-pub mod server;
-pub mod xwayland_xdg_shell;
-
-#[cfg(feature = "tracy-allocator")]
-pub mod tracy_allocator;
+pub mod arc_slice;
+pub mod channel_utils;
+pub mod serialization;
+pub mod sharding_compression;
 
 pub mod prelude {
     pub use wprs_common::prelude::*;
-
-    pub use crate::fallible_entry::FallibleEntryExt;
 }

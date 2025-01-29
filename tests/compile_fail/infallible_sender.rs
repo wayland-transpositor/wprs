@@ -16,7 +16,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 
-use wprs::channel_utils::InfallibleSender;
+use wprs_protocol::channel_utils::InfallibleSender;
 
 struct ChannelParent(Sender<()>, Receiver<()>);
 impl ChannelParent {

@@ -1,10 +1,17 @@
 [package]
 name = "wprs"
 version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[workspace.package]
 authors = ["Nicolas Avrutin <rasputin@google.com>"]
 license = "Apache-2.0"
 edition = "2021"
-build = "build.rs"
+
+[workspace]
+members = ["wprs-protocol", "wprs-common"]
 
 [profile.release-with-symbols]
 inherits = "release"
@@ -15,21 +22,20 @@ inherits = "release-with-symbols"
 lto = true
 codegen-units = 1
 
+
 [dependencies]
+wprs-protocol = { path = "./wprs-protocol" }
+wprs-common = { path = "./wprs-common" }
+
 anyhow = "1.0.86"
-arrayref = "0.3.7"
 bimap = "0.6.3"
 bpaf = "0.9.12"
-bytemuck = { version = "1.16.0", features = ["extern_crate_alloc"] }
 crossbeam-channel = "0.5.13"
-divbuf = "0.4.0"
 enum-as-inner = "0.6.0"
 fallible-iterator = "0.3.0"
 home = "0.5.9"
-itertools = "0.13.0"
 lagoon = { version = "0.1.3", features = ["scope"] }
 nix = { version = "0.29.0", features = ["fs", "socket"] }
-num_enum = "0.7.2"
 optional_struct = "0.5.2"
 rkyv = { version = "0.8.8" }
 ron = "0.8.1"
@@ -42,8 +48,6 @@ smithay = { git = "https://github.com/Smithay/smithay.git", default-features = f
     "wayland_frontend",
 ] }
 smithay-client-toolkit = { git = "https://github.com/Smithay/client-toolkit.git" }
-static_assertions = "1.1.0"
-sysctl = "0.6.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["parking_lot"] }
 tracing-tracy = { version = "0.11.0", optional = true, features = [
@@ -56,16 +60,18 @@ tracy-client = { version = "0.17.0", optional = true, features = [
 ] }
 whoami = "1.5.1"
 x11rb = "0.13.1"
-zstd = { version = "0.13.1" }
 
-[build-dependencies]
-merkle_hash = "3.6.1"
 
 [features]
 # Enables exporting data to the Tracy profiler.
 # NOTE: opens a port on localhost.
 # NOTE: breaks client reconnection due to sigpipe handling.
-tracy = ["dep:tracy-client", "dep:tracing-tracy"]
+tracy = [
+    "dep:tracy-client",
+    "dep:tracing-tracy",
+    "wprs-protocol/tracy",
+    "wprs-common/tracy",
+]
 # Enables memory allocation tracking for tracy. NOTE: severely decreases
 # allocation performance.
 tracy-allocator = ["tracy"]

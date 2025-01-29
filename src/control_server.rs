@@ -26,8 +26,9 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::thread;
 
+use wprs_common::utils;
+
 use crate::prelude::*;
-use crate::utils;
 
 #[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
 enum Status {

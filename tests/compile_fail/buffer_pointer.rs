@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use wprs::buffer_pointer::BufferPointer;
+use wprs_common::buffer_pointer::BufferPointer;
 
 fn works_when_life_of_ptr_is_long_enough() {
     let a = [0u32; 4];

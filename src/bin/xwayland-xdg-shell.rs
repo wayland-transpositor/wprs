@@ -35,10 +35,10 @@ use wprs::args::Config;
 use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
 use wprs::prelude::*;
-use wprs::utils;
 use wprs::xwayland_xdg_shell::compositor::DecorationBehavior;
 use wprs::xwayland_xdg_shell::compositor::XwaylandOptions;
 use wprs::xwayland_xdg_shell::WprsState;
+use wprs_common::utils;
 
 #[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

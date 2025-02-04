@@ -181,6 +181,7 @@ def remote_env_var(var: str) -> str:
 
 def run_remote_command_with_stdout(remote_cmd: list[str]) -> str:
   cmd = (SSH_COMMON_ARGS +
+        args.additional_ssh_command_args +
         [args.destination] + remote_cmd)
   print(f'Running remote command with stdout: {remote_cmd!r}')
   return subprocess.run(
@@ -372,6 +373,7 @@ def run_remote_command(cmd: list[str], env: dict[str, str]) -> None:
 
   cmd = (
     SSH_COMMON_ARGS +
+    args.additional_ssh_command_args +
     [args.destination] +
     env_cmd +
     cmd

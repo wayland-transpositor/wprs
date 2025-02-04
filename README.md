@@ -6,7 +6,6 @@ Rust.
 wprs implements rootless remote desktop access for remote Wayland (and X11, via
 XWayland) applications.
 
-
 ## Building
 
 ### Source
@@ -14,15 +13,22 @@ XWayland) applications.
 `cargo build --profile=release-lto  # or release, but debug is unusably slow`
 
 The following dependencies are required for `wprsc`, `wprsd`, `xwayland-xdg-shell`:
+
 * libxkbcommon (-dev on debian)
 * libwayland (-dev on debian)
 
 The launcher (`wprs`) requires:
+
 * python3
 * psutil (python3-psutil on debian)
 * ssh client
 
-### deb
+## Packaging
+
+We officially maintain [deb](#debian) instructions for Debian-based distros.
+Contributers have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
+
+### Debian
 
 `dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot`
 
@@ -40,7 +46,7 @@ docker build . -t wprs
 docker run --user $(id -u):$(id -g)  -v $(pwd):/deb --rm wprs:latest bash -c "cp *.deb /deb/"
 ```
 
-By default, the `Dockerfile `builds against `debian:trixie` but you can use the `ARG`
+By default, the `Dockerfile` builds against `debian:trixie` but you can use the `ARG`
 `BASE_IMAGE` to overwrite this to another distribution and/or release version.
 
 For example:
@@ -48,6 +54,11 @@ For example:
 ```shell
 docker build --build-arg BASE_IMAGE=ubuntu . -t wprs
 ```
+
+### Arch-Linux (AUR)
+
+wprs is available from the [Arch User Repository](https://aur.archlinux.org/packages/wprs-git)
+as `wprs-git`
 
 ## Usage
 
@@ -99,16 +110,15 @@ wprsd --print-default-config-and-exit=true > ~/.config/wprs/wprsd.ron
 
 Then update the `wprsc.ron` and `wprsd.ron` files with your desired settings.
 
-
 ## Current Limitations
 
 Currently only the the Core and XDG shell protocols are implemented. In
 particular, hardware rendering/dmabuf support is not yet implemented.
 
-- Touch event support is not yet implemented.
-- Drag-and-drop may be wonky in some cases.
-- XWayland drag-and-drop is not (yet?) implemented.
-- webauthn security keys don't yet work in browsers
+* Touch event support is not yet implemented.
+* Drag-and-drop may be wonky in some cases.
+* XWayland drag-and-drop is not (yet?) implemented.
+* webauthn security keys don't yet work in browsers
 
 Generally, wprs will aim to support as many protocols as feasible, it's a
 question of time and prioritization.
@@ -253,10 +263,10 @@ is being used (ssh, in the default case).
 Huge thanks to the following excellent projects for making this project
 significantly easier than it otherwise would have been:
 
-- [Smithay](https://github.com/Smithay)
-- [rkyv](https://github.com/rkyv/rkyv)
-- [tracing](https://github.com/tokio-rs/tracing)
-- [Tracy](https://github.com/wolfpld/tracy)
+* [Smithay](https://github.com/Smithay)
+* [rkyv](https://github.com/rkyv/rkyv)
+* [tracing](https://github.com/tokio-rs/tracing)
+* [Tracy](https://github.com/wolfpld/tracy)
 
 Thanks to [Waypipe](https://gitlab.freedesktop.org/mstoeckl/waypipe) and
 [xwayland-proxy-virtwl](https://github.com/talex5/wayland-proxy-virtwl#xwayland-support)

@@ -19,7 +19,11 @@ FROM ${BASE_IMAGE}
 RUN apt update && \ 
     apt install -y curl libxkbcommon-dev libwayland-dev devscripts pkg-config
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl --proto '=https' --tlsv1.2 -OsSf \
+    https://static.rust-lang.org/rustup/archive/1.27.1/x86_64-unknown-linux-gnu/rustup-init && \
+    echo "6aeece6993e902708983b209d04c0d1dbb14ebb405ddb87def578d41f920f56d rustup-init" \
+    | sha256sum --check && \
+    chmod +x rustup-init && ./rustup-init -y
 
 ENV PATH="$PATH:/root/.cargo/bin"
 

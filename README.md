@@ -10,7 +10,9 @@ XWayland) applications.
 
 ### Source
 
-`cargo build --profile=release-lto  # or release, but debug is unusably slow`
+```bash
+cargo build --profile=release-lto  # or release, but debug is unusably slow
+```
 
 The following dependencies are required for `wprsc`, `wprsd`, `xwayland-xdg-shell`:
 
@@ -30,8 +32,9 @@ Contributers have also supplied packaging for [docker](#docker) and [arch linux]
 
 ### Debian
 
-`dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot`
-
+```bash
+dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
+```
 This requires cargo and a rustc matching the one in rust-toolchain.toml to be
 installed. The debian rustc package is not used due to being too old.
 

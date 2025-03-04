@@ -19,6 +19,8 @@ use std::sync::OnceLock;
 
 use bimap::BiMap;
 use enum_as_inner::EnumAsInner;
+use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::data_device_manager::data_offer::DragOffer;
@@ -41,6 +43,7 @@ use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::registry::RegistryState;
+use smithay_client_toolkit::registry::SimpleGlobal;
 use smithay_client_toolkit::seat::pointer::ThemedPointer;
 use smithay_client_toolkit::seat::SeatState;
 use smithay_client_toolkit::shell::xdg::XdgShell;
@@ -61,6 +64,7 @@ use crate::serialization::wayland::BufferAssignment;
 use crate::serialization::wayland::BufferMetadata;
 use crate::serialization::wayland::Region;
 use crate::serialization::wayland::SubsurfacePosition;
+use crate::serialization::wayland::ViewportState;
 use crate::serialization::wayland::WlSurfaceId;
 use crate::serialization::Capabilities;
 use crate::serialization::ClientId;
@@ -112,6 +116,7 @@ pub struct WprsClientState {
     subcompositor: WlSubcompositor,
     shm_state: Shm,
     xdg_shell_state: XdgShell,
+    wp_viewporter: Option<SimpleGlobal<WpViewporter, 1>>,
 
     data_device_manager_state: DataDeviceManagerState,
     primary_selection_manager_state: Option<PrimarySelectionManagerState>,
@@ -175,6 +180,10 @@ impl WprsClientState {
             shm_state,
             xdg_shell_state: XdgShell::bind(&globals, &qh)
                 .context(loc!(), "xdg shell is not available")?,
+            wp_viewporter: SimpleGlobal::<WpViewporter, 1>::bind(&globals, &qh)
+                .context(loc!(), "wp_viewporter is not available")
+                .warn(loc!())
+                .ok(),
             data_device_manager_state: DataDeviceManagerState::bind(&globals, &qh)
                 .context(loc!(), "data device manager is not available")?,
             primary_selection_manager_state: PrimarySelectionManagerState::bind(&globals, &qh)
@@ -338,6 +347,8 @@ pub struct RemoteSurface {
     pub z_ordered_children: Vec<SubsurfacePosition>,
     pub frame_callback_completed: bool,
     pub frame_damage: Option<Vec<Rectangle<i32>>>,
+    pub viewport: Option<WpViewport>,
+    pub current_viewport_state: Option<ViewportState>,
 }
 
 impl RemoteSurface {
@@ -369,6 +380,8 @@ impl RemoteSurface {
             }],
             frame_callback_completed: true,
             frame_damage: None,
+            viewport: None,
+            current_viewport_state: None,
         })
     }
 
@@ -559,6 +572,39 @@ impl RemoteSurface {
         }
     }
 
+    pub fn set_viewport_state(
+        &mut self,
+        viewport_state: Option<ViewportState>,
+        wp_viewporter: &Option<SimpleGlobal<WpViewporter, 1>>,
+        qh: &QueueHandle<WprsClientState>,
+    ) {
+        let Some(wp_viewporter) = wp_viewporter else {
+            return;
+        };
+        let Ok(wp_viewporter) = wp_viewporter.get() else {
+            return;
+        };
+        let Some(viewport_state) = viewport_state else {
+            return;
+        };
+
+        let wl_surface = self.wl_surface().clone();
+        let viewport = self
+            .viewport
+            .get_or_insert_with(|| wp_viewporter.get_viewport(&wl_surface, qh, ()));
+
+        // skip if the viewport state hasn't changed
+        if self.current_viewport_state != Some(viewport_state) {
+            if let Some(src) = viewport_state.src {
+                viewport.set_source(src.loc.x, src.loc.y, src.size.w, src.size.h);
+            }
+            if let Some(dst) = viewport_state.dst {
+                viewport.set_destination(dst.w, dst.h);
+            }
+            self.current_viewport_state = Some(viewport_state);
+        }
+    }
+
     pub fn set_input_region(
         &mut self,
         region: Option<Region>,
@@ -650,6 +696,14 @@ impl RemoteSurface {
             .location(loc!())?
             .as_xdg_popup_mut()
             .context(loc!(), "Role was not XdgPopup.")
+    }
+}
+
+impl Drop for RemoteSurface {
+    fn drop(&mut self) {
+        if let Some(viewport) = &self.viewport {
+            viewport.destroy();
+        }
     }
 }
 

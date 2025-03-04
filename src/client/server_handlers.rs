@@ -97,6 +97,12 @@ impl WprsClientState {
                 surface_state.buffer_transform.map(Into::into),
             );
 
+            remote_surface.set_viewport_state(
+                surface_state.viewport_state,
+                &self.wp_viewporter,
+                &self.qh,
+            );
+
             remote_surface
                 .set_input_region(surface_state.input_region.take(), &self.compositor_state)
                 .location(loc!())?;

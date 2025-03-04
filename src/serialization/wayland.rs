@@ -35,6 +35,7 @@ use smithay::wayland::compositor::RectangleKind as SmithayRectangleKind;
 use smithay::wayland::compositor::RegionAttributes;
 use smithay::wayland::selection::data_device::SourceMetadata as SmithaySourceMetadata;
 use smithay::wayland::shm::BufferData;
+use smithay::wayland::viewporter::ViewportCachedState;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Region as SctkRegion;
 use smithay_client_toolkit::output::Mode as SctkMode;
@@ -664,7 +665,7 @@ pub struct SubsurfacePosition {
     pub position: Point<i32>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct SurfaceState {
     pub client: ClientId,
     pub id: WlSurfaceId,
@@ -679,6 +680,7 @@ pub struct SurfaceState {
     pub damage: Option<Vec<Rectangle<i32>>>,
     // server-side only
     pub output_ids: Vec<u32>,
+    pub viewport_state: Option<ViewportState>,
 
     // Interfaces
     pub xdg_surface_state: Option<xdg_shell::XdgSurfaceState>,
@@ -700,6 +702,7 @@ impl SurfaceState {
             z_ordered_children: Vec::new(),
             damage: None,
             output_ids: Vec::new(),
+            viewport_state: None,
             xdg_surface_state: None,
         })
     }
@@ -845,13 +848,13 @@ impl From<SctkOutputInfo> for OutputInfo {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum SurfaceRequestPayload {
     Commit(SurfaceState),
     Destroyed,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct SurfaceRequest {
     pub client: ClientId,
     pub surface: WlSurfaceId,
@@ -1050,4 +1053,19 @@ pub enum SurfaceEventPayload {
 pub struct SurfaceEvent {
     pub surface_id: WlSurfaceId,
     pub payload: SurfaceEventPayload,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub struct ViewportState {
+    pub src: Option<Rectangle<f64>>,
+    pub dst: Option<Size<i32>>,
+}
+
+impl From<&ViewportCachedState> for ViewportState {
+    fn from(viewport_state: &ViewportCachedState) -> Self {
+        Self {
+            src: viewport_state.src.map(Into::into),
+            dst: viewport_state.dst.map(Into::into),
+        }
+    }
 }

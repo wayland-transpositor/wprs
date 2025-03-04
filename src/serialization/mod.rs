@@ -113,7 +113,7 @@ pub struct Capabilities {
 
 // TODO: https://github.com/rust-lang/rfcs/pull/2593 - simplify all the enums.
 
-#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum Request {
     Surface(wayland::SurfaceRequest),
     CursorImage(wayland::CursorImage),

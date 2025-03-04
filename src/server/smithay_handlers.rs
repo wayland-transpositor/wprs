@@ -96,6 +96,7 @@ use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
+use smithay::wayland::viewporter::ViewportCachedState;
 
 use crate::channel_utils::DiscardingSender;
 use crate::compositor_utils;
@@ -654,6 +655,10 @@ pub fn set_transformation(
     surface_state.buffer_transform = Some(surface_attributes.buffer_transform.into());
 }
 
+pub fn set_viewport_state(viewport_state: &ViewportCachedState, surface_state: &mut SurfaceState) {
+    surface_state.viewport_state = Some(viewport_state.into());
+}
+
 #[instrument(skip_all, level = "debug")]
 pub fn set_xdg_surface_attributes(surface_data: &SurfaceData, surface_state: &mut SurfaceState) {
     if surface_data.cached_state.has::<SurfaceCachedState>() {
@@ -747,6 +752,9 @@ pub fn commit_impl(
         position: (0, 0).into(),
     });
 
+    let mut guard = surface_data.cached_state.get::<ViewportCachedState>();
+    let viewport_state = guard.current();
+
     let mut guard = surface_data.cached_state.get::<SurfaceAttributes>();
     let surface_attributes = guard.current();
     let mut frame_callbacks = mem::take(&mut surface_attributes.frame_callbacks);
@@ -792,6 +800,7 @@ pub fn commit_impl(
 
     set_regions(surface_attributes, surface_state);
     set_transformation(surface_attributes, surface_state);
+    set_viewport_state(viewport_state, surface_state);
     set_xdg_surface_attributes(surface_data, surface_state);
 
     match &mut surface_state.role {
@@ -1229,3 +1238,4 @@ smithay::delegate_seat!(WprsServerState);
 smithay::delegate_data_device!(WprsServerState);
 smithay::delegate_output!(WprsServerState);
 smithay::delegate_primary_selection!(WprsServerState);
+smithay::delegate_viewporter!(WprsServerState);

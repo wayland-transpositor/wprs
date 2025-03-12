@@ -2323,8 +2323,16 @@ dependencies = [
  "tracy-client 0.17.6",
  "trybuild",
  "whoami",
+ "wprs-metrics-protocol",
  "x11rb",
  "zstd",
+]
+
+[[package]]
+name = "wprs-metrics-protocol"
+version = "0.1.0"
+dependencies = [
+ "rkyv",
 ]
 
 [[package]]

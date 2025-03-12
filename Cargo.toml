@@ -1,10 +1,18 @@
 [package]
 name = "wprs"
 version = "0.1.0"
+build = "build.rs"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[workspace.package]
 authors = ["Nicolas Avrutin <rasputin@google.com>"]
 license = "Apache-2.0"
 edition = "2021"
-build = "build.rs"
+
+[workspace]
+members = ["wprs", "wprs-metrics-protocol"]
 
 [profile.release-with-symbols]
 inherits = "release"
@@ -16,6 +24,8 @@ lto = true
 codegen-units = 1
 
 [dependencies]
+wprs-metrics-protocol = { path = "./wprs-metrics-protocol", optional = true }
+
 anyhow = "1.0.86"
 arrayref = "0.3.7"
 bimap = "0.6.3"
@@ -69,6 +79,7 @@ tracy = ["dep:tracy-client", "dep:tracing-tracy"]
 # Enables memory allocation tracking for tracy. NOTE: severely decreases
 # allocation performance.
 tracy-allocator = ["tracy"]
+metrics = ["dep:wprs-metrics-protocol"]
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

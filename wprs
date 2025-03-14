@@ -48,13 +48,13 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--pulseaudio-forwarding',
                     type=boolean,
-                    choices=[True, False],
+                    choices=['true', 'false'],
                     default='true')
 parser.add_argument('--wprsc-path',
                     default='wprsc')
 parser.add_argument('--wprsc-wayland-debug',
                     type=boolean,
-                    choices=[True, False],
+                    choices=['true', 'false'],
                     default='false')
 parser.add_argument('--wprsc-args',
                     type=shlex.split,
@@ -69,24 +69,24 @@ parser.add_argument('--additional-command-env-vars',
                     default='')
 parser.add_argument('--command-wayland-debug',
                     type=boolean,
-                    choices=[True, False],
+                    choices=['true', 'false'],
                     default='false')
 parser.add_argument('--wprsd-wayland-display',
                     default='wprs-0',
                     help='The WAYLAND_DISPLAY wprsd is listening on.')
 parser.add_argument('--xwayland',
                     type=boolean,
-                    choices=[True, False],
+                    choices=['true', 'false'],
                     default='true')
 parser.add_argument('--wprsd-xwayland-display',
                     default=':100',
                     help='The DISPLAY wprsd is listening on.')
 parser.add_argument('--print-stacktrace',
                     type=boolean,
-                    choices=[True,False],
+                    choices=['true', 'false'],
                     default='false',
                     dest='debug',
-                    help='Adds python stacktrace context to errors')
+                    help='Adds python stacktrace context to errors.')
 
 title_prefix_group = parser.add_mutually_exclusive_group()
 title_prefix_group.add_argument('--title-prefix',
@@ -96,11 +96,11 @@ title_prefix_group.add_argument('--title-prefix',
 title_prefix_group.add_argument('--title-prefix-hostname',
                     type=boolean,
                     help='Prefix window titles with the remote hostname.',
-                    default=False)
+                    default='false')
 title_prefix_group.add_argument('--title-prefix-fqdn',
                     type=boolean,
-                    help='prefix window titles with the remote fqdn.',
-                    default=False)
+                    help='Prefix window titles with the remote fqdn.',
+                    default='false')
 
 parser.add_argument('destination')
 

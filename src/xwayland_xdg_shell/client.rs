@@ -105,6 +105,7 @@ use smithay_client_toolkit::shell::xdg::fallback_frame::FallbackFrame;
 use smithay_client_toolkit::shell::xdg::popup::Popup;
 use smithay_client_toolkit::shell::xdg::popup::PopupConfigure;
 use smithay_client_toolkit::shell::xdg::popup::PopupHandler;
+use smithay_client_toolkit::shell::xdg::window::DecorationMode;
 use smithay_client_toolkit::shell::xdg::window::Window;
 use smithay_client_toolkit::shell::xdg::window::WindowConfigure;
 use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
@@ -1223,8 +1224,31 @@ impl XWaylandXdgToplevel {
     ) -> Result<(i32, i32)> {
         match self.decoration_behavior {
             DecorationBehavior::Auto => {
-                if !x11_surface.is_decorated() {
-                    self.enable_decorations(x11_surface, configure, buffer_metadata)
+                if let Some(configure) = configure {
+                    match configure.decoration_mode {
+                        DecorationMode::Server => {
+                            // wayland compositor has drawn decorations so it doesn't need ours
+                            self.disable_decoration(x11_surface, Some(configure), buffer_metadata)
+                        },
+                        DecorationMode::Client => {
+                            // x11 app has drawn it's own decorations so it doesn't need ours
+                            // TODO: if the x11_surface is decorated, but there are server-side decorations then we
+                            // should request client-side decorations from the compositor
+                            if x11_surface.is_decorated() {
+                                self.disable_decoration(
+                                    x11_surface,
+                                    Some(configure),
+                                    buffer_metadata,
+                                )
+                            } else {
+                                self.enable_decorations(
+                                    x11_surface,
+                                    Some(configure),
+                                    buffer_metadata,
+                                )
+                            }
+                        },
+                    }
                 } else {
                     self.disable_decoration(x11_surface, configure, buffer_metadata)
                 }

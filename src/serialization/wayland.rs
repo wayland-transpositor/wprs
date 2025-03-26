@@ -425,7 +425,7 @@ pub enum PointerEventKind {
     Axis {
         horizontal: AxisScroll,
         vertical: AxisScroll,
-        source: AxisSource,
+        source: Option<AxisSource>,
     },
 }
 
@@ -453,7 +453,7 @@ impl From<SctkPointerEventKind> for PointerEventKind {
             } => Self::Axis {
                 horizontal: horizontal.into(),
                 vertical: vertical.into(),
-                source: source.unwrap().into(),
+                source: source.map(Into::into),
             },
         }
     }

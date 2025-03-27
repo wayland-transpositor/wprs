@@ -48,14 +48,14 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--pulseaudio-forwarding',
                     type=boolean,
-                    choices=['true', 'false'],
-                    default='true')
+                    choices=[True, False],
+                    default=True)
 parser.add_argument('--wprsc-path',
                     default='wprsc')
 parser.add_argument('--wprsc-wayland-debug',
                     type=boolean,
-                    choices=['true', 'false'],
-                    default='false')
+                    choices=[True, False],
+                    default=False)
 parser.add_argument('--wprsc-args',
                     type=shlex.split,
                     default='')
@@ -69,22 +69,22 @@ parser.add_argument('--additional-command-env-vars',
                     default='')
 parser.add_argument('--command-wayland-debug',
                     type=boolean,
-                    choices=['true', 'false'],
-                    default='false')
+                    choices=[True, False],
+                    default=False)
 parser.add_argument('--wprsd-wayland-display',
                     default='wprs-0',
                     help='The WAYLAND_DISPLAY wprsd is listening on.')
 parser.add_argument('--xwayland',
                     type=boolean,
-                    choices=['true', 'false'],
-                    default='true')
+                    choices=[True, False],
+                    default=True)
 parser.add_argument('--wprsd-xwayland-display',
                     default=':100',
                     help='The DISPLAY wprsd is listening on.')
 parser.add_argument('--print-stacktrace',
                     type=boolean,
-                    choices=['true', 'false'],
-                    default='false',
+                    choices=[True, False],
+                    default=True,
                     dest='debug',
                     help='Adds python stacktrace context to errors.')
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import collections
 import dataclasses
+import hashlib
 import json
 import os
 import os.path
@@ -47,13 +49,13 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--pulseaudio-forwarding',
                     type=boolean,
                     choices=[True, False],
-                    default='true')
+                    default=True)
 parser.add_argument('--wprsc-path',
                     default='wprsc')
 parser.add_argument('--wprsc-wayland-debug',
                     type=boolean,
                     choices=[True, False],
-                    default='false')
+                    default=False)
 parser.add_argument('--wprsc-args',
                     type=shlex.split,
                     default='')
@@ -68,23 +70,23 @@ parser.add_argument('--additional-command-env-vars',
 parser.add_argument('--command-wayland-debug',
                     type=boolean,
                     choices=[True, False],
-                    default='false')
+                    default=False)
 parser.add_argument('--wprsd-wayland-display',
                     default='wprs-0',
                     help='The WAYLAND_DISPLAY wprsd is listening on.')
 parser.add_argument('--xwayland',
                     type=boolean,
                     choices=[True, False],
-                    default='true')
+                    default=True)
 parser.add_argument('--wprsd-xwayland-display',
                     default=':100',
                     help='The DISPLAY wprsd is listening on.')
 parser.add_argument('--print-stacktrace',
                     type=boolean,
-                    choices=[True,False],
-                    default='false',
+                    choices=[True, False],
+                    default=True,
                     dest='debug',
-                    help='Adds python stacktrace context to errors')
+                    help='Adds python stacktrace context to errors.')
 
 title_prefix_group = parser.add_mutually_exclusive_group()
 title_prefix_group.add_argument('--title-prefix',
@@ -94,11 +96,11 @@ title_prefix_group.add_argument('--title-prefix',
 title_prefix_group.add_argument('--title-prefix-hostname',
                     type=boolean,
                     help='Prefix window titles with the remote hostname.',
-                    default=False)
+                    default='false')
 title_prefix_group.add_argument('--title-prefix-fqdn',
                     type=boolean,
-                    help='prefix window titles with the remote fqdn.',
-                    default=False)
+                    help='Prefix window titles with the remote fqdn.',
+                    default='false')
 
 parser.add_argument('destination')
 
@@ -131,8 +133,38 @@ def socket_dir() -> str:
   return xdg_runtime_dir() or os.getenv('TMPDIR') or '/tmp'
 
 
-WPRS_SOCKET = os.path.join(socket_dir(), 'wprs.sock')
-WPRS_CONTROL_SOCKET = os.path.join(socket_dir(), 'wprsc-ctrl.sock')
+def get_hashed_destination_params():
+  """This allows keeping file paths for sockets etc unique.
+
+  This is conceptually inspired by %C, see ControlPath and TOKENS in
+  `man ssh_config`. However, it is not expected to be compatible with
+  the SSH implementation.
+  """
+  cmd = SSH_COMMON_ARGS + ['-G', args.destination]
+  proc = subprocess.run(cmd, env=os.environ, check=True,
+                        start_new_session=True, capture_output=True,
+                        text=True)
+  ssh_config_nonempty_strs = filter(bool, proc.stdout.split('\n'))
+  ssh_config_tuples = map(lambda line: line.split(maxsplit=1),
+                          ssh_config_nonempty_strs)
+  ssh_config_dict = collections.defaultdict(lambda: '',
+                                            ssh_config_tuples)
+  local_hostname = socket.gethostname()
+  ssh_connection_params = (
+      f'{local_hostname}{ssh_config_dict["hostname"]}{ssh_config_dict["port"]}{ssh_config_dict["user"]}{ssh_config_dict["proxyjump"]}'
+  )
+  return (
+      hashlib.sha256(ssh_connection_params.encode()).hexdigest()
+  )
+
+
+def get_wprs_socket_path():
+  return os.path.join(socket_dir(), f'wprs_{get_hashed_destination_params()}.sock')
+
+
+def get_wprs_control_socket_path():
+  return os.path.join(socket_dir(),
+                      f'wprsc-ctrl_{get_hashed_destination_params()}.sock')
 
 
 SSH_COMMON_ARGS = [
@@ -162,8 +194,8 @@ def stop_ssh_tunnel() -> None:
   print(f'Stopping SSH tunnel: {cmd!r}')
   subprocess.run(cmd, env=os.environ)
   try:
-    os.unlink(WPRS_SOCKET)
-    os.unlink(WPRS_CONTROL_SOCKET)
+    os.unlink(get_wprs_socket_path())
+    os.unlink(get_wprs_control_socket_path())
   except FileNotFoundError:
     pass
 
@@ -198,8 +230,8 @@ def remote_socket_dir() -> str:
 def forward_wprs_sock() -> None:
   cmd = (SSH_COMMON_ARGS +
          ['-O', 'forward',
-          '-L', f'{WPRS_SOCKET}:{remote_socket_dir()}/wprs.sock',
-          '-L', f'{WPRS_CONTROL_SOCKET}:{remote_socket_dir()}/wprsc-ctrl.sock']
+          '-L', f'{get_wprs_socket_path()}:{remote_socket_dir()}/wprs.sock',
+          '-L', f'{get_wprs_control_socket_path()}:{remote_socket_dir()}/wprsc-ctrl.sock']
          + [args.destination])
   print(f'Forwarding wprs sockets: {cmd!r}')
   subprocess.run(cmd, env=os.environ, check=True)
@@ -237,12 +269,14 @@ def create_ssh_auth_sock_symlink() -> None:
   subprocess.run(cmd, env=os.environ, check=True)
 
 
-WPRS_PIDFILE = os.path.join(socket_dir(), 'wprsc.pid')
+def get_wprs_pid_file():
+  return os.path.join(socket_dir(),
+                      f'wprsc_{get_hashed_destination_params()}.pid')
 
 
 def wprsc_pid() -> int | None:
   try:
-    with open(WPRS_PIDFILE, 'r') as f:
+    with open(get_wprs_pid_file(), 'r') as f:
       return int(f.read().strip())
   except (FileNotFoundError, ValueError):
     return None
@@ -268,7 +302,7 @@ def start_wprsc(cmd: list[str], wayland_debug: bool) -> None:
   env = os.environ | wprsc_env(wayland_debug)
   print(f'Executing wprsc: {cmd!r}')
   proc = subprocess.Popen(cmd, env=env, start_new_session=True)
-  with open(WPRS_PIDFILE, 'w') as f:
+  with open(get_wprs_pid_file(), 'w') as f:
     f.write(str(proc.pid))
 
 
@@ -278,7 +312,7 @@ def stop_wprsc() -> None:
     proc.terminate()
 
   try:
-    os.unlink(WPRS_PIDFILE)
+    os.unlink(get_wprs_pid_file())
   except FileNotFoundError:
     pass
 
@@ -318,7 +352,7 @@ def query_capabilities() -> Capabilities | None:
   while True:
     try:
       with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.connect(WPRS_CONTROL_SOCKET)
+        s.connect(get_wprs_control_socket_path())
         with s.makefile('rw') as f:
           f.write('caps\n')
           f.flush()
@@ -342,7 +376,13 @@ def get_title_prefix() -> [str]:
     return []
 
 def maybe_start_wprsc() -> Capabilities | None:
-  cmd = [args.wprsc_path] + args.wprsc_args + get_title_prefix()
+  # Using different names for the forwarded socket paths allows e.g.
+  # running multiple instances without conflicts.
+  socket_args = [f'--socket={get_wprs_socket_path()}',
+                 f'--control-socket={get_wprs_control_socket_path()}']
+
+  cmd = ([args.wprsc_path] + args.wprsc_args + get_title_prefix()
+         + socket_args)
   should_start_wprsc = False
   proc = wprsc_proc()
 

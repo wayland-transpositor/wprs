@@ -15,6 +15,9 @@
 /// Handlers for events from smithay client toolkit.
 use smithay::reexports::wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1;
 use smithay::reexports::wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1;
+use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport;
+use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::compositor::CompositorHandler;
 use smithay_client_toolkit::compositor::SurfaceData;
 use smithay_client_toolkit::data_device_manager::data_device::DataDeviceHandler;
@@ -46,6 +49,7 @@ use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::registry::ProvidesRegistryState;
 use smithay_client_toolkit::registry::RegistryState;
+use smithay_client_toolkit::registry::SimpleGlobal;
 use smithay_client_toolkit::registry_handlers;
 use smithay_client_toolkit::seat::keyboard::KeyEvent;
 use smithay_client_toolkit::seat::keyboard::KeyboardHandler;
@@ -954,6 +958,13 @@ impl PrimarySelectionSourceHandler for WprsClientState {
     }
 }
 
+impl AsMut<SimpleGlobal<WpViewporter, 1>> for WprsClientState {
+    fn as_mut(&mut self) -> &mut SimpleGlobal<WpViewporter, 1> {
+        // This should never panic since self.wp_viewporter is none then we will never get any events for it.
+        &mut *self.wp_viewporter.as_mut().unwrap()
+    }
+}
+
 smithay_client_toolkit::delegate_compositor!(WprsClientState);
 smithay_client_toolkit::delegate_data_device!(WprsClientState);
 smithay_client_toolkit::delegate_keyboard!(WprsClientState);
@@ -967,6 +978,7 @@ smithay_client_toolkit::delegate_xdg_popup!(WprsClientState);
 smithay_client_toolkit::delegate_xdg_shell!(WprsClientState);
 smithay_client_toolkit::delegate_xdg_window!(WprsClientState);
 smithay_client_toolkit::delegate_primary_selection!(WprsClientState);
+smithay_client_toolkit::delegate_simple!(WprsClientState, WpViewporter, 1);
 
 impl ProvidesRegistryState for WprsClientState {
     fn registry(&mut self) -> &mut RegistryState {
@@ -1002,5 +1014,18 @@ impl Dispatch<WlSubsurface, SubSurfaceData> for WprsClientState {
         _qh: &QueueHandle<Self>,
     ) {
         dbg!("SUBSURFACE DISPATCH");
+    }
+}
+
+impl Dispatch<WpViewport, ()> for WprsClientState {
+    fn event(
+        _state: &mut Self,
+        _viewport: &WpViewport,
+        _event: wp_viewport::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        unreachable!("There are no wp_viewport events")
     }
 }

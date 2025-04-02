@@ -359,12 +359,26 @@ impl XwmHandler for WprsState {
     }
 
     fn property_notify(&mut self, _xwm: XwmId, window: X11Surface, property: WmWindowProperty) {
-        if property == WmWindowProperty::Title {
-            if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
-                if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
-                    toplevel.local_window.set_title(window.title());
+        match property {
+            WmWindowProperty::Title => {
+                if let Some(xwayland_surface) =
+                    xsurface_from_x11_surface(&mut self.surfaces, &window)
+                {
+                    if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
+                        toplevel.local_window.set_title(window.title());
+                    }
                 }
-            }
+            },
+            WmWindowProperty::Class => {
+                if let Some(xwayland_surface) =
+                    xsurface_from_x11_surface(&mut self.surfaces, &window)
+                {
+                    if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
+                        toplevel.local_window.set_app_id(window.class());
+                    }
+                }
+            },
+            _ => {},
         }
     }
 }

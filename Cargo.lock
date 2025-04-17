@@ -197,6 +197,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10929724661d1c43856fd87c7a127ae944ec55579134fb485e4136fb6a46fdcb"
 dependencies = [
  "bitflags 2.8.0",
+ "nix",
  "polling",
  "rustix",
  "slab",
@@ -2294,6 +2295,7 @@ dependencies = [
  "bimap",
  "bpaf",
  "bytemuck",
+ "calloop",
  "criterion",
  "crossbeam-channel",
  "divbuf",

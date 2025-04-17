@@ -22,6 +22,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 
+use calloop::RegistrationToken;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
@@ -135,9 +136,10 @@ impl WprsCompositorState {
     /// On failure launching xwayland.
     pub fn new<K, V, I>(
         dh: DisplayHandle,
-        event_loop_handle: LoopHandle<'static, WprsState>,
+        event_loop_handle: &LoopHandle<'static, WprsState>,
         decoration_behavior: DecorationBehavior,
         xwayland_options: XwaylandOptions<K, V, I>,
+        registration_tokens: &mut Vec<RegistrationToken>,
     ) -> Self
     where
         I: IntoIterator<Item = (K, V)>,
@@ -177,11 +179,17 @@ impl WprsCompositorState {
                 let _ = data.compositor_state.xwm.take();
             },
         });
-        if let Err(e) = ret {
-            error!(
-                "Failed to insert the XWaylandSource into the event loop: {}",
-                e
-            );
+
+        match ret {
+            Ok(token) => {
+                registration_tokens.push(token);
+            },
+            Err(e) => {
+                error!(
+                    "Failed to insert the XWaylandSource into the event loop: {}",
+                    e
+                );
+            },
         }
 
         Self {

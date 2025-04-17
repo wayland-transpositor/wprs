@@ -16,9 +16,13 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use bpaf::Parser;
+use calloop::signals::Signal;
+use calloop::signals::Signals;
+use calloop::RegistrationToken;
 use optional_struct::optional_struct;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
+use smithay::reexports::calloop;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::calloop::Interest;
@@ -142,11 +146,12 @@ fn init_wayland_listener(
     wayland_display: &str,
     mut display: Display<WprsState>,
     event_loop: &EventLoop<WprsState>,
+    registration_tokens: &mut Vec<RegistrationToken>,
 ) -> Result<OsString> {
     let listening_socket = ListeningSocketSource::with_name(wayland_display).location(loc!())?;
     let socket_name = listening_socket.socket_name().to_os_string();
 
-    event_loop
+    let token = event_loop
         .handle()
         .insert_source(
             Generic::new(
@@ -160,6 +165,8 @@ fn init_wayland_listener(
             },
         )
         .location(loc!())?;
+
+    registration_tokens.push(token);
 
     Ok(socket_name)
 }
@@ -205,7 +212,13 @@ pub fn main() -> Result<()> {
     )
     .location(loc!())?;
 
-    init_wayland_listener(&config.wayland_display, display, &event_loop).location(loc!())?;
+    init_wayland_listener(
+        &config.wayland_display,
+        display,
+        &event_loop,
+        state.registration_tokens.as_mut(),
+    )
+    .location(loc!())?;
 
     let seat = &mut state.compositor_state.seat;
     // TODO: do this in WprsState::new;
@@ -216,6 +229,18 @@ pub fn main() -> Result<()> {
 
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())
+        .location(loc!())?;
+
+    let signal = event_loop.get_signal();
+
+    event_loop
+        .handle()
+        .insert_source(
+            Signals::new(&[Signal::SIGINT, Signal::SIGTERM]).location(loc!())?,
+            move |_event, _metadata, _state| {
+                signal.stop();
+            },
+        )
         .location(loc!())?;
 
     event_loop

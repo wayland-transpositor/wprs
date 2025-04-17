@@ -18,6 +18,7 @@ use std::ffi::OsStr;
 use std::sync::Arc;
 
 use bimap::BiMap;
+use calloop::RegistrationToken;
 use smithay::backend::input::KeyState;
 use smithay::input::keyboard::FilterResult;
 use smithay::output::Output;
@@ -350,6 +351,7 @@ impl WaylandSurface for XWaylandSurface {
 pub struct WprsState {
     pub dh: DisplayHandle,
     pub event_loop_handle: LoopHandle<'static, Self>,
+    pub registration_tokens: Vec<RegistrationToken>,
     pub client_state: WprsClientState,
     pub compositor_state: WprsCompositorState,
     pub surface_bimap: BiMap<CompositorObjectId, ClientObjectId>,
@@ -372,19 +374,22 @@ impl WprsState {
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
     {
+        let mut registration_tokens = vec![];
         Ok(Self {
             dh: dh.clone(),
             event_loop_handle: event_loop_handle.clone(),
             client_state: WprsClientState::new(globals, qh, conn).location(loc!())?,
             compositor_state: WprsCompositorState::new(
                 dh,
-                event_loop_handle,
+                &event_loop_handle,
                 decoration_behavior,
                 xwayland_options,
+                &mut registration_tokens,
             ),
             surface_bimap: BiMap::new(),
             surfaces: HashMap::new(),
             outputs: HashMap::new(),
+            registration_tokens,
         })
     }
 
@@ -503,6 +508,14 @@ impl WprsState {
         );
 
         xwayland_surface.output_ids = new_ids;
+    }
+}
+
+impl Drop for WprsState {
+    fn drop(&mut self) {
+        for token in self.registration_tokens.drain(..) {
+            self.event_loop_handle.remove(token);
+        }
     }
 }
 

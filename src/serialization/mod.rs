@@ -266,7 +266,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Object(obj) => write!(f, "Object({:?})", obj),
+            Self::Object(obj) => write!(f, "Object({obj:?})"),
             Self::RawBuffer(vec) => write!(f, "RawBuffer(<len {:?}>)", (**vec).as_ref().len()),
         }
     }
@@ -290,7 +290,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Object(obj) => write!(f, "Object({:?})", obj),
+            Self::Object(obj) => write!(f, "Object({obj:?})"),
             Self::RawBuffer(vec) => write!(f, "RawBuffer(<len {:?}>)", vec.len()),
         }
     }
@@ -595,7 +595,7 @@ where
         // if was actually just a disconnection and not some other error.
         let result = utils::join_unwrap(read_thread);
         debug!("read thread joined: {:?}", result);
-        eprintln!("server disconnected: {:?}", result);
+        eprintln!("server disconnected: {result:?}");
         process::exit(1);
     })
 }

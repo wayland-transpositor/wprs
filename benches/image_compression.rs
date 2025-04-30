@@ -58,7 +58,7 @@ fn read_png(path: &Path) -> Vec<u8> {
     let mut reader = decoder.read_info().unwrap();
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).unwrap();
-    println!("INFO {:?}", info);
+    println!("INFO {info:?}");
     assert_eq!(info.color_type, ColorType::Rgba);
     assert_eq!(info.bit_depth, BitDepth::Eight);
     let mut data = buf[..info.buffer_size()].to_vec();
@@ -149,7 +149,7 @@ fn compress_png(c: &mut Criterion, path: &Path) -> f64 {
                 .unwrap();
         })
     });
-    println!("compression ratio: {:.1}", compression_ratio);
+    println!("compression ratio: {compression_ratio:.1}");
     println!("compression rate: {:.1}%", compression_rate * 100.0);
     ret
 }
@@ -217,7 +217,7 @@ fn filter_compress_png(c: &mut Criterion, path: &Path) -> f64 {
             })
         },
     );
-    println!("compression ratio: {:.1}", compression_ratio);
+    println!("compression ratio: {compression_ratio:.1}");
     println!("compression rate: {:.1}%", compression_rate * 100.0);
     ret
 }
@@ -249,15 +249,12 @@ fn compression_benchmark(c: &mut Criterion) {
     let mean_compression_ratio = mean(&compression_ratios);
     let mean_filter_compression_ratio = mean(&filter_compression_ratios);
     println!("");
-    println!("mean compression only ratio: {:.1}", mean_compression_ratio);
+    println!("mean compression only ratio: {mean_compression_ratio:.1}");
     println!(
         "mean compression only rate: {:.1}%",
         1.0 / mean_compression_ratio * 100.0
     );
-    println!(
-        "mean compression with filter ratio: {:.1}",
-        mean_filter_compression_ratio
-    );
+    println!("mean compression with filter ratio: {mean_filter_compression_ratio:.1}");
     println!(
         "mean compression with filter rate: {:.1}%",
         1.0 / mean_filter_compression_ratio * 100.0

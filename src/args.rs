@@ -80,7 +80,7 @@ pub trait OptionalConfig<Conf: Config>:
 pub fn init_config<Conf: Config, OptConf: OptionalConfig<Conf>>() -> Conf {
     let mut config = Conf::default();
     let args = OptConf::parse_args();
-    eprintln!("config from args: {:#?}", args);
+    eprintln!("config from args: {args:#?}");
 
     // Do this before parsing the config file so a broken config file doesn't
     // prevent printing a new one to replace it.
@@ -127,7 +127,7 @@ pub fn default_config_file_dir() -> PathBuf {
 }
 
 pub fn default_config_file(name: &str) -> PathBuf {
-    Path::join(&default_config_file_dir(), format!("{}.ron", name))
+    Path::join(&default_config_file_dir(), format!("{name}.ron"))
 }
 
 pub fn config_file() -> impl Parser<Option<PathBuf>> {

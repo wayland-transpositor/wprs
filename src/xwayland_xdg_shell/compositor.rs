@@ -170,7 +170,7 @@ impl WprsCompositorState {
                         .expect("Failed to attach X11 Window Manager.");
 
                 // Oh Java...
-                wmname::set_wmname(Some(&format!(":{}", display_number)), "LG3D")
+                wmname::set_wmname(Some(&format!(":{display_number}")), "LG3D")
                     .expect("Failed to set WM name.");
 
                 data.compositor_state.xwm = Some(wm);

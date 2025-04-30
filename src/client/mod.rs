@@ -751,7 +751,7 @@ impl RemoteClient {
     pub fn surface(&mut self, id: &WlSurfaceId) -> Result<&mut RemoteSurface> {
         self.surfaces
             .get_mut(id)
-            .with_context(loc!(), || format!("Unknown surface id: {:?}", id))
+            .with_context(loc!(), || format!("Unknown surface id: {id:?}"))
     }
 }
 

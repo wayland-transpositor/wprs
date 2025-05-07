@@ -298,6 +298,11 @@ impl ToplevelConfigure {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+pub struct ToplevelClose {
+    pub surface_id: WlSurfaceId,
+}
+
 // TODO: do we need this? We're never reading it.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
 pub enum PopupConfigureKind {
@@ -383,6 +388,7 @@ pub struct ToplevelRequest {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
 pub enum ToplevelEvent {
     Configure(ToplevelConfigure),
+    Close(ToplevelClose),
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]

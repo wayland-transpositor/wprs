@@ -97,6 +97,7 @@ use crate::serialization::wayland::SurfaceEvent;
 use crate::serialization::wayland::SurfaceEventPayload::OutputsChanged;
 use crate::serialization::xdg_shell::PopupConfigure;
 use crate::serialization::xdg_shell::PopupEvent;
+use crate::serialization::xdg_shell::ToplevelClose;
 use crate::serialization::xdg_shell::ToplevelConfigure;
 use crate::serialization::xdg_shell::ToplevelEvent;
 use crate::serialization::Event;
@@ -241,7 +242,19 @@ impl OutputHandler for WprsClientState {
 }
 
 impl WindowHandler for WprsClientState {
-    fn request_close(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &Window) {}
+    #[instrument(skip_all, level = "debug")]
+    fn request_close(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, window: &Window) {
+        let (_, surface_id) = self
+            .object_bimap
+            .get_wl_surface_id(&window.wl_surface().id())
+            .expect("Object corresponding to client object id {key} not found.");
+
+        self.serializer
+            .writer()
+            .send(SendType::Object(Event::Toplevel(ToplevelEvent::Close(
+                ToplevelClose { surface_id },
+            ))));
+    }
 
     #[instrument(skip_all, level = "debug")]
     fn configure(

@@ -16,6 +16,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use bpaf::Parser;
+use futures_util::future::try_join;
+use futures_util::stream;
+use futures_util::StreamExt;
 use optional_struct::optional_struct;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -33,6 +36,8 @@ use wprs::args::SerializableLevel;
 use wprs::client::ClientOptions;
 use wprs::client::WprsClientState;
 use wprs::control_server;
+use wprs::dbus::NotificationSignals;
+use wprs::dbus::NotificationsProxy;
 use wprs::prelude::*;
 use wprs::serialization;
 use wprs::serialization::Serializer;
@@ -152,18 +157,84 @@ fn main() -> Result<()> {
     let options = ClientOptions {
         title_prefix: config.title_prefix,
     };
+
+    let (exec, sched) = calloop::futures::executor().context(
+        loc!(),
+        "failed to get calloop async executor for notifications",
+    )?;
+
+    let dbus_connection = async_io::block_on(zbus::Connection::session())
+        .context(loc!(), "failed to block on notification proxy connect")?;
+
+    let notification_proxy = async_io::block_on(NotificationsProxy::new(&dbus_connection))
+        .context(loc!(), "failed to create notification proxy")?;
+
     let mut state = WprsClientState::new(
         event_queue.handle(),
         globals,
         conn.clone(),
         serializer,
+        sched.clone(),
+        notification_proxy.clone(),
         options,
     )
     .location(loc!())?;
 
+    let (sender, receiver) = calloop::channel::channel();
+
+    {
+        let notification_proxy = notification_proxy.clone();
+        sched.schedule(async move {
+            let (notification_close_stream, action_stream) = match try_join(
+                notification_proxy.receive_notification_closed(),
+                notification_proxy.receive_action_invoked(),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    error!("failed to get signal streams: {:?}", err);
+                    return;
+                },
+            };
+
+            let mut signal_stream = stream::select(
+                notification_close_stream.map(NotificationSignals::try_from),
+                action_stream.map(NotificationSignals::try_from),
+            );
+
+            while let Some(signal) = signal_stream.next().await {
+                match signal {
+                    Ok(signal) => {
+                        if let Err(err) = sender.send(signal) {
+                            error!("failed to send signal to channel: {:?}", err);
+                        };
+                    },
+                    Err(err) => {
+                        error!("failed to get signal: {:?}", err);
+                    },
+                }
+            }
+        })?;
+    }
+
     let mut event_loop = EventLoop::try_new()?;
 
-    event_loop.handle().insert_source(
+    let handle = event_loop.handle();
+
+    handle
+        .insert_source(receiver, |event, _metadata, state: &mut WprsClientState| {
+            if let Event::Msg(signal) = event {
+                state.handle_notification_signal(signal)
+            }
+        })
+        .unwrap();
+
+    handle
+        .insert_source(exec, |_event, _metadata, _state: &mut WprsClientState| {})
+        .unwrap();
+
+    handle.insert_source(
         reader,
         |event, _metadata, state: &mut WprsClientState| {
             match event {

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 /// Handlers for events from the wprs server.
 use std::fs::File;
 use std::io::Read;
@@ -55,6 +56,7 @@ use crate::serialization::xdg_shell::ToplevelRequestPayload;
 use crate::serialization::Capabilities;
 use crate::serialization::ClientId;
 use crate::serialization::Event;
+use crate::serialization::NotificationRequests;
 use crate::serialization::RecvType;
 use crate::serialization::Request;
 use crate::serialization::SendType;
@@ -580,6 +582,62 @@ impl WprsClientState {
         Ok(())
     }
 
+    #[instrument(skip_all, level = "debug")]
+    fn handle_notification(&self, notification_request: NotificationRequests) -> Result<()> {
+        let notification_proxy = self.notification_proxy.clone();
+        let notification_mapper = self.notification_id_mapper.clone();
+        self.notification_scheduler
+            .schedule(async move {
+                match notification_request {
+                    NotificationRequests::New(notification) => {
+                        let Ok(local_id) = notification_proxy
+                            .notify(
+                                &notification.app_name,
+                                // TODO: translate to local id
+                                notification.replaces_id,
+                                // TODO: how to recover the app icon from server?
+                                &notification.app_icon,
+                                &notification.summary,
+                                &notification.body,
+                                notification.actions.iter().map(|x| x.as_str()).collect(),
+                                HashMap::new(),
+                                notification.expire_timeout,
+                            )
+                            .await
+                        else {
+                            error!("failed to send notification");
+                            return;
+                        };
+
+                        {
+                            let mut mapper = notification_mapper.lock().await;
+                            mapper.insert(notification.remote_id, local_id);
+                        }
+                    },
+                    NotificationRequests::Close(remote_id) => {
+                        let local_id = {
+                            let mut mapper = notification_mapper.lock().await;
+                            let Some(local_id) = mapper.remove(&remote_id) else {
+                                error!("local notification not found");
+                                return;
+                            };
+
+                            local_id
+                        };
+
+                        let Err(err) = notification_proxy.close_notification(local_id).await else {
+                            return;
+                        };
+
+                        error!("failed to close local notification {:?}", err);
+                    },
+                }
+            })
+            .context(loc!(), "failed to schedule notification dispatch")?;
+
+        Ok(())
+    }
+
     #[instrument(skip(self), level = "debug")]
     pub fn handle_request(&mut self, request: RecvType<Request>) {
         match request {
@@ -594,6 +652,9 @@ impl WprsClientState {
                 self.handle_client_disconnected(client)
             },
             RecvType::Object(Request::Capabilities(caps)) => self.handle_capabilities(caps),
+            RecvType::Object(Request::Notification(notification_request)) => {
+                self.handle_notification(notification_request)
+            },
             RecvType::RawBuffer(buffer) => self.handle_buffer(buffer),
         }
         .log_and_ignore(loc!())

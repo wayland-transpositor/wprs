@@ -17,7 +17,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use async_lock::Mutex;
 use bimap::BiMap;
+use calloop::futures::Scheduler;
 use enum_as_inner::EnumAsInner;
 use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
 use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
@@ -55,6 +57,7 @@ use smithay_client_toolkit::shm::Shm;
 
 use crate::client_utils::SeatObject;
 use crate::constants;
+use crate::dbus::NotificationsProxy;
 use crate::filtering;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
@@ -74,6 +77,7 @@ use crate::serialization::Request;
 use crate::serialization::Serializer;
 use crate::vec4u8::Vec4u8s;
 
+mod notification_handlers;
 pub mod server_handlers;
 pub mod smithay_handlers;
 mod subsurface;
@@ -148,6 +152,10 @@ pub struct WprsClientState {
     title_prefix: String,
 
     buffer_cache: Option<Arc<Vec4u8s>>,
+
+    notification_proxy: NotificationsProxy<'static>,
+    notification_scheduler: Scheduler<()>,
+    notification_id_mapper: Arc<Mutex<HashMap<u32, u32>>>,
 }
 
 impl WprsClientState {
@@ -156,6 +164,8 @@ impl WprsClientState {
         globals: GlobalList,
         conn: Connection,
         serializer: Serializer<Event, Request>,
+        scheduler: Scheduler<()>,
+        notification_proxy: NotificationsProxy<'static>,
         options: ClientOptions,
     ) -> Result<Self> {
         let shm_state = Shm::bind(&globals, &qh).context(loc!(), "wl_shm is not available")?;
@@ -215,6 +225,10 @@ impl WprsClientState {
             current_focus: None,
             title_prefix: options.title_prefix,
             buffer_cache: None,
+
+            notification_proxy,
+            notification_scheduler: scheduler,
+            notification_id_mapper: Arc::new(Mutex::new(HashMap::default())),
         })
     }
 }

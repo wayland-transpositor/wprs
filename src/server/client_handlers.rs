@@ -48,6 +48,7 @@ use smithay::wayland::selection::primary_selection;
 
 use crate::args;
 use crate::compositor_utils;
+use crate::dbus::NotificationsSignals;
 use crate::prelude::*;
 use crate::serialization::wayland::DataDestinationEvent;
 use crate::serialization::wayland::DataEvent;
@@ -72,6 +73,7 @@ use crate::serialization::xdg_shell::ToplevelConfigure;
 use crate::serialization::xdg_shell::ToplevelEvent;
 use crate::serialization::Capabilities;
 use crate::serialization::Event;
+use crate::serialization::NotificationEvents;
 use crate::serialization::RecvType;
 use crate::serialization::Request;
 use crate::serialization::SendType;
@@ -916,6 +918,44 @@ impl WprsServerState {
         Ok(())
     }
 
+    #[instrument(skip_all, level = "debug")]
+    fn handle_notification(&self, notification_events: NotificationEvents) -> Result<()> {
+        let notification_interface = self
+            .notification_interface
+            .clone()
+            .ok_or(anyhow!("notification server not running"))?;
+
+        match notification_events {
+            NotificationEvents::Closed(id) => {
+                self.notification_scheduler.schedule(async move {
+                    let Err(err) = notification_interface
+                        .signal_emitter()
+                        .notification_closed(id, crate::dbus::CloseReason::UserDismissed)
+                        .await
+                    else {
+                        return;
+                    };
+
+                    error!("failed emit notification close signal {:?}", err);
+                })?;
+            },
+            NotificationEvents::ActionInvoked(id, action_key) => {
+                self.notification_scheduler.schedule(async move {
+                    let Err(err) = notification_interface
+                        .signal_emitter()
+                        .action_invoked(id, &action_key)
+                        .await
+                    else {
+                        return;
+                    };
+
+                    error!("failed emit notification close signal {:?}", err);
+                })?;
+            },
+        };
+        Ok(())
+    }
+
     #[instrument(skip(self), level = "debug")]
     pub fn handle_event(&mut self, event: RecvType<Event>) {
         match event {
@@ -928,6 +968,9 @@ impl WprsServerState {
             RecvType::Object(Event::Data(data_event)) => self.handle_data_event(data_event),
             RecvType::Object(Event::Surface(surface_event)) => {
                 self.handle_surface_event(surface_event)
+            },
+            RecvType::Object(Event::Notification(notification_event)) => {
+                self.handle_notification(notification_event)
             },
             RecvType::RawBuffer(_) => unreachable!(),
         }

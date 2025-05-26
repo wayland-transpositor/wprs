@@ -15,10 +15,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::fd::OwnedFd;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
+use calloop::futures::Scheduler;
 use smithay::input::Seat;
 use smithay::input::SeatState;
 use smithay::output::Output;
@@ -41,7 +43,9 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shm::ShmState;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationMode;
 use smithay::wayland::viewporter::ViewporterState;
+use zbus::object_server::InterfaceRef;
 
+use crate::dbus::Notifications;
 use crate::prelude::*;
 use crate::serialization::wayland::SurfaceRequest;
 use crate::serialization::wayland::SurfaceRequestPayload;
@@ -120,6 +124,9 @@ pub struct WprsServerState {
     dnd_source: Option<WlDataSource>,
     dnd_pipe: Option<OwnedFd>,
     primary_selection_pipe: Option<OwnedFd>,
+
+    notification_scheduler: Scheduler<()>,
+    notification_interface: Option<Arc<InterfaceRef<Notifications>>>,
 }
 
 impl WprsServerState {
@@ -130,6 +137,8 @@ impl WprsServerState {
         xwayland_enabled: bool,
         frame_interval: Duration,
         kde_server_side_decorations: bool,
+        scheduler: Scheduler<()>,
+        notifications: Option<InterfaceRef<Notifications>>,
     ) -> Self {
         let mut seat_state = SeatState::new();
         let seat = seat_state.new_wl_seat(&dh, "wprs");
@@ -165,6 +174,8 @@ impl WprsServerState {
             dnd_source: None,
             dnd_pipe: None,
             primary_selection_pipe: None,
+            notification_scheduler: scheduler,
+            notification_interface: notifications.map(Arc::new),
         }
     }
 

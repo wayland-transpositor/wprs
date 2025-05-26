@@ -33,6 +33,7 @@ pub mod transpose;
 pub mod utils;
 pub mod vec4u8;
 pub mod xwayland_xdg_shell;
+pub mod dbus;
 
 #[cfg(feature = "tracy-allocator")]
 pub mod tracy_allocator;

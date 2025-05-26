@@ -35,11 +35,13 @@ use wprs::args;
 use wprs::args::Config;
 use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
+use wprs::dbus::Notifications;
 use wprs::prelude::*;
 use wprs::serialization::Serializer;
 use wprs::server::smithay_handlers::ClientState;
 use wprs::server::WprsServerState;
 use wprs::utils;
+use zbus::object_server::Interface;
 
 #[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -64,6 +66,7 @@ pub struct WprsdConfig {
     xwayland_xdg_shell_wayland_debug: bool,
     xwayland_xdg_shell_args: Vec<String>,
     kde_server_side_decorations: bool,
+    enable_notification_forward: bool,
 }
 
 impl Default for WprsdConfig {
@@ -83,6 +86,7 @@ impl Default for WprsdConfig {
             xwayland_xdg_shell_wayland_debug: false,
             xwayland_xdg_shell_args: Vec::new(),
             kde_server_side_decorations: false,
+            enable_notification_forward: false,
         }
     }
 }
@@ -127,6 +131,13 @@ fn kde_server_side_decorations() -> impl Parser<Option<bool>> {
         .optional()
 }
 
+fn enable_notification_forward() -> impl Parser<Option<bool>> {
+    bpaf::long("enable-notification-forward")
+        .argument::<bool>("BOOL")
+        .help("Enable notification forward")
+        .optional()
+}
+
 impl OptionalConfig<WprsdConfig> for OptionalWprsdConfig {
     fn parse_args() -> Self {
         let print_default_config_and_exit = args::print_default_config_and_exit();
@@ -143,6 +154,7 @@ impl OptionalConfig<WprsdConfig> for OptionalWprsdConfig {
         let xwayland_xdg_shell_wayland_debug = xwayland_xdg_shell_wayland_debug();
         let xwayland_xdg_shell_args = xwayland_xdg_shell_args();
         let kde_server_side_decorations = kde_server_side_decorations();
+        let enable_notification_forward = enable_notification_forward();
         bpaf::construct!(Self {
             print_default_config_and_exit,
             config_file,
@@ -158,6 +170,7 @@ impl OptionalConfig<WprsdConfig> for OptionalWprsdConfig {
             xwayland_xdg_shell_wayland_debug,
             xwayland_xdg_shell_args,
             kde_server_side_decorations,
+            enable_notification_forward,
         })
         .to_options()
         .run()
@@ -254,6 +267,26 @@ pub fn main() -> Result<()> {
 
     let frame_interval = Duration::from_secs_f64(1.0 / (config.framerate as f64));
 
+    let (exec, sched) = calloop::futures::executor::<()>()?;
+
+    let notifications = if config.enable_notification_forward {
+        let path = "/org/freedesktop/Notifications";
+        let connection = async_io::block_on(
+            zbus::connection::Builder::session()?
+                .name(Notifications::name().to_string())?
+                .serve_at(path, Notifications::new(serializer.writer().into_inner()))?
+                .build(),
+        )?;
+
+        Some(async_io::block_on(
+            connection
+                .object_server()
+                .interface::<_, Notifications>(path),
+        )?)
+    } else {
+        None
+    };
+
     let mut state = WprsServerState::new(
         display.handle(),
         event_loop.handle(),
@@ -261,6 +294,8 @@ pub fn main() -> Result<()> {
         config.enable_xwayland,
         frame_interval,
         config.kde_server_side_decorations,
+        sched,
+        notifications,
     );
 
     init_wayland_listener(&config.wayland_display, display, &mut state, &event_loop)
@@ -282,8 +317,13 @@ pub fn main() -> Result<()> {
         .location(loc!())?;
     let _pointer = state.seat.add_pointer();
 
-    event_loop
-        .handle()
+    let handler = event_loop.handle();
+
+    handler
+        .insert_source(exec, |_event, _metadata, _state: &mut WprsServerState| {})
+        .unwrap();
+
+    handler
         .insert_source(reader, |event, _metadata, state| {
             match event {
                 Event::Msg(msg) => state.handle_event(msg),

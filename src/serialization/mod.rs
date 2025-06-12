@@ -691,7 +691,7 @@ where
     }
 
     // TODO: rename to writer.
-    pub fn writer(&self) -> InfallibleSender<DiscardingSender<Sender<SendType<ST>>>> {
+    pub fn writer(&self) -> InfallibleSender<'_, DiscardingSender<Sender<SendType<ST>>>> {
         InfallibleSender::new(self.write_handle.clone(), self)
     }
 

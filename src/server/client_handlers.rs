@@ -112,7 +112,7 @@ impl WprsServerState {
         let pointer = self.seat.get_pointer().location(loc!())?;
 
         for event in events {
-            let (_, _, surface) = self
+            let res = self
                 .object_client_surface_from_id(&event.surface_id)
                 .map_err(|err| match err {
                     UnknownSurfaceErr::ObjectId(surface_id) => {
@@ -125,7 +125,15 @@ impl WprsServerState {
                         anyhow!("Ignoring pointer event for unknown surface {:?}", client)
                     },
                 })
-                .warn(loc!())?;
+                .warn(loc!());
+
+            let surface = match res {
+                Ok((_, _, surface)) => surface,
+                Err(_) => {
+                    // We do not want to propogate this error since we already warned about it.
+                    continue;
+                },
+            };
 
             let time = self.start_time.elapsed().as_millis() as u32;
 

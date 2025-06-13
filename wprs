@@ -456,6 +456,7 @@ def start_remote_command(caps: Capabilities | None) -> None:
     'WAYLAND_DISPLAY': args.wprsd_wayland_display,
     'SSH_AUTH_SOCK': f'{remote_socket_dir()}/wprs-ssh-auth.sock',
     'XCURSOR_SIZE': get_x_cursor_size(),
+    'XDG_SESSION_TYPE': 'wayland', # Ensure session type is set to wayland for Qt apps.
   }
 
   if args.xwayland:

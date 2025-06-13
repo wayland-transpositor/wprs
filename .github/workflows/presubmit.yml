@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
+      - uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670  #v1.2.2
       - run: sudo apt-get install libwayland-dev libxkbcommon-dev
       - run: cargo test --all-features
 
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
+      - uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670  #v1.2.2
         with:
           components: miri
           channel: nightly
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
+      - uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670  #v1.2.2
         with:
           components: rustfmt
           channel: nightly
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
+      - uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670  #v1.2.2
         with:
           components: clippy
           bins: cargo-cranky@0.3.0
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: moonrepo/setup-rust@b8edcc56aab474d90c7cf0bb8beeaf8334c15e9f  # v1.1.0
+      - uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670  #v1.2.2
         with:
           bins: cargo-deny
       - run: cargo deny --all-features check licenses

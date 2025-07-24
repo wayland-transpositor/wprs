@@ -32,3 +32,17 @@ All submissions, including submissions by project members, require review. We
 use GitHub pull requests for this purpose. Consult
 [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
 information on using pull requests.
+
+### [Optional] Worktrees
+
+Optionally, if you would like to organize your git repo with worktrees, you can the following steps to setup:
+
+```
+
+mkdir wprs
+cd wprs
+git clone --bare git@github.com:wayland-transpositor/wprs.git
+cd wprs.git
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" 
+
+```

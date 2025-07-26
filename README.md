@@ -65,7 +65,15 @@ as `wprs-git`
 
 ## Usage
 
-On the remote host, enable wprsd:
+On the remote host, put the `wprsd.service` file into place:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp wprsd.service ~/.config/systemd/user
+```
+
+and enable wprsd:
+
 ```bash
 loginctl enable-linger
 systemctl --user enable wprsd.service

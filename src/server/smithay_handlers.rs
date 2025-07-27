@@ -1129,7 +1129,8 @@ impl PointerGrab<WprsServerState> for DndGrab {
         _data: &mut WprsServerState,
         _handle: &mut PointerInnerHandle<'_, WprsServerState>,
         event: &GestureSwipeBeginEvent,
-    );
+    ) {
+    }
 
     #[instrument(skip(self, _data, _handle), level = "debug")]
     fn gesture_swipe_update(

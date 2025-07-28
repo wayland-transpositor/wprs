@@ -8,6 +8,10 @@ XWayland) applications.
 
 ## Building
 
+wprs is currently only available on x86-64 with AVX2. Support for [ARM](https://github.com/wayland-transpositor/wprs/issues/31) and support for more fast compression implementations welcome.
+
+Currently building wprs without AVX2 will lead to build failures.
+
 ### Source
 
 ```bash

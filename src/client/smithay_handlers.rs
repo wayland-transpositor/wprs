@@ -114,7 +114,7 @@ impl WprsClientState {
             let outputs = outputs
                 .filter_map(|output| {
                     output.data::<OutputData>().map(|data| Output {
-                        id: data.with_output_info(|info| (info.id)),
+                        id: data.with_output_info(|info| info.id),
                     })
                 })
                 .collect();

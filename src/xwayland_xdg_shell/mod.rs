@@ -497,7 +497,7 @@ impl WprsState {
         let new_ids: HashSet<u32> = HashSet::from_iter(outputs.filter_map(|output| {
             output
                 .data::<OutputData>()
-                .map(|data| data.with_output_info(|info| (info.id)))
+                .map(|data| data.with_output_info(|info| info.id))
         }));
 
         compositor_utils::update_surface_outputs(

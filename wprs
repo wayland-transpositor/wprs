@@ -144,11 +144,18 @@ def get_hashed_destination_params():
   proc = subprocess.run(cmd, env=os.environ, check=True,
                         start_new_session=True, capture_output=True,
                         text=True)
-  ssh_config_nonempty_strs = filter(bool, proc.stdout.split('\n'))
-  ssh_config_tuples = map(lambda line: line.split(maxsplit=1),
-                          ssh_config_nonempty_strs)
-  ssh_config_dict = collections.defaultdict(lambda: '',
-                                            ssh_config_tuples)
+
+  ssh_config_dict = {}
+  for line in proc.stdout.splitlines():
+    if not line.strip():
+      continue
+    # The output of `ssh -G` may contain lines that do not contain config values.
+    try:
+      config_key, config_value = line.split(maxsplit=1)
+    except ValueError:
+      config_key, config_value = line.strip(), ''
+    ssh_config_dict[config_key] = config_value
+
   local_hostname = socket.gethostname()
   ssh_connection_params = (
       f'{local_hostname}{ssh_config_dict["hostname"]}{ssh_config_dict["port"]}{ssh_config_dict["user"]}{ssh_config_dict["proxyjump"]}'

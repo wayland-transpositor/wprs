@@ -20,7 +20,6 @@ use enum_as_inner::EnumAsInner;
 use smithay::backend::input::Axis;
 use smithay::backend::input::AxisSource;
 use smithay::backend::input::ButtonState;
-use smithay::backend::input::KeyState;
 use smithay::input::keyboard::Layout;
 use smithay::input::keyboard::XkbContext;
 use smithay::input::pointer::AxisFrame;
@@ -128,6 +127,7 @@ use crate::prelude::*;
 use crate::serialization;
 use crate::serialization::geometry::Point;
 use crate::serialization::wayland::BufferMetadata;
+use crate::serialization::wayland::KeyState;
 use crate::xwayland_xdg_shell::compositor::DecorationBehavior;
 use crate::xwayland_xdg_shell::compositor::X11Parent;
 use crate::xwayland_xdg_shell::compositor::X11ParentForPopup;
@@ -685,6 +685,28 @@ impl KeyboardHandler for WprsState {
         self.client_state.last_implicit_grab_serial = serial;
         let serial = self.compositor_state.serial_map.insert(serial);
         log_and_return!(self.set_key_state(event.raw_code, KeyState::Pressed, serial));
+    }
+
+    // INTENTIONALLY NOT LOGGING KEY EVENTS
+    #[instrument(
+        skip(self, _conn, _qh, _keyboard, event),
+        fields(event),
+        level = "debug"
+    )]
+    fn repeat_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        serial: u32,
+        event: KeyEvent,
+    ) {
+        if args::get_log_priv_data() {
+            Span::current().record("event", field::debug(&event));
+        }
+        self.client_state.last_implicit_grab_serial = serial;
+        let serial = self.compositor_state.serial_map.insert(serial);
+        log_and_return!(self.set_key_state(event.raw_code, KeyState::Repeated, serial));
     }
 
     // INTENTIONALLY NOT LOGGING KEY EVENTS

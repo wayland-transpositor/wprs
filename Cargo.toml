@@ -42,7 +42,7 @@ smithay = { version = "0.7", default-features = false, features = [
     "xwayland",
     "wayland_frontend",
 ] }
-smithay-client-toolkit = { git = "https://github.com/Smithay/client-toolkit.git" }
+smithay-client-toolkit = "0.20"
 static_assertions = "1.1.0"
 sysctl = "0.6.0"
 tracing = "0.1.40"

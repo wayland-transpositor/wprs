@@ -19,8 +19,10 @@ use std::sync::Arc;
 
 use bimap::BiMap;
 use calloop::RegistrationToken;
-use smithay::backend::input::KeyState;
+use smithay::backend::input::KeyState as SmithayKeyState;
 use smithay::input::keyboard::FilterResult;
+use smithay::input::keyboard::KeysymHandle;
+use smithay::input::keyboard::ModifiersState;
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::backend::ObjectId as CompositorObjectId;
@@ -52,6 +54,7 @@ use crate::constants;
 use crate::prelude::*;
 use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
+use crate::serialization::wayland::KeyState;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
@@ -438,28 +441,64 @@ impl WprsState {
             Span::current().record("state", field::debug(&state));
         }
 
-        keyboard.input::<(), _>(
-            self,
-            // our keycode is getting offset by 8 for reasons
-            // see https://github.com/Smithay/smithay/pull/1536
-            (keycode + 8).into(),
-            state,
-            serial,
-            self.compositor_state.start_time.elapsed().as_millis() as u32,
-            |_, &modifiers_state, keysym| {
-                if args::get_log_priv_data() {
-                    Span::current().record("modifiers_state", field::debug(&modifiers_state));
-                    Span::current().record("keysym", field::debug(&keysym));
-                }
-                FilterResult::Forward
-            },
-        );
+        fn filter(
+            _: &mut WprsState,
+            modifiers_state: &ModifiersState,
+            keysym: KeysymHandle,
+        ) -> FilterResult<()> {
+            if args::get_log_priv_data() {
+                Span::current().record("modifiers_state", field::debug(&modifiers_state));
+                Span::current().record("keysym", field::debug(&keysym));
+            }
+            FilterResult::Forward
+        }
+
+        // our keycode is getting offset by 8 for reasons
+        // see https://github.com/Smithay/smithay/pull/1536
+        let x11_keycode = (keycode + 8).into();
+        let time = self.compositor_state.start_time.elapsed().as_millis() as u32;
         match state {
             KeyState::Pressed => {
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Pressed,
+                    serial,
+                    time,
+                    filter,
+                );
                 self.compositor_state.pressed_keys.insert(keycode);
             },
             KeyState::Released => {
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Released,
+                    serial,
+                    time,
+                    filter,
+                );
                 self.compositor_state.pressed_keys.remove(&keycode);
+            },
+            KeyState::Repeated => {
+                // Map repeated to released + pressed
+                // Smithay 0.7 keystates don't support repetition
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Released,
+                    serial,
+                    time,
+                    filter,
+                );
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Pressed,
+                    serial,
+                    time,
+                    filter,
+                );
             },
         }
 

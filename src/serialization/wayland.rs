@@ -23,7 +23,6 @@ use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
 use smithay::backend::input::AxisSource as SmithayAxisSource;
-use smithay::backend::input::KeyState as SmithayKeyState;
 use smithay::output::Subpixel as SmithaySubpixel;
 use smithay::reexports::wayland_server::backend;
 use smithay::reexports::wayland_server::protocol::wl_output::Transform as SmithayWlTransform;
@@ -263,15 +262,7 @@ pub struct CursorImage {
 pub enum KeyState {
     Released,
     Pressed,
-}
-
-impl From<KeyState> for SmithayKeyState {
-    fn from(keystate: KeyState) -> Self {
-        match keystate {
-            KeyState::Released => Self::Released,
-            KeyState::Pressed => Self::Pressed,
-        }
-    }
+    Repeated,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]

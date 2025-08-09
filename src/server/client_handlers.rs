@@ -25,9 +25,11 @@ use nix::fcntl::OFlag;
 use nix::unistd;
 use smithay::backend::input::Axis;
 use smithay::backend::input::ButtonState;
-use smithay::backend::input::KeyState;
+use smithay::backend::input::KeyState as SmithayKeyState;
 use smithay::input::keyboard::FilterResult;
+use smithay::input::keyboard::KeysymHandle;
 use smithay::input::keyboard::Layout;
+use smithay::input::keyboard::ModifiersState;
 use smithay::input::keyboard::XkbContext;
 use smithay::input::pointer::AxisFrame;
 use smithay::input::pointer::ButtonEvent;
@@ -56,6 +58,7 @@ use crate::serialization::wayland::DataSource;
 use crate::serialization::wayland::DataSourceEvent;
 use crate::serialization::wayland::DataToTransfer;
 use crate::serialization::wayland::KeyInner;
+use crate::serialization::wayland::KeyState;
 use crate::serialization::wayland::KeyboardEvent;
 use crate::serialization::wayland::OutputEvent;
 use crate::serialization::wayland::PointerEvent;
@@ -266,27 +269,63 @@ impl WprsServerState {
             debug!("sending key input: code {keycode:?}, state {state:?}");
         }
 
-        keyboard.input::<(), _>(
-            self,
-            // our keycode is getting offset by 8 for reasons
-            // see https://github.com/Smithay/smithay/pull/1536
-            (keycode + 8).into(),
-            state,
-            serial,
-            self.start_time.elapsed().as_millis() as u32,
-            |_, &modifiers_state, keysym| {
-                if args::get_log_priv_data() {
-                    debug!("modifiers_state {modifiers_state:?}, keysym {keysym:?}");
-                }
-                FilterResult::Forward
-            },
-        );
+        fn filter(
+            _: &mut WprsServerState,
+            modifiers_state: &ModifiersState,
+            keysym: KeysymHandle,
+        ) -> FilterResult<()> {
+            if args::get_log_priv_data() {
+                debug!("modifiers_state {modifiers_state:?}, keysym {keysym:?}");
+            }
+            FilterResult::Forward
+        }
+
+        // our keycode is getting offset by 8 for reasons
+        // see https://github.com/Smithay/smithay/pull/1536
+        let x11_keycode = (keycode + 8).into();
+        let time = self.start_time.elapsed().as_millis() as u32;
         match state {
             KeyState::Pressed => {
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Pressed,
+                    serial,
+                    time,
+                    filter,
+                );
                 self.pressed_keys.insert(keycode);
             },
             KeyState::Released => {
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Released,
+                    serial,
+                    time,
+                    filter,
+                );
                 self.pressed_keys.remove(&keycode);
+            },
+            KeyState::Repeated => {
+                // Map repeated to released + pressed
+                // Smithay 0.7 keystates don't support repetition
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Released,
+                    serial,
+                    time,
+                    filter,
+                );
+                keyboard.input::<(), _>(
+                    self,
+                    x11_keycode,
+                    SmithayKeyState::Pressed,
+                    serial,
+                    time,
+                    filter,
+                );
             },
         }
 
@@ -372,7 +411,7 @@ impl WprsServerState {
             }) => {
                 let serial = self.serial_map.insert(serial);
 
-                self.set_key_state(raw_code, istate.into(), serial)
+                self.set_key_state(raw_code, istate, serial)
                     .location(loc!())?;
             },
             KeyboardEvent::RepeatInfo(info) => match info {

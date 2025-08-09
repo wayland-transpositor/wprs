@@ -494,6 +494,34 @@ impl KeyboardHandler for WprsClientState {
 
     // INTENTIONALLY NOT LOGGING KEY EVENTS
     #[instrument(
+        skip(self, _conn, _qh, _keyboard, serial, event),
+        fields(event = "<redacted>"),
+        level = "debug"
+    )]
+    fn repeat_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &WlKeyboard,
+        serial: u32,
+        event: KeyEvent,
+    ) {
+        if args::get_log_priv_data() {
+            Span::current().record("event", field::debug(&event));
+        }
+        self.serializer
+            .writer()
+            .send(SendType::Object(Event::KeyboardEvent(KeyboardEvent::Key(
+                KeyInner {
+                    serial,
+                    raw_code: event.raw_code,
+                    state: KeyState::Repeated,
+                },
+            ))));
+    }
+
+    // INTENTIONALLY NOT LOGGING KEY EVENTS
+    #[instrument(
         skip(self, _conn, _qh, _keyboard, event),
         fields(event = "<redacted>"),
         level = "debug"

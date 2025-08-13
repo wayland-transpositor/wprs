@@ -610,7 +610,7 @@ pub fn commit_inner(
     if let Some(surface_damage) = &mut xwayland_surface.damage {
         surface_damage.append(damage);
     } else {
-        xwayland_surface.damage = Some(damage.to_vec());
+        xwayland_surface.damage = Some(damage.clone());
     }
 
     if xwayland_surface.ready() {

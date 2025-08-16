@@ -24,7 +24,7 @@ use crate::vec4u8::Vec4u8s;
 
 #[instrument(skip_all, level = "debug")]
 pub fn filter(data: BufferPointer<u8>, output_buf: &mut Vec4u8s) {
-    assert!(data.len() % 4 == 0); // data is a buffer of argb or xrgb pixels.
+    assert!(data.len().is_multiple_of(4)); // data is a buffer of argb or xrgb pixels.
     // SAFETY: Vec4u8 is a repr(C, packed) wrapper around [u8; 4].
     let data = unsafe { data.cast::<Vec4u8>() };
     transpose::vec4u8_aos_to_soa(data, output_buf);

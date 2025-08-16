@@ -31,21 +31,21 @@ use std::arch::x86_64::_mm256_shuffle_epi8;
 use std::arch::x86_64::_mm256_shuffle_ps;
 use std::arch::x86_64::_mm256_storeu_si256;
 use std::cmp;
+use std::ops::IndexMut;
 
 use itertools::izip;
 use lagoon::ThreadPool;
 
 use crate::buffer_pointer::BufferPointer;
+use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::prelude::*;
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
 
-// SAFETY:
-// * avx2 must be available.
-#[allow(unsafe_op_in_unsafe_fn)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
-unsafe fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
+#[inline]
+fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     _mm256_castps_si256(_mm256_shuffle_ps(
         _mm256_castsi256_ps(a),
         _mm256_castsi256_ps(b),
@@ -53,21 +53,51 @@ unsafe fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256
     ))
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
-// * `input` must be valid for reads of 128 bytes.
-// * Each `out` must be valid for writes of 32 bytes.
-#[allow(unsafe_op_in_unsafe_fn)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
 #[target_feature(enable = "sse2")]
 #[inline]
-unsafe fn aos_to_soa_u8_32x4(
-    input: BufferPointer<Vec4u8>,
-    out0: &mut [u8],
-    out1: &mut [u8],
-    out2: &mut [u8],
-    out3: &mut [u8],
+fn load_m128i(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
+    // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
+    // safe to read 128 bits from it.
+    unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2")]
+#[inline]
+fn load_m256i(src: &[u8; 32]) -> __m256i {
+    // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
+    // 256 bits from it.
+    unsafe { _mm256_loadu_si256(src.as_ptr().cast::<__m256i>()) }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "sse2")]
+#[inline]
+fn store_m128i(dst: &mut [Vec4u8; 4], val: __m128i) {
+    // SAFETY: dst is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
+    // safe to write 128 bits to it.
+    unsafe { _mm_storeu_si128(dst.as_mut_ptr().cast::<__m128i>(), val) }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2")]
+#[inline]
+fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
+    // SAFETY: dst is 32 u8s, which is 256 bits, so it is safe to write 256 bits
+    // to it.
+    unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2,sse2")]
+#[inline]
+fn aos_to_soa_u8_32x4(
+    input: KnownSizeBufferPointer<Vec4u8, 32>,
+    out0: &mut [u8; 32],
+    out1: &mut [u8; 32],
+    out2: &mut [u8; 32],
+    out3: &mut [u8; 32],
 ) {
     let p0: __m256i = _mm256_set_epi8(
         15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5,
@@ -86,12 +116,9 @@ unsafe fn aos_to_soa_u8_32x4(
         2, 13, 9, 5, 1,
     );
 
-    let input: *const u8 = input.ptr().cast();
-    let out0: *mut u8 = out0.as_mut_ptr();
-    let out1: *mut u8 = out1.as_mut_ptr();
-    let out2: *mut u8 = out2.as_mut_ptr();
-    let out3: *mut u8 = out3.as_mut_ptr();
+    let [i0, i1, i2, i3, i4, i5, i6, i7] = input.as_chunks::<4, 8>();
 
+    // let input: *const u8 = input.ptr().cast();
     // print!("i0  ");
     // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256(input.offset(0).cast::<__m256i>()));
     // print!("i1  ");
@@ -107,19 +134,15 @@ unsafe fn aos_to_soa_u8_32x4(
     // i2  5f 5e 5d 5c | 5b 5a 59 58 | 57 56 55 54 | 53 52 51 50 || 4f 4e 4d 4c | 4b 4a 49 48 | 47 46 45 44 | 43 42 41 40
     // i3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60
 
-    let mut t0: __m256i =
-        _mm256_castsi128_si256(_mm_loadu_si128(input.offset(0).cast::<__m128i>()));
-    let mut t1: __m256i =
-        _mm256_castsi128_si256(_mm_loadu_si128(input.offset(16).cast::<__m128i>()));
-    let mut t2: __m256i =
-        _mm256_castsi128_si256(_mm_loadu_si128(input.offset(32).cast::<__m128i>()));
-    let mut t3: __m256i =
-        _mm256_castsi128_si256(_mm_loadu_si128(input.offset(48).cast::<__m128i>()));
+    let mut t0: __m256i = _mm256_castsi128_si256(load_m128i(&i0));
+    let mut t1: __m256i = _mm256_castsi128_si256(load_m128i(&i1));
+    let mut t2: __m256i = _mm256_castsi128_si256(load_m128i(&i2));
+    let mut t3: __m256i = _mm256_castsi128_si256(load_m128i(&i3));
 
-    t0 = _mm256_inserti128_si256(t0, _mm_loadu_si128(input.offset(64).cast::<__m128i>()), 1);
-    t1 = _mm256_inserti128_si256(t1, _mm_loadu_si128(input.offset(80).cast::<__m128i>()), 1);
-    t2 = _mm256_inserti128_si256(t2, _mm_loadu_si128(input.offset(96).cast::<__m128i>()), 1);
-    t3 = _mm256_inserti128_si256(t3, _mm_loadu_si128(input.offset(112).cast::<__m128i>()), 1);
+    t0 = _mm256_inserti128_si256(t0, load_m128i(&i4), 1);
+    t1 = _mm256_inserti128_si256(t1, load_m128i(&i5), 1);
+    t2 = _mm256_inserti128_si256(t2, load_m128i(&i6), 1);
+    t3 = _mm256_inserti128_si256(t3, load_m128i(&i7), 1);
 
     // print!("t0  ");
     // crate::utils::print_vec_char_256_hex(t0);
@@ -196,27 +219,21 @@ unsafe fn aos_to_soa_u8_32x4(
     // t2  7e 7a 76 72 | 6e 6a 66 62 | 5e 5a 56 52 | 4e 4a 46 42 || 3e 3a 36 32 | 2e 2a 26 22 | 1e 1a 16 12 | 0e 0a 06 02
     // t3  7f 7b 77 73 | 6f 6b 67 63 | 5f 5b 57 53 | 4f 4b 47 43 || 3f 3b 37 33 | 2f 2b 27 23 | 1f 1b 17 13 | 0f 0b 07 03
 
-    _mm256_storeu_si256(out0.cast::<__m256i>(), t0);
-    _mm256_storeu_si256(out1.cast::<__m256i>(), t1);
-    _mm256_storeu_si256(out2.cast::<__m256i>(), t2);
-    _mm256_storeu_si256(out3.cast::<__m256i>(), t3);
+    store_m256i(out0, t0);
+    store_m256i(out1, t1);
+    store_m256i(out2, t2);
+    store_m256i(out3, t3);
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
-// * Each `input` must be valid for reads of 32 bytes.
-// * `out` must be valid for writes of 128 bytes.
-#[allow(unsafe_op_in_unsafe_fn)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-#[target_feature(enable = "sse2")]
+#[target_feature(enable = "avx2,sse2")]
 #[inline]
-unsafe fn soa_to_aos_u8_32x4(
-    input0: &[u8],
-    input1: &[u8],
-    input2: &[u8],
-    input3: &[u8],
-    out: &mut [Vec4u8],
+fn soa_to_aos_u8_32x4(
+    input0: &[u8; 32],
+    input1: &[u8; 32],
+    input2: &[u8; 32],
+    input3: &[u8; 32],
+    out: &mut [Vec4u8; 32],
 ) {
     let p0 = _mm256_set_epi8(
         7, 11, 15, 3, 6, 10, 14, 2, 5, 9, 13, 1, 4, 8, 12, 0, 7, 11, 15, 3, 6, 10, 14, 2, 5, 9, 13,
@@ -235,16 +252,10 @@ unsafe fn soa_to_aos_u8_32x4(
         13, 8, 4, 0, 12,
     );
 
-    let input0: *const u8 = input0.as_ptr();
-    let input1: *const u8 = input1.as_ptr();
-    let input2: *const u8 = input2.as_ptr();
-    let input3: *const u8 = input3.as_ptr();
-    let out: *mut u8 = out.as_mut_ptr().cast();
-
-    let mut t0: __m256i = _mm256_loadu_si256(input0.cast::<__m256i>());
-    let mut t1: __m256i = _mm256_loadu_si256(input1.cast::<__m256i>());
-    let mut t2: __m256i = _mm256_loadu_si256(input2.cast::<__m256i>());
-    let mut t3: __m256i = _mm256_loadu_si256(input3.cast::<__m256i>());
+    let mut t0 = load_m256i(input0);
+    let mut t1 = load_m256i(input1);
+    let mut t2 = load_m256i(input2);
+    let mut t3 = load_m256i(input3);
 
     // print!("t0  ");
     // crate::utils::print_vec_char_256_hex(t0);
@@ -321,36 +332,45 @@ unsafe fn soa_to_aos_u8_32x4(
     // t2  6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60 || 2f 2e 2d 2c | 2b 2a 29 28 | 27 26 25 24 | 23 22 21 20
     // t3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 3f 3e 3d 3c | 3b 3a 39 38 | 37 36 35 34 | 33 32 31 30
 
-    _mm_storeu_si128(out.offset(0).cast::<__m128i>(), _mm256_castsi256_si128(t0));
-    _mm_storeu_si128(out.offset(16).cast::<__m128i>(), _mm256_castsi256_si128(t1));
-    _mm_storeu_si128(out.offset(32).cast::<__m128i>(), _mm256_castsi256_si128(t2));
-    _mm_storeu_si128(out.offset(48).cast::<__m128i>(), _mm256_castsi256_si128(t3));
+    store_m128i(
+        out.index_mut(0..4).try_into().unwrap(),
+        _mm256_castsi256_si128(t0),
+    );
+    store_m128i(
+        out.index_mut(4..8).try_into().unwrap(),
+        _mm256_castsi256_si128(t1),
+    );
+    store_m128i(
+        out.index_mut(8..12).try_into().unwrap(),
+        _mm256_castsi256_si128(t2),
+    );
+    store_m128i(
+        out.index_mut(12..16).try_into().unwrap(),
+        _mm256_castsi256_si128(t3),
+    );
 
-    _mm_storeu_si128(
-        out.offset(64).cast::<__m128i>(),
+    store_m128i(
+        out.index_mut(16..20).try_into().unwrap(),
         _mm256_extracti128_si256(t0, 1),
     );
-    _mm_storeu_si128(
-        out.offset(80).cast::<__m128i>(),
+    store_m128i(
+        out.index_mut(20..24).try_into().unwrap(),
         _mm256_extracti128_si256(t1, 1),
     );
-    _mm_storeu_si128(
-        out.offset(96).cast::<__m128i>(),
+    store_m128i(
+        out.index_mut(24..28).try_into().unwrap(),
         _mm256_extracti128_si256(t2, 1),
     );
-    _mm_storeu_si128(
-        out.offset(112).cast::<__m128i>(),
+    store_m128i(
+        out.index_mut(28..32).try_into().unwrap(),
         _mm256_extracti128_si256(t3, 1),
     );
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-#[target_feature(enable = "sse2")]
+#[target_feature(enable = "avx2,sse2")]
 #[instrument(skip_all, level = "debug")]
-pub unsafe fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
+pub fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
     let len = aos.len();
     assert_eq!(len, soa.len());
 
@@ -362,12 +382,6 @@ pub unsafe fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &
     let n_threads = 4;
     let blocks_per_thread = cmp::max(n_blocks / n_threads, 1);
     let thread_chunk_size = blocks_per_thread * 32;
-    // debug!("lim {lim:?}, rem {rem:?}, thread_chunk_size {thread_chunk_size:?}");
-
-    let mut rem0 = [0u8; 31];
-    let mut rem1 = [0u8; 31];
-    let mut rem2 = [0u8; 31];
-    let mut rem3 = [0u8; 31];
 
     let (aos_to_lim, aos_remainder) = aos.split_at(lim);
 
@@ -379,25 +393,25 @@ pub unsafe fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &
             ) {
                 s.run(move || {
                     for (aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk) in izip!(
-                        aos.chunks_exact(32).0,
-                        soa0.chunks_exact_mut(32),
-                        soa1.chunks_exact_mut(32),
-                        soa2.chunks_exact_mut(32),
-                        soa3.chunks_exact_mut(32)
+                        aos.array_chunks::<32>(),
+                        soa0.as_chunks_mut::<32>().0,
+                        soa1.as_chunks_mut::<32>().0,
+                        soa2.as_chunks_mut::<32>().0,
+                        soa3.as_chunks_mut::<32>().0,
                     ) {
-                        unsafe {
-                            // SAFETY:
-                            // * aos_chunk is 32 Vec4u8s, which is 32*4 = 128 bytes.
-                            // * soa chunks are 32 bytes.
-                            aos_to_soa_u8_32x4(
-                                aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk,
-                            );
-                        }
+                        aos_to_soa_u8_32x4(
+                            aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk,
+                        );
                     }
                 });
             }
         });
     });
+
+    let mut rem0 = [0u8; 31];
+    let mut rem1 = [0u8; 31];
+    let mut rem2 = [0u8; 31];
+    let mut rem3 = [0u8; 31];
 
     // Using this style of loop for the whole thing (with this function
     // signature, etc.) lets the compiler to a pretty good job at
@@ -454,13 +468,10 @@ pub fn vec4u8_aos_to_soa(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
     vec4u8_aos_to_soa_scalar(aos, soa)
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-#[target_feature(enable = "sse2")]
+#[target_feature(enable = "avx2,sse2")]
 #[instrument(skip_all, level = "debug")]
-pub unsafe fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
+pub fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     let len = soa.len();
     assert_eq!(len, aos.len());
 
@@ -480,20 +491,15 @@ pub unsafe fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8])
             ) {
                 s.run(move || {
                     for (soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk, aos_chunk) in izip!(
-                        soa0.chunks_exact(32),
-                        soa1.chunks_exact(32),
-                        soa2.chunks_exact(32),
-                        soa3.chunks_exact(32),
-                        aos.chunks_exact_mut(32)
+                        soa0.as_chunks::<32>().0,
+                        soa1.as_chunks::<32>().0,
+                        soa2.as_chunks::<32>().0,
+                        soa3.as_chunks::<32>().0,
+                        aos.as_chunks_mut::<32>().0,
                     ) {
-                        unsafe {
-                            // SAFETY:
-                            // * soa chunks are 32 bytes.
-                            // * aos_chunk is 32 Vec4u8s, which is 32*4 = 128 bytes.
-                            soa_to_aos_u8_32x4(
-                                soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk, aos_chunk,
-                            );
-                        }
+                        soa_to_aos_u8_32x4(
+                            soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk, aos_chunk,
+                        );
                     }
                 });
             }
@@ -564,7 +570,7 @@ mod tests {
     }
 
     fn test_vec4u8_aos_to_soa_impl(data: &[u8]) {
-        assert!(data.len() % 4 == 0);
+        assert!(data.len().is_multiple_of(4));
 
         let aos: Vec<Vec4u8> = generate_aos(data);
         let aos_ptr = aos.as_ptr();
@@ -620,7 +626,7 @@ mod tests {
     }
 
     fn test_vec4u8_soa_to_aos_impl(data: &[u8]) {
-        assert!(data.len() % 4 == 0);
+        assert!(data.len().is_multiple_of(4));
 
         let soa = generate_soa(data);
 
@@ -674,7 +680,7 @@ mod tests {
     }
 
     fn test_roundtrip_impl(data: &[u8]) {
-        assert!(data.len() % 4 == 0);
+        assert!(data.len().is_multiple_of(4));
 
         let aos: Vec<Vec4u8> = generate_aos(data);
         let aos_ptr = aos.as_ptr();

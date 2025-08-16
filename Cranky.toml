@@ -41,5 +41,6 @@ allow = [
   "clippy::println_empty_string",
   "clippy::too_many_arguments",
   "clippy::type_complexity",
-  "clippy::manual_is_multiple_of", # Fixable in Rust 1.87
+  # Comes up in compile-time assertions using e.g., utils::AssertN.
+  "clippy::let_unit_value",
 ]

@@ -13,11 +13,14 @@
 // limitations under the License.
 
 use std::cmp;
+use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
 
 use crate::utils;
+use crate::utils::AssertN;
+use crate::utils::AssertN3;
 
 /// A slice-like wrapper around a pointer and length.
 ///
@@ -79,7 +82,7 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
     }
 
     pub fn is_empty(self) -> bool {
-        self.len == 0
+        self.len() == 0
     }
 
     /// # Safety
@@ -118,7 +121,7 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
         unsafe {
             (
                 BufferPointer::new_impl(self.ptr, mid, self.lifetime),
-                BufferPointer::new_impl(self.ptr().add(mid), self.len - mid, self.lifetime),
+                BufferPointer::new_impl(self.ptr().add(mid), self.len() - mid, self.lifetime),
             )
         }
     }
@@ -138,6 +141,17 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
         let fst_len = self.len() - rem_len;
         let (fst, snd) = self.split_at(fst_len);
         (Chunks::new(fst, chunk_size), snd)
+    }
+
+    pub fn array_chunks<const N: usize>(self) -> ArrayChunks<'a, T, N> {
+        ArrayChunks::new(self)
+    }
+
+    /// # Panics
+    /// If self.len() != N.
+    pub fn as_known_size<const N: usize>(self) -> KnownSizeBufferPointer<'a, T, N> {
+        assert_eq!(self.len(), N);
+        unsafe { KnownSizeBufferPointer::new_impl(self.ptr, self.lifetime) }
     }
 
     fn as_ptr_range(&self) -> Range<*const T> {
@@ -210,6 +224,7 @@ impl<T> Iterator for BufferPointerIter<'_, T> {
 }
 
 impl<T> ExactSizeIterator for BufferPointerIter<'_, T> {}
+impl<T> FusedIterator for BufferPointerIter<'_, T> {}
 
 #[derive(Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -249,6 +264,134 @@ impl<'a, T: 'a> Iterator for Chunks<'a, T> {
 }
 
 impl<T> ExactSizeIterator for Chunks<'_, T> {}
+impl<T> FusedIterator for Chunks<'_, T> {}
+
+#[derive(Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
+pub struct ArrayChunks<'a, T: 'a, const N: usize> {
+    ptr: BufferPointer<'a, T>,
+    rem: Option<BufferPointer<'a, T>>,
+}
+
+impl<'a, T: 'a, const N: usize> ArrayChunks<'a, T, N> {
+    #[inline]
+    fn new(ptr: BufferPointer<'a, T>) -> Self {
+        _ = AssertN::<N>::NE_0;
+        Self { ptr, rem: None }
+    }
+}
+
+impl<'a, T: 'a, const N: usize> Iterator for ArrayChunks<'a, T, N> {
+    type Item = KnownSizeBufferPointer<'a, T, N>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ptr.len < N {
+            self.rem = Some(self.ptr);
+            None
+        } else {
+            let (fst, snd) = self.ptr.split_at(N);
+            self.ptr = snd;
+            Some(fst.as_known_size::<N>())
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = utils::n_chunks(self.ptr.len, N);
+        (n, Some(n))
+    }
+}
+
+impl<T, const N: usize> ExactSizeIterator for ArrayChunks<'_, T, N> {}
+impl<T, const N: usize> FusedIterator for ArrayChunks<'_, T, N> {}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct KnownSizeBufferPointer<'a, T: 'a, const N: usize> {
+    ptr: *const T,
+    lifetime: PhantomData<&'a T>,
+}
+
+impl<'a, T: 'a, const N: usize> Copy for KnownSizeBufferPointer<'a, T, N> {}
+
+#[allow(clippy::non_canonical_clone_impl)]
+impl<'a, T: 'a, const N: usize> Clone for KnownSizeBufferPointer<'a, T, N> {
+    fn clone(&self) -> Self {
+        Self {
+            ptr: self.ptr,
+            lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'a, T: 'a, const N: usize> KnownSizeBufferPointer<'a, T, N> {
+    /// # Safety: same as new.
+    unsafe fn new_impl(ptr: *const T, lifetime: PhantomData<&'a T>) -> Self {
+        let _ = AssertN::<N>::NE_0;
+        assert!(!ptr.is_null());
+        // TODO(https://github.com/rust-lang/rust/issues/96284): use ptr.is_aligned.
+        assert!(ptr.align_offset(mem::align_of::<T>()) == 0);
+        Self {
+            ptr: ptr.to_owned(),
+            lifetime,
+        }
+    }
+
+    /// # Safety
+    /// * `ptr` must be non-null, aligned, and valid for reads of `N` elements for
+    ///   the lifetime of the BufferPointer.
+    pub unsafe fn new(ptr: &'a *const T) -> Self {
+        unsafe { Self::new_impl(ptr.to_owned(), PhantomData::<&'a T>) }
+    }
+
+    pub fn ptr(self) -> *const T {
+        self.ptr
+    }
+
+    pub fn len(&self) -> usize {
+        N
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    // TODO(https://github.com/rust-lang/rust/issues/76560): derive N_PARTS from
+    // SIZE.
+    /// Partitions KnownSizeBufferPointer of length N into N_PARTS
+    /// KnownSizeBufferPointers of length SIZE.
+    ///
+    /// # Panics
+    /// If SIZE * N_PARTS != self.len().
+    pub fn as_chunks<const SIZE: usize, const N_PARTS: usize>(
+        self,
+    ) -> [KnownSizeBufferPointer<'a, T, SIZE>; N_PARTS] {
+        let _ = AssertN::<SIZE>::NE_0;
+        let _ = AssertN::<N_PARTS>::NE_0;
+        let _ = AssertN3::<SIZE, N_PARTS, N>::N1_X_N2_EQ_N3;
+        let mut out =
+            // SAFETY:
+            //  * self.ptr is valid by preconditon when self was constructed.
+            //  * asserted (indirectly) that SIZE <= N, so self.ptr is
+            //   valid for reads of SIZE.
+            [unsafe { KnownSizeBufferPointer::new_impl(self.ptr, self.lifetime) }; N_PARTS];
+        for (i, pos) in out.iter_mut().enumerate() {
+            // SAFETY:
+            //  * self.ptr is valid by preconditon when self was constructed.
+            //  * i's max value is N_PARTS - 1, so the new pointer's max value
+            //    is self.ptr + (N_PARTS - 1) * SIZE, which is valid for
+            //    reads of SIZE necause we assrted that N_PARTS * PARTSIZE
+            //    == N.
+            *pos = unsafe {
+                KnownSizeBufferPointer::new_impl(
+                    self.ptr.add(i * self.len() / N_PARTS),
+                    self.lifetime,
+                )
+            };
+        }
+        out
+    }
+}
 
 #[cfg(test)]
 mod tests {

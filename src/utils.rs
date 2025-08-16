@@ -134,78 +134,35 @@ impl Default for SerialMap {
     }
 }
 
-// SAFETY:
-// * SSE2 instructions must be available.
-// * `x` must be valid for reads of 32 bytes.
+/// # Safety
+///   sse2 is needed
 #[allow(dead_code)]
-fn print_vec_char_128_dec(x: __m128i) {
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "sse2")]
+pub fn print_vec_char_128_dec(x: __m128i) {
+    let mut v = [0u8; 16];
+    // SAFETY: dst is 16 * 8 = bytes
     unsafe {
-        let mut v = [0u8; 16];
         _mm_storeu_si128(v.as_mut_ptr().cast::<__m128i>(), x);
-        println!(
-            "{:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2}",
-            v[15],
-            v[14],
-            v[13],
-            v[12],
-            v[11],
-            v[10],
-            v[9],
-            v[8],
-            v[7],
-            v[6],
-            v[5],
-            v[4],
-            v[3],
-            v[2],
-            v[1],
-            v[0]
-        );
     }
+    println!("{:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2} | {:0>2} {:0>2} {:0>2} {:0>2}",
+             v[15], v[14], v[13], v[12], v[11], v[10], v[9], v[8], v[7], v[6], v[5], v[4], v[3], v[2], v[1], v[0]);
 }
 
-// SAFETY:
-// * AVX2 instructions must be available.
-// * `x` must be valid for reads of 32 bytes.
-#[allow(dead_code, unsafe_op_in_unsafe_fn)]
-unsafe fn print_vec_char_256_hex(x: __m256i) {
+/// # Safety
+///   avx2 is needed
+#[allow(dead_code)]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2")]
+pub fn print_vec_char_256_hex(x: __m256i) {
     let mut v = [0u8; 32];
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), x);
-    println!(
-        "{:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} || {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x}",
-        v[31],
-        v[30],
-        v[29],
-        v[28],
-        v[27],
-        v[26],
-        v[25],
-        v[24],
-        v[23],
-        v[22],
-        v[21],
-        v[20],
-        v[19],
-        v[18],
-        v[17],
-        v[16],
-        v[15],
-        v[14],
-        v[13],
-        v[12],
-        v[11],
-        v[10],
-        v[9],
-        v[8],
-        v[7],
-        v[6],
-        v[5],
-        v[4],
-        v[3],
-        v[2],
-        v[1],
-        v[0]
-    );
+    // SAFETY: dst is 32 * 8 = bytes
+    unsafe {
+        _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), x);
+    }
+    println!("{:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} || {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x} | {:0>2x} {:0>2x} {:0>2x} {:0>2x}",
+             v[31], v[30], v[29], v[28], v[27], v[26], v[25], v[24], v[23], v[22], v[21], v[20], v[19], v[18], v[17], v[16],
+             v[15], v[14], v[13], v[12], v[11], v[10], v[9], v[8], v[7], v[6], v[5], v[4], v[3], v[2], v[1], v[0]);
 }
 
 /// Computes the number of chunks that will result from splitting a collection
@@ -234,4 +191,19 @@ pub fn bind_user_socket<P: AsRef<Path>>(sock_path: P) -> Result<UnixListener> {
     stat::umask(old_umask);
 
     Ok(listener)
+}
+
+// https://github.com/nvzqz/static-assertions/issues/21
+// https://stackoverflow.com/questions/72582671/const-generics-how-to-ensure-that-usize-const-is-0
+pub struct AssertN<const N: usize>;
+
+impl<const N: usize> AssertN<N> {
+    pub const NE_0: () = assert!(N != 0);
+    pub const MULTIPLE_OF_32: () = assert!(N.is_multiple_of(32));
+}
+
+pub struct AssertN3<const N1: usize, const N2: usize, const N3: usize>;
+
+impl<const N1: usize, const N2: usize, const N3: usize> AssertN3<N1, N2, N3> {
+    pub const N1_X_N2_EQ_N3: () = assert!(N1.checked_mul(N2).unwrap() == N3);
 }

@@ -65,7 +65,7 @@ impl Vec4u8s {
     /// # Panics
     /// If len is not a multiple of 4.
     pub fn with_total_size(n: usize) -> Self {
-        assert!(n % 4 == 0);
+        assert!(n.is_multiple_of(4));
         Self(vec![0; n])
     }
 
@@ -112,6 +112,16 @@ impl Vec4u8s {
         izip!(p0.chunks(n), p1.chunks(n), p2.chunks(n), p3.chunks(n))
     }
 
+    pub fn chunks_exact(&self, n: usize) -> impl Iterator<Item = (&[u8], &[u8], &[u8], &[u8])> {
+        let (p0, p1, p2, p3) = self.parts();
+        izip!(
+            p0.chunks_exact(n),
+            p1.chunks_exact(n),
+            p2.chunks_exact(n),
+            p3.chunks_exact(n)
+        )
+    }
+
     pub fn chunks_mut(
         &mut self,
         n: usize,
@@ -122,6 +132,19 @@ impl Vec4u8s {
             p1.chunks_mut(n),
             p2.chunks_mut(n),
             p3.chunks_mut(n)
+        )
+    }
+
+    pub fn chunks_exact_mut(
+        &mut self,
+        n: usize,
+    ) -> impl Iterator<Item = (&mut [u8], &mut [u8], &mut [u8], &mut [u8])> {
+        let (p0, p1, p2, p3) = self.parts_mut();
+        izip!(
+            p0.chunks_exact_mut(n),
+            p1.chunks_exact_mut(n),
+            p2.chunks_exact_mut(n),
+            p3.chunks_exact_mut(n)
         )
     }
 }
@@ -140,7 +163,7 @@ impl From<Vec4u8s> for Vec<u8> {
 
 impl From<Vec<u8>> for Vec4u8s {
     fn from(vec: Vec<u8>) -> Self {
-        assert!(vec.len() % 4 == 0);
+        assert!(vec.len().is_multiple_of(4));
         Self(vec)
     }
 }

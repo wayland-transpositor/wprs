@@ -28,89 +28,115 @@ use std::arch::x86_64::_mm256_loadu_si256;
 use std::arch::x86_64::_mm256_slli_si256;
 use std::arch::x86_64::_mm256_storeu_si256;
 
-// SAFETY:
-// * avx2 must be available.
-// * `block` must be valid for reads and writes of 32 bytes.
-#[allow(unsafe_op_in_unsafe_fn)]
+use crate::utils::AssertN;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[inline]
-unsafe fn prefix_32(block: *mut u8) {
-    let mut x: __m256i = _mm256_loadu_si256(block.cast::<__m256i>());
+fn prefix_32(block: &mut [u8; 32]) {
+    let block: *mut u8 = block.as_mut_ptr().cast();
+    // SAFETY: block is an &mut [u8; 32] and so is valid for reads of 32 bytes.
+    let mut x: __m256i = unsafe { _mm256_loadu_si256(block.cast::<__m256i>()) };
     x = _mm256_add_epi8(x, _mm256_slli_si256(x, 1));
     x = _mm256_add_epi8(x, _mm256_slli_si256(x, 2));
     x = _mm256_add_epi8(x, _mm256_slli_si256(x, 4));
     x = _mm256_add_epi8(x, _mm256_slli_si256(x, 8));
-    _mm256_storeu_si256(block.cast::<__m256i>(), x);
+    // SAFETY: block is an &mut [u8; 32] and so is valid for writes of 32 bytes.
+    unsafe { _mm256_storeu_si256(block.cast::<__m256i>(), x) };
 }
 
-// SAFETY:
-// * sse2 must be available.
-// * `block` must be valid for reads and writes of 16 bytes.
-#[allow(unsafe_op_in_unsafe_fn)]
+use std::ops::IndexMut;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
 #[inline]
-unsafe fn accumulate_16<const BS: usize>(block: *mut u8, prev_block: __m128i) -> __m128i {
-    let cur_sum = _mm_set1_epi8(block.add(15).read() as i8);
-    let mut cur_block: __m128i = _mm_loadu_si128(block.cast::<__m128i>());
+fn accumulate_16(block: &mut [u8; 16], prev_block: __m128i) -> __m128i {
+    let cur_sum = _mm_set1_epi8(block[15] as i8);
+    let block_ptr: *mut u8 = block.as_mut_ptr().cast();
+    // SAFETY: block is an &mut [u8; 16] and so is valid for reads of 16 bytes.
+    let mut cur_block: __m128i = unsafe { _mm_loadu_si128(block_ptr.cast::<__m128i>()) };
     cur_block = _mm_add_epi8(prev_block, cur_block);
-    _mm_storeu_si128(block.cast::<__m128i>(), cur_block);
+    // SAFETY: block is an &mut [u8; 32] and so is valid for writes of 16 bytes.
+    unsafe {
+        _mm_storeu_si128(block_ptr.cast::<__m128i>(), cur_block);
+    }
     _mm_add_epi8(prev_block, cur_sum)
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "sse2")]
+#[inline]
+fn accumulate_32(block: &mut [u8; 32], mut prev_block: __m128i) -> __m128i {
+    prev_block = accumulate_16(block.index_mut(0..16).try_into().unwrap(), prev_block);
+    accumulate_16(block.index_mut(16..32).try_into().unwrap(), prev_block)
 }
 
 /// Computes the prefix sum of `arr` in-place using SIMD instructions. BS bytes
 /// will be processed at a time; small sizes will cause pipeline stalls and
 /// large sizes will cause cache misses. `arr.len()` and `BS` must be non-zero,
 /// multiples of 32, and `arr.len()` must be >= `BS`.
-///
-/// SAFETY:
-/// * avx2 and sse2 must be available.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-#[target_feature(enable = "sse2")]
+#[target_feature(enable = "avx2,sse2")]
 #[inline]
-unsafe fn prefix_sum_avx2<const BS: usize>(arr: &mut [u8]) {
+fn prefix_sum_avx2<const BS: usize>(arr: &mut [u8]) {
+    let _ = AssertN::<BS>::NE_0;
+    let _ = AssertN::<BS>::MULTIPLE_OF_32;
+    let chunks_per_block = BS / 32;
     let len = arr.len();
-    let arr = arr.as_mut_ptr();
-    assert!(len > 0);
-    assert!(BS > 0);
     assert!(len >= BS);
-    assert!(len % 32 == 0);
-    assert!(BS % 32 == 0);
+    assert!(len.is_multiple_of(32));
 
-    // SAFETY:
-    // * avx2 and sse2 are available by precondition.
-    // * a.len() is a multiple of 32, so reading blocks of 32 from a at
-    // offset i*32 will be valid when i < n / 32. Since BS < n, reading
-    // from offset i*32 will also be valid when i < BS / 32.
-    unsafe {
-        let mut s: __m128i = _mm_setzero_si128();
+    // We could replace many of the functions below wich unchecked verions, but
+    // benchmarking shows performance to be a wash.
 
-        for i in (0..BS).step_by(32) {
-            prefix_32(arr.add(i));
+    let mut s: __m128i = _mm_setzero_si128();
+    // arr.len() is a multiple of 32, so there won't be a remainder.
+    let chunks = arr.as_chunks_mut::<32>().0;
+
+    // prefix 0 .. BS
+    for chunk in chunks.index_mut(..chunks_per_block) {
+        prefix_32(chunk);
+    }
+
+    if chunks.len() > chunks_per_block && chunks.len() <= 2 * chunks_per_block {
+        // prefix     BS .. len
+        // accumulate 0 .. len - BS
+        for i in chunks_per_block..chunks.len() {
+            let chunk = chunks.index_mut(i);
+            prefix_32(chunk);
+            s = accumulate_32(chunks.index_mut(i - chunks_per_block), s);
+        }
+    } else if chunks.len() > 2 * chunks_per_block {
+        // prefix     BS .. len - 2*BS
+        // accumulate 0 .. len - 3*BS
+        for i in chunks_per_block..chunks.len() - 2 * chunks_per_block {
+            let chunk = chunks.index_mut(i);
+            prefix_32(chunk);
+            // SAFETY: this loop ends at arr[len - 2*BS], so the current chunk pointer
+            // plus BS is still within arr.
+            unsafe { _mm_prefetch(chunk.as_ptr().add(BS).cast(), _MM_HINT_T0) };
+            s = accumulate_32(chunks.index_mut(i - chunks_per_block), s);
         }
 
-        for i in (BS..len).step_by(32) {
-            prefix_32(arr.add(i));
-            _mm_prefetch(arr.add(i + BS).cast(), _MM_HINT_T0);
-            s = accumulate_16::<BS>(arr.add(i - BS), s);
-            s = accumulate_16::<BS>(arr.add(i - BS + 16), s);
+        // prefix     len - 2*BS .. len
+        // accumulate len - 3*BS .. len - BS
+        for i in chunks.len() - 2 * chunks_per_block..chunks.len() {
+            let chunk = chunks.index_mut(i);
+            prefix_32(chunk);
+            s = accumulate_32(chunks.index_mut(i - chunks_per_block), s);
         }
+    }
 
-        for i in ((len - BS)..len).step_by(32) {
-            _mm_prefetch(arr.add(i + BS).cast(), _MM_HINT_T0);
-            s = accumulate_16::<BS>(arr.add(i), s);
-            s = accumulate_16::<BS>(arr.add(i + 16), s);
-        }
+    // accumulate len - BS .. len
+    for chunk in chunks.index_mut(chunks.len() - chunks_per_block..) {
+        s = accumulate_32(chunk, s);
     }
 }
 
 #[inline(always)]
 pub fn prefix_sum_scalar(a: &mut [u8], prior_sum: u8) {
-    let len = a.len();
     a[0] = a[0].wrapping_add(prior_sum);
-    for i in 1..len {
+    for i in 1..a.len() {
         a[i] = a[i].wrapping_add(a[i - 1]);
     }
 }
@@ -122,32 +148,24 @@ pub fn prefix_sum_scalar(a: &mut [u8], prior_sum: u8) {
 /// and a multiple of 32.
 ///
 /// # Safety
-/// * avx2 and sse2 must be available.
-///
-/// # Panics
-/// If BS is 0 or not a multiple of 32.
+/// * requires AVX2 and SSE2
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
-#[target_feature(enable = "sse2")]
+#[target_feature(enable = "avx2,sse2")]
 #[inline]
-pub unsafe fn prefix_sum_bs<const BS: usize>(arr: &mut [u8]) {
-    assert!(BS > 0);
-    assert!(BS % 32 == 0);
-    let len = arr.len();
-    let lim = (len / BS) * BS;
+pub fn prefix_sum_bs<const BS: usize>(arr: &mut [u8]) {
+    let _ = AssertN::<BS>::NE_0;
+    let _ = AssertN::<BS>::MULTIPLE_OF_32;
+    let lim = (arr.len() / BS) * BS;
 
     let prior_sum = if lim > 0 {
-        // SAFETY: avx2 and sse2 are available by precondition.
-        unsafe {
-            prefix_sum_avx2::<BS>(&mut arr[0..lim]);
-        }
+        prefix_sum_avx2::<BS>(&mut arr[..lim]);
         arr[lim - 1]
     } else {
         0
     };
 
-    if lim != len {
-        prefix_sum_scalar(&mut arr[lim..len], prior_sum);
+    if lim != arr.len() {
+        prefix_sum_scalar(&mut arr[lim..], prior_sum);
     }
 }
 
@@ -187,8 +205,8 @@ mod tests {
 
     #[test]
     fn test_prefix_sum() {
-        let i: u32 = 1000;
-        let mut arr = (0..i).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let i: u32 = 4096;
+        let mut arr = (0..i).map(|_| 1u8).collect::<Vec<_>>();
         let mut expected_arr = arr.clone();
 
         prefix_sum(&mut arr);
@@ -200,7 +218,19 @@ mod tests {
     #[test]
     fn test_prefix_sum_input_smaller_than_block_size() {
         let i: u32 = 10;
-        let mut arr = (0..i).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let mut arr = (0..i).map(|_| 1u8).collect::<Vec<_>>();
+        let mut expected_arr = arr.clone();
+
+        prefix_sum(&mut arr);
+        prefix_sum_scalar(&mut expected_arr, 0);
+
+        assert_eq!(arr, expected_arr);
+    }
+
+    #[test]
+    fn test_prefix_sum_input_smaller_than_2_times_block_size() {
+        let i: u32 = 3072;
+        let mut arr = (0..i).map(|_| 1u8).collect::<Vec<_>>();
         let mut expected_arr = arr.clone();
 
         prefix_sum(&mut arr);
@@ -212,7 +242,7 @@ mod tests {
     #[test]
     fn test_prefix_sum_input_size_power_of_two() {
         let i: u32 = 256;
-        let mut arr = (0..i).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let mut arr = (0..i).map(|_| 1u8).collect::<Vec<_>>();
         let mut expected_arr = arr.clone();
 
         prefix_sum(&mut arr);
@@ -224,7 +254,7 @@ mod tests {
     #[test]
     fn test_prefix_sum_input_size_odd() {
         let i: u32 = 1001;
-        let mut arr = (0..i).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        let mut arr = (0..i).map(|_| 1u8).collect::<Vec<_>>();
         let mut expected_arr = arr.clone();
 
         prefix_sum(&mut arr);

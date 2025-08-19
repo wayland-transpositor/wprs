@@ -16,23 +16,23 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use bpaf::Parser;
+use calloop::RegistrationToken;
 use calloop::signals::Signal;
 use calloop::signals::Signals;
-use calloop::RegistrationToken;
 use optional_struct::optional_struct;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::reexports::calloop;
-use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::calloop::Interest;
 use smithay::reexports::calloop::Mode;
 use smithay::reexports::calloop::PostAction;
+use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
-use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 use smithay_client_toolkit::reexports::client::Connection;
+use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 use tracing::Level;
 use wprs::args;
 use wprs::args::Config;
@@ -40,9 +40,9 @@ use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
 use wprs::prelude::*;
 use wprs::utils;
+use wprs::xwayland_xdg_shell::WprsState;
 use wprs::xwayland_xdg_shell::compositor::DecorationBehavior;
 use wprs::xwayland_xdg_shell::compositor::XwaylandOptions;
-use wprs::xwayland_xdg_shell::WprsState;
 
 #[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

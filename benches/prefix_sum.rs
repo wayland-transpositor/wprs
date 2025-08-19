@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use criterion::Criterion;
 use criterion::black_box;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 use wprs::prefix_sum;
 
 fn prefix_sum_benchmark(c: &mut Criterion) {

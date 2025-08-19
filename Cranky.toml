@@ -33,7 +33,6 @@ warn = [
   "clippy::used_underscore_binding",
   "clippy::verbose_file_reads",
   "clippy::wildcard_imports",
-  "unsafe_op_in_unsafe_fn",
 ]
 
 allow = [

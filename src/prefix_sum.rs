@@ -16,17 +16,17 @@
 /// https://en.algorithmica.org/hpc/algorithms/prefix/.
 use std::arch::x86_64::__m128i;
 use std::arch::x86_64::__m256i;
-use std::arch::x86_64::_mm256_add_epi8;
-use std::arch::x86_64::_mm256_loadu_si256;
-use std::arch::x86_64::_mm256_slli_si256;
-use std::arch::x86_64::_mm256_storeu_si256;
+use std::arch::x86_64::_MM_HINT_T0;
 use std::arch::x86_64::_mm_add_epi8;
 use std::arch::x86_64::_mm_loadu_si128;
 use std::arch::x86_64::_mm_prefetch;
 use std::arch::x86_64::_mm_set1_epi8;
 use std::arch::x86_64::_mm_setzero_si128;
 use std::arch::x86_64::_mm_storeu_si128;
-use std::arch::x86_64::_MM_HINT_T0;
+use std::arch::x86_64::_mm256_add_epi8;
+use std::arch::x86_64::_mm256_loadu_si256;
+use std::arch::x86_64::_mm256_slli_si256;
+use std::arch::x86_64::_mm256_storeu_si256;
 
 // SAFETY:
 // * avx2 must be available.

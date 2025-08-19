@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::ffi::OsStr;
 use std::mem;
 use std::os::fd::OwnedFd;
@@ -26,21 +26,21 @@ use calloop::RegistrationToken;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::input::pointer::CursorImageStatus;
-use smithay::input::pointer::CursorImageSurfaceData;
 use smithay::input::Seat;
 use smithay::input::SeatHandler;
 use smithay::input::SeatState;
+use smithay::input::pointer::CursorImageStatus;
+use smithay::input::pointer::CursorImageSurfaceData;
 use smithay::output::Output;
 use smithay::output::PhysicalProperties;
 use smithay::reexports::calloop::LoopHandle;
+use smithay::reexports::wayland_server::Client;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend::GlobalId;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Client;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor;
 use smithay::wayland::compositor::BufferAssignment;
@@ -51,30 +51,30 @@ use smithay::wayland::compositor::Damage;
 use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::compositor::SurfaceData;
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::selection::SelectionSource;
+use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::selection::data_device::ClientDndGrabHandler;
 use smithay::wayland::selection::data_device::DataDeviceHandler;
 use smithay::wayland::selection::data_device::DataDeviceState;
 use smithay::wayland::selection::data_device::ServerDndGrabHandler;
 use smithay::wayland::selection::primary_selection::PrimarySelectionHandler;
 use smithay::wayland::selection::primary_selection::PrimarySelectionState;
-use smithay::wayland::selection::SelectionHandler;
-use smithay::wayland::selection::SelectionSource;
-use smithay::wayland::selection::SelectionTarget;
 use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::xwayland_shell::XWaylandShellHandler;
 use smithay::wayland::xwayland_shell::XWaylandShellState;
-use smithay::xwayland::xwm::XwmId;
 use smithay::xwayland::X11Surface;
 use smithay::xwayland::X11Wm;
 use smithay::xwayland::XWayland;
 use smithay::xwayland::XWaylandClientData;
 use smithay::xwayland::XWaylandEvent;
+use smithay::xwayland::xwm::XwmId;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as SctkWlSurface;
 use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
-use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shell::xdg::XdgSurface;
 
 use crate::compositor_utils;
 use crate::fallible_entry::FallibleEntryExt;
@@ -82,10 +82,10 @@ use crate::prelude::*;
 use crate::serialization::geometry::Point;
 use crate::serialization::wayland::OutputInfo;
 use crate::utils::SerialMap;
-use crate::xwayland_xdg_shell::client::Role;
-use crate::xwayland_xdg_shell::wmname;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
+use crate::xwayland_xdg_shell::client::Role;
+use crate::xwayland_xdg_shell::wmname;
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DecorationBehavior {
@@ -580,18 +580,18 @@ pub fn commit_inner(
         None => {},
     }
 
-    if let Some(Role::XdgToplevel(toplevel)) = &mut xwayland_surface.role {
-        if toplevel.configured && toplevel.window_frame.is_dirty() {
-            toplevel.window_frame.draw();
-        }
+    if let Some(Role::XdgToplevel(toplevel)) = &mut xwayland_surface.role
+        && toplevel.configured
+        && toplevel.window_frame.is_dirty()
+    {
+        toplevel.window_frame.draw();
     }
 
-    if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
-        if let Some(decorated_subsurface) = &mut subsurface.frame {
-            if decorated_subsurface.is_dirty() {
-                decorated_subsurface.draw();
-            }
-        }
+    if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role
+        && let Some(decorated_subsurface) = &mut subsurface.frame
+        && decorated_subsurface.is_dirty()
+    {
+        decorated_subsurface.draw();
     }
 
     let damage = &mut mem::take(&mut surface_attributes.damage)
@@ -687,17 +687,16 @@ impl SeatHandler for WprsState {
                         .hotspot
                 });
 
-                let xwayland_surface = log_and_return!(self
-                    .surfaces
-                    .entry(surface.id())
-                    .or_insert_with_result(|| {
+                let xwayland_surface = log_and_return!(
+                    self.surfaces.entry(surface.id()).or_insert_with_result(|| {
                         XWaylandSurface::new(
                             &surface,
                             &self.client_state.compositor_state,
                             &self.client_state.qh,
                             &mut self.surface_bimap,
                         )
-                    }));
+                    })
+                );
 
                 xwayland_surface.role = Some(Role::Cursor);
 

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::hash_map::Entry;
 /// Handlers for events from the wprs client.
 use std::collections::HashSet;
+use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -37,12 +37,12 @@ use smithay::input::pointer::Focus;
 use smithay::input::pointer::MotionEvent;
 use smithay::output::Output;
 use smithay::output::PhysicalProperties;
+use smithay::reexports::wayland_server::Client;
 use smithay::reexports::wayland_server::backend::ObjectId;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Client;
 use smithay::utils::Rectangle;
-use smithay::utils::Serial;
 use smithay::utils::SERIAL_COUNTER;
+use smithay::utils::Serial;
 use smithay::wayland::compositor;
 use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
@@ -51,6 +51,11 @@ use smithay::wayland::selection::primary_selection;
 use crate::args;
 use crate::compositor_utils;
 use crate::prelude::*;
+use crate::serialization::Capabilities;
+use crate::serialization::Event;
+use crate::serialization::RecvType;
+use crate::serialization::Request;
+use crate::serialization::SendType;
 use crate::serialization::wayland::DataDestinationEvent;
 use crate::serialization::wayland::DataEvent;
 use crate::serialization::wayland::DataRequest;
@@ -73,14 +78,9 @@ use crate::serialization::xdg_shell::PopupConfigure;
 use crate::serialization::xdg_shell::PopupEvent;
 use crate::serialization::xdg_shell::ToplevelConfigure;
 use crate::serialization::xdg_shell::ToplevelEvent;
-use crate::serialization::Capabilities;
-use crate::serialization::Event;
-use crate::serialization::RecvType;
-use crate::serialization::Request;
-use crate::serialization::SendType;
-use crate::server::smithay_handlers::DndGrab;
 use crate::server::LockedSurfaceState;
 use crate::server::WprsServerState;
+use crate::server::smithay_handlers::DndGrab;
 
 enum UnknownSurfaceErr {
     ObjectId(WlSurfaceId),
@@ -232,7 +232,9 @@ impl WprsServerState {
                     vertical,
                     source,
                 } => {
-                    debug!("axis event: horizontal {horizontal:?}, vertical {vertical:?}, source {source:?}");
+                    debug!(
+                        "axis event: horizontal {horizontal:?}, vertical {vertical:?}, source {source:?}"
+                    );
                     let mut axis_frame = AxisFrame::new(time)
                         .value(Axis::Horizontal, horizontal.absolute)
                         .value(Axis::Vertical, vertical.absolute)

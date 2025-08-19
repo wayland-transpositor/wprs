@@ -253,28 +253,27 @@ impl CompositorHandler for WprsState {
             if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
                 subsurface.pending_frame_callback = false;
             }
-            if let Some(x11_surface) = &xwayland_surface.x11_surface {
-                if let Some(wl_surface) = x11_surface.wl_surface() {
-                    compositor::with_states(&wl_surface, |surface_data| {
-                        for callback in surface_data
-                            .cached_state
-                            .get::<SurfaceAttributes>()
-                            .current()
-                            .frame_callbacks
-                            .drain(..)
-                        {
-                            debug!(
-                                "Sending callback for client surface {:?}, compositor surface {:?}: {:?}.",
-                                surface.id(),
-                                xwayland_surface.wl_surface().id(),
-                                callback.id()
-                            );
-                            callback
-                                .done(self.compositor_state.start_time.elapsed().as_millis()
-                                    as u32);
-                        }
-                    });
-                }
+            if let Some(x11_surface) = &xwayland_surface.x11_surface
+                && let Some(wl_surface) = x11_surface.wl_surface()
+            {
+                compositor::with_states(&wl_surface, |surface_data| {
+                    for callback in surface_data
+                        .cached_state
+                        .get::<SurfaceAttributes>()
+                        .current()
+                        .frame_callbacks
+                        .drain(..)
+                    {
+                        debug!(
+                            "Sending callback for client surface {:?}, compositor surface {:?}: {:?}.",
+                            surface.id(),
+                            xwayland_surface.wl_surface().id(),
+                            callback.id()
+                        );
+                        callback
+                            .done(self.compositor_state.start_time.elapsed().as_millis() as u32);
+                    }
+                });
             }
         }
     }
@@ -575,11 +574,12 @@ impl KeyboardHandler for WprsState {
             /* KEY_LEFTSHIFT */ 42, /* KEY_RIGHTSHIFT */ 54,
         ]);
 
-        let keyboard = log_and_return!(self
-            .compositor_state
-            .seat
-            .get_keyboard()
-            .ok_or("seat has no keyboard"));
+        let keyboard = log_and_return!(
+            self.compositor_state
+                .seat
+                .get_keyboard()
+                .ok_or("seat has no keyboard")
+        );
 
         // We simulate keycodes before focusing since that is what a normal wayland application would see.
         // Process modifier keys first so that they apply to other held keys.
@@ -641,11 +641,12 @@ impl KeyboardHandler for WprsState {
         };
         let x11_surface = log_and_return!(xwayland_surface.get_x11_surface()).clone();
         x11_surface.set_activated(false).unwrap();
-        let keyboard = log_and_return!(self
-            .compositor_state
-            .seat
-            .get_keyboard()
-            .ok_or("seat has no keyboard"));
+        let keyboard = log_and_return!(
+            self.compositor_state
+                .seat
+                .get_keyboard()
+                .ok_or("seat has no keyboard")
+        );
 
         let serial = self.compositor_state.serial_map.insert(serial);
         keyboard.set_focus(self, None, serial);
@@ -738,11 +739,12 @@ impl KeyboardHandler for WprsState {
         _keyboard: &WlKeyboard,
         info: RepeatInfo,
     ) {
-        let keyboard = log_and_return!(self
-            .compositor_state
-            .seat
-            .get_keyboard()
-            .ok_or("seat has no keyboard"));
+        let keyboard = log_and_return!(
+            self.compositor_state
+                .seat
+                .get_keyboard()
+                .ok_or("seat has no keyboard")
+        );
         let (rate, delay) = match info {
             RepeatInfo::Repeat { rate, delay } => (rate.get(), delay),
             RepeatInfo::Disable => (0, 0),
@@ -757,11 +759,12 @@ impl KeyboardHandler for WprsState {
         _keyboard: &WlKeyboard,
         keymap: Keymap<'_>,
     ) {
-        let keyboard = log_and_return!(self
-            .compositor_state
-            .seat
-            .get_keyboard()
-            .ok_or("seat has no keyboard"));
+        let keyboard = log_and_return!(
+            self.compositor_state
+                .seat
+                .get_keyboard()
+                .ok_or("seat has no keyboard")
+        );
         log_and_return!(keyboard.set_keymap_from_string(self, keymap.as_string()));
     }
 
@@ -775,11 +778,12 @@ impl KeyboardHandler for WprsState {
         _raw_modifiers: RawModifiers,
         variant: u32,
     ) {
-        let keyboard = log_and_return!(self
-            .compositor_state
-            .seat
-            .get_keyboard()
-            .ok_or("seat has no keyboard"));
+        let keyboard = log_and_return!(
+            self.compositor_state
+                .seat
+                .get_keyboard()
+                .ok_or("seat has no keyboard")
+        );
         keyboard.with_xkb_state(self, |mut context: XkbContext| {
             context.set_layout(Layout(variant));
         });
@@ -1152,7 +1156,10 @@ impl XWaylandXdgToplevel {
                 NonZeroU32::new(buffer_metadata.height as u32),
             ),
             _ => {
-                warn!("Unable to get size from either configure or buffer_metadata, using default size: {:?}", default_window_size);
+                warn!(
+                    "Unable to get size from either configure or buffer_metadata, using default size: {:?}",
+                    default_window_size
+                );
                 default_window_size
             },
         };
@@ -1219,7 +1226,10 @@ impl XWaylandXdgToplevel {
             ) => (width.get() as i32, height.get() as i32),
             (_, Some(buffer_metadata)) => (buffer_metadata.width, buffer_metadata.height),
             _ => {
-                warn!("Unable to get size from either configure or buffer_metadata, using default size: {:?}", default_window_size);
+                warn!(
+                    "Unable to get size from either configure or buffer_metadata, using default size: {:?}",
+                    default_window_size
+                );
                 default_window_size
             },
         };

@@ -22,16 +22,22 @@ use std::thread;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 
-use crate::client::subsurface;
-use crate::client::subsurface::RemoteSubSurface;
 use crate::client::RemoteCursor;
 use crate::client::RemoteSurface;
 use crate::client::RemoteXdgPopup;
 use crate::client::RemoteXdgToplevel;
 use crate::client::Role;
 use crate::client::WprsClientState;
+use crate::client::subsurface;
+use crate::client::subsurface::RemoteSubSurface;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
+use crate::serialization::Capabilities;
+use crate::serialization::ClientId;
+use crate::serialization::Event;
+use crate::serialization::RecvType;
+use crate::serialization::Request;
+use crate::serialization::SendType;
 use crate::serialization::tuple::Tuple2;
 use crate::serialization::wayland;
 use crate::serialization::wayland::ClientSurface;
@@ -52,12 +58,6 @@ use crate::serialization::xdg_shell::PopupRequest;
 use crate::serialization::xdg_shell::PopupRequestPayload;
 use crate::serialization::xdg_shell::ToplevelRequest;
 use crate::serialization::xdg_shell::ToplevelRequestPayload;
-use crate::serialization::Capabilities;
-use crate::serialization::ClientId;
-use crate::serialization::Event;
-use crate::serialization::RecvType;
-use crate::serialization::Request;
-use crate::serialization::SendType;
 
 impl WprsClientState {
     #[instrument(skip(self), level = "debug")]
@@ -196,16 +196,15 @@ impl WprsClientState {
         surface_id: WlSurfaceId,
     ) -> Result<()> {
         let client = self.remote_display.client(&client_id);
-        if let Some(surface) = client.surfaces.remove(&surface_id) {
-            if let Ok(Role::SubSurface(subsurface)) = surface.get_role() {
-                // The parent surface may have already been destroyed.
-                if let Some(parent) = client.surfaces.get_mut(&subsurface.parent) {
-                    parent
-                        .z_ordered_children
-                        .retain(|child| child.id != surface.id);
-                }
-            }
-        };
+        if let Some(surface) = client.surfaces.remove(&surface_id)
+            && let Ok(Role::SubSurface(subsurface)) = surface.get_role() &&
+        // The parent surface may have already been destroyed.
+            let Some(parent) = client.surfaces.get_mut(&subsurface.parent)
+        {
+            parent
+                .z_ordered_children
+                .retain(|child| child.id != surface.id);
+        }
         Ok(())
     }
 
@@ -440,22 +439,19 @@ impl WprsClientState {
                         if let (Some(seat_obj), Some(serial)) = (
                             self.seat_objects.iter().last(),
                             self.last_mouse_down_serial.take(),
+                        ) && let (
+                            Some(primary_selection_manager_state),
+                            Some(primary_selection_device),
+                        ) = (
+                            &self.primary_selection_manager_state,
+                            &seat_obj.primary_selection_device,
                         ) {
-                            if let (
-                                Some(primary_selection_manager_state),
-                                Some(primary_selection_device),
-                            ) = (
-                                &self.primary_selection_manager_state,
-                                &seat_obj.primary_selection_device,
-                            ) {
-                                source_metadata.mime_types.push("_wprs_marker".to_string());
-                                let mime_types =
-                                    source_metadata.mime_types.iter().map(String::as_str);
-                                let source = primary_selection_manager_state
-                                    .create_selection_source(&self.qh, mime_types);
-                                source.set_selection(primary_selection_device, serial);
-                                self.primary_selection_source = Some(source);
-                            }
+                            source_metadata.mime_types.push("_wprs_marker".to_string());
+                            let mime_types = source_metadata.mime_types.iter().map(String::as_str);
+                            let source = primary_selection_manager_state
+                                .create_selection_source(&self.qh, mime_types);
+                            source.set_selection(primary_selection_device, serial);
+                            self.primary_selection_source = Some(source);
                         }
                     },
                     DataSource::DnD => {},

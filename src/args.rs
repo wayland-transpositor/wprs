@@ -24,12 +24,12 @@ use std::sync::atomic::Ordering;
 
 use bpaf::Parser;
 use optional_struct::Applicable;
-use ron::extensions::Extensions;
 use ron::Options;
+use ron::extensions::Extensions;
 use serde::Deserialize;
 use serde::Serialize;
-use tracing::metadata::ParseLevelError;
 use tracing::Level;
+use tracing::metadata::ParseLevelError;
 
 use crate::prelude::*;
 

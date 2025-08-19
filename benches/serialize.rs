@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 use rkyv::rancor::Error as RancorError;
 use wprs::serialization::wayland::DataToTransfer;
 

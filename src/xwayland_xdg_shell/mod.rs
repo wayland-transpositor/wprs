@@ -25,25 +25,25 @@ use smithay::input::keyboard::KeysymHandle;
 use smithay::input::keyboard::ModifiersState;
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
-use smithay::reexports::wayland_server::backend::ObjectId as CompositorObjectId;
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as CompositorWlSurface;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::backend::ObjectId as CompositorObjectId;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as CompositorWlSurface;
 use smithay::utils::Serial;
-use smithay::xwayland::xwm::WmWindowType;
 use smithay::xwayland::X11Surface;
+use smithay::xwayland::xwm::WmWindowType;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::compositor::SurfaceData;
 use smithay_client_toolkit::output::OutputData;
-use smithay_client_toolkit::reexports::client::backend::ObjectId as ClientObjectId;
-use smithay_client_toolkit::reexports::client::globals::GlobalList;
-use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as ClientWlSurface;
 use smithay_client_toolkit::reexports::client::Connection;
 use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
-use smithay_client_toolkit::shell::xdg::XdgShell;
+use smithay_client_toolkit::reexports::client::backend::ObjectId as ClientObjectId;
+use smithay_client_toolkit::reexports::client::globals::GlobalList;
+use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface as ClientWlSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
@@ -151,32 +151,32 @@ impl XWaylandSurface {
     }
 
     fn try_draw_buffer(&mut self) {
-        if !self.buffer_attached {
-            if let Some(buffer) = &self.buffer {
-                let surface = self.wl_surface().clone();
-                // The only possible error here is AlreadyActive, which we can
-                // ignore.
-                _ = buffer.active_buffer.attach_to(&surface);
-                if let Some(damage_rects) = &self.damage.take() {
-                    // avoid overwhelming wayland connection
-                    if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
-                        for damage_rect in damage_rects {
-                            surface.damage_buffer(
-                                damage_rect.loc.x,
-                                damage_rect.loc.y,
-                                damage_rect.size.w,
-                                damage_rect.size.h,
-                            );
-                        }
-                    } else {
-                        surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+        if !self.buffer_attached
+            && let Some(buffer) = &self.buffer
+        {
+            let surface = self.wl_surface().clone();
+            // The only possible error here is AlreadyActive, which we can
+            // ignore.
+            _ = buffer.active_buffer.attach_to(&surface);
+            if let Some(damage_rects) = &self.damage.take() {
+                // avoid overwhelming wayland connection
+                if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
+                    for damage_rect in damage_rects {
+                        surface.damage_buffer(
+                            damage_rect.loc.x,
+                            damage_rect.loc.y,
+                            damage_rect.size.w,
+                            damage_rect.size.h,
+                        );
                     }
                 } else {
                     surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
                 }
-
-                self.buffer_attached = true;
+            } else {
+                surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
             }
+
+            self.buffer_attached = true;
         }
     }
 
@@ -296,7 +296,9 @@ impl XWaylandSurface {
                 .location(loc!())?;
             },
             WaylandWindowType::Popup if parent_if_popup.clone().unwrap().for_popup.is_none() => {
-                debug!("creating subsurface for {self:?} instead of popup because parent was subsurface");
+                debug!(
+                    "creating subsurface for {self:?} instead of popup because parent was subsurface"
+                );
                 self.parent.clone_from(&parent_if_subsurface);
                 XWaylandSubSurface::set_role(
                     self,
@@ -407,13 +409,13 @@ impl WprsState {
             self.remove_surface(&child);
         }
 
-        if let Some(xwayland_surface) = self.surfaces.remove(surface_id) {
-            if let Some(parent) = xwayland_surface.parent {
-                let parent_xwayland_surface = self.surfaces.get_mut(&parent.surface_id).unwrap();
-                parent_xwayland_surface
-                    .children
-                    .retain(|child_surface_id| child_surface_id != surface_id);
-            }
+        if let Some(xwayland_surface) = self.surfaces.remove(surface_id)
+            && let Some(parent) = xwayland_surface.parent
+        {
+            let parent_xwayland_surface = self.surfaces.get_mut(&parent.surface_id).unwrap();
+            parent_xwayland_surface
+                .children
+                .retain(|child_surface_id| child_surface_id != surface_id);
         }
 
         // this MUST come after removing xwayland_surface, because xwayland_surface's role needs

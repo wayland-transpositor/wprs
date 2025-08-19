@@ -18,17 +18,19 @@ use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner;
 use smithay_client_toolkit::shell::xdg;
+use smithay_client_toolkit::shell::xdg::XdgShell;
+use smithay_client_toolkit::shell::xdg::XdgSurface;
 use smithay_client_toolkit::shell::xdg::popup;
 use smithay_client_toolkit::shell::xdg::window::Window;
 use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
-use smithay_client_toolkit::shell::xdg::XdgShell;
-use smithay_client_toolkit::shell::xdg::XdgSurface;
 
 use crate::client::ObjectBimap;
 use crate::client::RemoteSurface;
 use crate::client::Role;
 use crate::client::WprsClientState;
 use crate::prelude::*;
+use crate::serialization::ClientId;
+use crate::serialization::ObjectId;
 use crate::serialization::geometry::Size;
 use crate::serialization::wayland::SurfaceState;
 use crate::serialization::wayland::WlSurfaceId;
@@ -36,8 +38,6 @@ use crate::serialization::xdg_shell::DecorationMode;
 use crate::serialization::xdg_shell::XdgPopupId;
 use crate::serialization::xdg_shell::XdgPositioner;
 use crate::serialization::xdg_shell::XdgToplevelId;
-use crate::serialization::ClientId;
-use crate::serialization::ObjectId;
 
 #[derive(Debug)]
 pub struct RemoteXdgToplevel {
@@ -191,17 +191,17 @@ impl RemoteXdgToplevel {
 
         // TODO: why isn't this always set?
         // let xdg_surface_state = surface_state.xdg_surface_state.as_ref().unwrap();
-        if let Some(xdg_surface_state) = &surface_state.xdg_surface_state {
-            if let Some(window_geometry) = xdg_surface_state.window_geometry {
-                remote_toplevel.set_window_geometry(
-                    window_geometry.loc.x as u32,
-                    window_geometry.loc.y as u32,
-                    window_geometry.size.w as u32,
-                    window_geometry.size.h as u32,
-                );
-                remote_toplevel.set_max_size(xdg_surface_state.max_size);
-                remote_toplevel.set_min_size(xdg_surface_state.min_size);
-            }
+        if let Some(xdg_surface_state) = &surface_state.xdg_surface_state
+            && let Some(window_geometry) = xdg_surface_state.window_geometry
+        {
+            remote_toplevel.set_window_geometry(
+                window_geometry.loc.x as u32,
+                window_geometry.loc.y as u32,
+                window_geometry.size.w as u32,
+                window_geometry.size.h as u32,
+            );
+            remote_toplevel.set_max_size(xdg_surface_state.max_size);
+            remote_toplevel.set_min_size(xdg_surface_state.min_size);
         }
 
         let toplevel_state = surface_state
@@ -378,15 +378,15 @@ impl RemoteXdgPopup {
             .location(loc!())?;
         // TODO: why isn't this always set?
         // let xdg_surface_state = surface_state.xdg_surface_state.as_ref().location(loc!())?;
-        if let Some(xdg_surface_state) = surface_state.xdg_surface_state {
-            if let Some(window_geometry) = xdg_surface_state.window_geometry {
-                remote_popup.set_window_geometry(
-                    window_geometry.loc.x as u32,
-                    window_geometry.loc.y as u32,
-                    window_geometry.size.w as u32,
-                    window_geometry.size.h as u32,
-                );
-            }
+        if let Some(xdg_surface_state) = surface_state.xdg_surface_state
+            && let Some(window_geometry) = xdg_surface_state.window_geometry
+        {
+            remote_popup.set_window_geometry(
+                window_geometry.loc.x as u32,
+                window_geometry.loc.y as u32,
+                window_geometry.size.w as u32,
+                window_geometry.size.h as u32,
+            );
         }
 
         let popup_state = surface_state.xdg_popup().location(loc!())?;

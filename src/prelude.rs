@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use anyhow::Result;
 pub use anyhow::anyhow;
 pub use anyhow::bail;
-pub use anyhow::Result;
 pub use tracing::debug;
 pub use tracing::debug_span;
 pub use tracing::error;
@@ -29,12 +29,12 @@ pub use tracing::trace_span;
 pub use tracing::warn;
 pub use tracing::warn_span;
 
+pub use crate::error_utils::Location;
+pub use crate::error_utils::LocationContextExt;
+pub use crate::error_utils::LogAndIgnoreExt;
+pub use crate::error_utils::LogExt;
 pub use crate::error_utils::fname;
 pub use crate::error_utils::loc;
 pub use crate::error_utils::log_and_continue;
 pub use crate::error_utils::log_and_return;
 pub use crate::error_utils::warn_and_return;
-pub use crate::error_utils::Location;
-pub use crate::error_utils::LocationContextExt;
-pub use crate::error_utils::LogAndIgnoreExt;
-pub use crate::error_utils::LogExt;

@@ -14,10 +14,10 @@
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
-use std::sync::Arc;
 
 use smithay::reexports::calloop::channel;
 

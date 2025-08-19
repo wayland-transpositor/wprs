@@ -253,7 +253,13 @@ impl WprsClientState {
         if let Some(Role::XdgToplevel(toplevel)) = &surface.role {
             match request.payload {
                 ToplevelRequestPayload::Destroyed => {
-                    surface.role = None;
+                    let toplevel = surface
+                        .role
+                        .take()
+                        .location(loc!())?
+                        .into_xdg_toplevel()
+                        .unwrap();
+                    surface.local_surface = Some(toplevel.destroy())
                 },
                 ToplevelRequestPayload::SetMaximized => {
                     toplevel.local_window.set_maximized();
@@ -304,7 +310,13 @@ impl WprsClientState {
         let surface = client.surface(&request.surface).location(loc!())?;
         match request.payload {
             PopupRequestPayload::Destroyed => {
-                surface.role = None;
+                let popup = surface
+                    .role
+                    .take()
+                    .location(loc!())?
+                    .into_xdg_popup()
+                    .unwrap();
+                surface.local_surface = Some(popup.destroy())
             },
         }
         Ok(())

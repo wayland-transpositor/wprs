@@ -16,24 +16,24 @@ use std::collections::HashMap;
 
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
+use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::client::protocol::wl_subcompositor::WlSubcompositor;
 use smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsurface;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
-use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::shell::WaylandSurface;
 
-use crate::client::smithay_handlers::SubSurfaceData;
 use crate::client::ObjectBimap;
 use crate::client::RemoteSurface;
 use crate::client::Role;
 use crate::client::WprsClientState;
+use crate::client::smithay_handlers::SubSurfaceData;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
+use crate::serialization::ClientId;
 use crate::serialization::wayland::SubSurfaceState;
 use crate::serialization::wayland::SubsurfacePosition;
 use crate::serialization::wayland::SurfaceState;
 use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::ClientId;
 
 pub(crate) fn populate_subsurfaces(
     client_id: ClientId,
@@ -110,10 +110,10 @@ pub(crate) fn commit_sync_children(
     // If the current surface is a sync subsurface, then don't process its
     // children and let them be processed when the closest desync ancestor is
     // being processed.
-    if let Some(Role::SubSurface(subsurface)) = &surface.role {
-        if subsurface.sync {
-            return Ok(());
-        }
+    if let Some(Role::SubSurface(subsurface)) = &surface.role
+        && subsurface.sync
+    {
+        return Ok(());
     }
 
     let children = surface.z_ordered_children.clone();

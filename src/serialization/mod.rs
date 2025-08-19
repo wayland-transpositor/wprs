@@ -28,9 +28,9 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process;
 use std::str;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::thread;
 use std::thread::Scope;
 use std::thread::ScopedJoinHandle;
@@ -45,6 +45,9 @@ use nix::sys::socket::sockopt::RcvBuf;
 use nix::sys::socket::sockopt::SndBuf;
 use num_enum::IntoPrimitive;
 use num_enum::TryFromPrimitive;
+use rkyv::Archive;
+use rkyv::Deserialize;
+use rkyv::Serialize;
 use rkyv::api::high::HighDeserializer;
 use rkyv::api::high::HighSerializer;
 use rkyv::api::high::HighValidator;
@@ -52,13 +55,10 @@ use rkyv::bytecheck;
 use rkyv::rancor::Error as RancorError;
 use rkyv::ser::allocator::ArenaHandle;
 use rkyv::util::AlignedVec;
-use rkyv::Archive;
-use rkyv::Deserialize;
-use rkyv::Serialize;
 use smithay::reexports::calloop::channel;
 use smithay::reexports::calloop::channel::Channel;
-use smithay::reexports::wayland_server::backend;
 use smithay::reexports::wayland_server::Client;
+use smithay::reexports::wayland_server::backend;
 use sysctl::Ctl;
 use sysctl::Sysctl;
 
@@ -67,9 +67,9 @@ use crate::channel_utils::DiscardingSender;
 use crate::channel_utils::InfallibleSender;
 use crate::prelude::*;
 use crate::sharding_compression::CompressedShard;
+use crate::sharding_compression::MIN_SIZE_TO_COMPRESS;
 use crate::sharding_compression::ShardingCompressor;
 use crate::sharding_compression::ShardingDecompressor;
-use crate::sharding_compression::MIN_SIZE_TO_COMPRESS;
 use crate::utils;
 
 pub mod geometry;
@@ -240,7 +240,10 @@ impl Version {
 
     fn compare_and_warn(&self, other: &Self) {
         if self != other {
-            warn!("Self version is {:?}, while other version is {:?}. These versions may be incompatible; if you experience bugs (especially hanging or crashes), restart the server.", self, other);
+            warn!(
+                "Self version is {:?}, while other version is {:?}. These versions may be incompatible; if you experience bugs (especially hanging or crashes), restart the server.",
+                self, other
+            );
         }
     }
 }

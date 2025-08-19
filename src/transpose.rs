@@ -16,6 +16,8 @@
 /// https://stackoverflow.com/questions/44984724/whats-the-fastest-stride-3-gather-instruction-sequence.
 use std::arch::x86_64::__m128i;
 use std::arch::x86_64::__m256i;
+use std::arch::x86_64::_mm_loadu_si128;
+use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm256_blend_epi32;
 use std::arch::x86_64::_mm256_castps_si256;
 use std::arch::x86_64::_mm256_castsi128_si256;
@@ -28,8 +30,6 @@ use std::arch::x86_64::_mm256_set_epi8;
 use std::arch::x86_64::_mm256_shuffle_epi8;
 use std::arch::x86_64::_mm256_shuffle_ps;
 use std::arch::x86_64::_mm256_storeu_si256;
-use std::arch::x86_64::_mm_loadu_si128;
-use std::arch::x86_64::_mm_storeu_si128;
 use std::cmp;
 
 use itertools::izip;

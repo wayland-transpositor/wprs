@@ -336,12 +336,17 @@ mod tests {
         let a_bufptr = unsafe { BufferPointer::new(&a_ptr, a.len()) };
 
         let chunks = a_bufptr.chunks(2);
+
+        let a_ptr0 = unsafe { a_ptr.offset(0) };
+        let a_ptr2 = unsafe { a_ptr.offset(2) };
+        let a_ptr4 = unsafe { a_ptr.offset(4) };
+
         assert_eq!(
             chunks.collect::<Vec<_>>(),
             vec![
-                unsafe { BufferPointer::new(&a_ptr.offset(0), 2) },
-                unsafe { BufferPointer::new(&a_ptr.offset(2), 2) },
-                unsafe { BufferPointer::new(&a_ptr.offset(4), 1) },
+                unsafe { BufferPointer::new(&a_ptr0, 2) },
+                unsafe { BufferPointer::new(&a_ptr2, 2) },
+                unsafe { BufferPointer::new(&a_ptr4, 1) },
             ]
         );
     }
@@ -353,13 +358,18 @@ mod tests {
         let a_bufptr = unsafe { BufferPointer::new(&a_ptr, a.len()) };
 
         let (chunks, rem) = a_bufptr.chunks_exact(2);
+
+        let a_ptr0 = unsafe { a_ptr.offset(0) };
+        let a_ptr2 = unsafe { a_ptr.offset(2) };
+        let a_ptr4 = unsafe { a_ptr.offset(4) };
+
         assert_eq!(
             chunks.collect::<Vec<_>>(),
-            vec![unsafe { BufferPointer::new(&a_ptr.offset(0), 2) }, unsafe {
-                BufferPointer::new(&a_ptr.offset(2), 2)
+            vec![unsafe { BufferPointer::new(&a_ptr0, 2) }, unsafe {
+                BufferPointer::new(&a_ptr2, 2)
             },]
         );
-        assert_eq!(rem, unsafe { BufferPointer::new(&a_ptr.offset(4), 1) })
+        assert_eq!(rem, unsafe { BufferPointer::new(&a_ptr4, 1) })
     }
 
     #[test]

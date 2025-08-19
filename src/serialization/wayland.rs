@@ -24,11 +24,11 @@ use rkyv::Deserialize;
 use rkyv::Serialize;
 use smithay::backend::input::AxisSource as SmithayAxisSource;
 use smithay::output::Subpixel as SmithaySubpixel;
+use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::backend;
 use smithay::reexports::wayland_server::protocol::wl_output::Transform as SmithayWlTransform;
 use smithay::reexports::wayland_server::protocol::wl_shm::Format as SmithayBufferFormat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Resource;
 use smithay::utils::Transform as SmithayTransform;
 use smithay::wayland::compositor::RectangleKind as SmithayRectangleKind;
 use smithay::wayland::compositor::RegionAttributes;
@@ -56,11 +56,11 @@ use crate::buffer_pointer::BufferPointer;
 use crate::filtering;
 use crate::prelude::*;
 use crate::serialization;
+use crate::serialization::ClientId;
 use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
 use crate::serialization::geometry::Size;
 use crate::serialization::xdg_shell;
-use crate::serialization::ClientId;
 use crate::vec4u8::Vec4u8s;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -212,7 +212,9 @@ impl Buffer {
                 // TODO: this happens rarely but still more frequently than we'd
                 // like. Figure out why. Also change the log line to a warning
                 // after we fix this.
-                debug!("Next commit received for surface before serialization of previous commit finished.");
+                debug!(
+                    "Next commit received for surface before serialization of previous commit finished."
+                );
                 self.data = Arc::new(Vec4u8s::with_total_size(data.len()));
                 // We just created the Arc, no one else can have a copy of it
                 // yet.

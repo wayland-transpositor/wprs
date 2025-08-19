@@ -22,12 +22,12 @@ use bpaf::Parser;
 use optional_struct::optional_struct;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use smithay::reexports::calloop::channel::Event;
-use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::calloop::Interest;
 use smithay::reexports::calloop::Mode;
 use smithay::reexports::calloop::PostAction;
+use smithay::reexports::calloop::channel::Event;
+use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::socket::ListeningSocketSource;
 use tracing::Level;
@@ -37,8 +37,8 @@ use wprs::args::OptionalConfig;
 use wprs::args::SerializableLevel;
 use wprs::prelude::*;
 use wprs::serialization::Serializer;
-use wprs::server::smithay_handlers::ClientState;
 use wprs::server::WprsServerState;
+use wprs::server::smithay_handlers::ClientState;
 use wprs::utils;
 
 #[optional_struct]

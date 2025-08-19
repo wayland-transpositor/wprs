@@ -22,18 +22,18 @@ use smithay::utils::Logical;
 use smithay::utils::Rectangle;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::selection::SelectionTarget;
+use smithay::xwayland::X11Surface;
+use smithay::xwayland::X11Wm;
+use smithay::xwayland::XwmHandler;
 use smithay::xwayland::xwm::Reorder;
 use smithay::xwayland::xwm::ResizeEdge as X11ResizeEdge;
 use smithay::xwayland::xwm::WmWindowProperty;
 use smithay::xwayland::xwm::XwmId;
-use smithay::xwayland::X11Surface;
-use smithay::xwayland::X11Wm;
-use smithay::xwayland::XwmHandler;
 
 use crate::prelude::*;
+use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::client::Role;
 use crate::xwayland_xdg_shell::xsurface_from_x11_surface;
-use crate::xwayland_xdg_shell::WprsState;
 
 impl XwmHandler for WprsState {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
@@ -63,13 +63,12 @@ impl XwmHandler for WprsState {
             // TODO: maybe do this on leave?
             // Without this, xwayland still thinks the key that triggered the
             // window close is still held down and sends key repeat events.
-            if let Some(keyboard) = self.compositor_state.seat.get_keyboard() {
-                if let Some(focus) = keyboard.current_focus() {
-                    if focus == window {
-                        let serial = SERIAL_COUNTER.next_serial();
-                        keyboard.set_focus(self, None, serial);
-                    }
-                }
+            if let Some(keyboard) = self.compositor_state.seat.get_keyboard()
+                && let Some(focus) = keyboard.current_focus()
+                && focus == window
+            {
+                let serial = SERIAL_COUNTER.next_serial();
+                keyboard.set_focus(self, None, serial);
             }
         }
 
@@ -98,55 +97,55 @@ impl XwmHandler for WprsState {
             if let Some(role) = &xwayland_surface.role {
                 // toplevel windows are not allowed to move themselves
                 if !matches!(role, Role::XdgToplevel { .. }) {
-                    if let Some(x) = x {
-                        if x != 0 {
-                            geo.loc.x = x;
-                        }
+                    if let Some(x) = x
+                        && x != 0
+                    {
+                        geo.loc.x = x;
                     }
-                    if let Some(y) = y {
-                        if y != 0 {
-                            geo.loc.y = y;
-                        }
+                    if let Some(y) = y
+                        && y != 0
+                    {
+                        geo.loc.y = y;
                     }
                 }
 
                 // toplevels are also not allowed to resize themselves after they are configured,
                 // or else their frame will desync with their surface
                 if !matches!(role, Role::XdgToplevel(toplevel) if toplevel.configured) {
-                    if let Some(w) = w {
-                        if w > 1 {
-                            geo.size.w = w as i32;
-                        }
+                    if let Some(w) = w
+                        && w > 1
+                    {
+                        geo.size.w = w as i32;
                     }
-                    if let Some(h) = h {
-                        if h > 1 {
-                            geo.size.h = h as i32;
-                        }
+                    if let Some(h) = h
+                        && h > 1
+                    {
+                        geo.size.h = h as i32;
                     }
                 }
             }
         } else {
             // we don't know when we will be assigned a role, so accept any requested
             // dimensions.
-            if let Some(x) = x {
-                if x != 0 {
-                    geo.loc.x = x;
-                }
+            if let Some(x) = x
+                && x != 0
+            {
+                geo.loc.x = x;
             }
-            if let Some(y) = y {
-                if y != 0 {
-                    geo.loc.y = y;
-                }
+            if let Some(y) = y
+                && y != 0
+            {
+                geo.loc.y = y;
             }
-            if let Some(w) = w {
-                if w > 1 {
-                    geo.size.w = w as i32;
-                }
+            if let Some(w) = w
+                && w > 1
+            {
+                geo.size.w = w as i32;
             }
-            if let Some(h) = h {
-                if h > 1 {
-                    geo.size.h = h as i32;
-                }
+            if let Some(h) = h
+                && h > 1
+            {
+                geo.size.h = h as i32;
             }
         }
 
@@ -175,12 +174,11 @@ impl XwmHandler for WprsState {
         geometry: Rectangle<i32, Logical>,
         _above: Option<u32>,
     ) {
-        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window) {
-            if let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role {
-                if !subsurface.move_active {
-                    subsurface.move_(geometry.loc.x, geometry.loc.y, &self.client_state.qh);
-                }
-            }
+        if let Some(xwayland_surface) = xsurface_from_x11_surface(&mut self.surfaces, &window)
+            && let Some(Role::SubSurface(subsurface)) = &mut xwayland_surface.role
+            && !subsurface.move_active
+        {
+            subsurface.move_(geometry.loc.x, geometry.loc.y, &self.client_state.qh);
         }
     }
 
@@ -363,19 +361,17 @@ impl XwmHandler for WprsState {
             WmWindowProperty::Title => {
                 if let Some(xwayland_surface) =
                     xsurface_from_x11_surface(&mut self.surfaces, &window)
+                    && let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role
                 {
-                    if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
-                        toplevel.local_window.set_title(window.title());
-                    }
+                    toplevel.local_window.set_title(window.title());
                 }
             },
             WmWindowProperty::Class => {
                 if let Some(xwayland_surface) =
                     xsurface_from_x11_surface(&mut self.surfaces, &window)
+                    && let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role
                 {
-                    if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
-                        toplevel.local_window.set_app_id(window.class());
-                    }
+                    toplevel.local_window.set_app_id(window.class());
                 }
             },
             _ => {},

@@ -3,32 +3,32 @@ use std::time::Duration;
 use smithay::utils::Serial;
 use smithay::xwayland::X11Surface;
 use smithay_client_toolkit::compositor::SurfaceData;
-use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
-use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 use smithay_client_toolkit::reexports::client::Connection;
 use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
+use smithay_client_toolkit::reexports::client::protocol::wl_pointer::WlPointer;
+use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 use smithay_client_toolkit::reexports::csd_frame::CursorIcon;
 use smithay_client_toolkit::reexports::csd_frame::DecorationsFrame;
 use smithay_client_toolkit::reexports::csd_frame::FrameAction;
 use smithay_client_toolkit::reexports::csd_frame::FrameClick;
 use smithay_client_toolkit::reexports::csd_frame::ResizeEdge;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_toplevel::ResizeEdge as SctkResizeEdge;
+use smithay_client_toolkit::seat::pointer::BTN_LEFT;
+use smithay_client_toolkit::seat::pointer::BTN_RIGHT;
 use smithay_client_toolkit::seat::pointer::PointerData;
 use smithay_client_toolkit::seat::pointer::PointerEvent;
 use smithay_client_toolkit::seat::pointer::PointerEventKind;
-use smithay_client_toolkit::seat::pointer::BTN_LEFT;
-use smithay_client_toolkit::seat::pointer::BTN_RIGHT;
 use smithay_client_toolkit::shell::xdg::fallback_frame::FallbackFrame;
 use tracing::warn;
 
 use crate::prelude::*;
+use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::client::Role;
 use crate::xwayland_xdg_shell::client::WprsClientState;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 use crate::xwayland_xdg_shell::client::XWaylandXdgToplevel;
 use crate::xwayland_xdg_shell::xsurface_from_client_surface;
-use crate::xwayland_xdg_shell::WprsState;
 
 fn parent(surface: &WlSurface) -> Option<&WlSurface> {
     surface.data::<SurfaceData>()?.parent_surface()

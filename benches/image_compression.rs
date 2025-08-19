@@ -18,9 +18,9 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 
 use anyhow::Error;
+use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use criterion::Criterion;
 use png::BitDepth;
 use png::ColorType;
 use png::Decoder;

@@ -23,40 +23,46 @@ use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewport::
 use smithay::reexports::wayland_protocols::wp::viewporter::client::wp_viewporter::WpViewporter;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Surface;
+use smithay_client_toolkit::data_device_manager::DataDeviceManagerState;
+use smithay_client_toolkit::data_device_manager::WritePipe;
 use smithay_client_toolkit::data_device_manager::data_offer::DragOffer;
 use smithay_client_toolkit::data_device_manager::data_offer::SelectionOffer;
 use smithay_client_toolkit::data_device_manager::data_source::CopyPasteSource;
 use smithay_client_toolkit::data_device_manager::data_source::DragSource;
-use smithay_client_toolkit::data_device_manager::DataDeviceManagerState;
-use smithay_client_toolkit::data_device_manager::WritePipe;
 use smithay_client_toolkit::output::OutputState;
+use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
 use smithay_client_toolkit::primary_selection::offer::PrimarySelectionOffer;
 use smithay_client_toolkit::primary_selection::selection::PrimarySelectionSource;
-use smithay_client_toolkit::primary_selection::PrimarySelectionManagerState;
+use smithay_client_toolkit::reexports::client::Connection;
+use smithay_client_toolkit::reexports::client::Proxy;
+use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::client::backend::ObjectId as SctkObjectId;
 use smithay_client_toolkit::reexports::client::globals::GlobalList;
 use smithay_client_toolkit::reexports::client::protocol::wl_output::Transform;
 use smithay_client_toolkit::reexports::client::protocol::wl_subcompositor::WlSubcompositor;
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
-use smithay_client_toolkit::reexports::client::Connection;
-use smithay_client_toolkit::reexports::client::Proxy;
-use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surface;
 use smithay_client_toolkit::registry::RegistryState;
 use smithay_client_toolkit::registry::SimpleGlobal;
-use smithay_client_toolkit::seat::pointer::ThemedPointer;
 use smithay_client_toolkit::seat::SeatState;
+use smithay_client_toolkit::seat::pointer::ThemedPointer;
+use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::xdg::XdgShell;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
-use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::slot::Buffer as SlotBuffer;
 use smithay_client_toolkit::shm::slot::SlotPool;
-use smithay_client_toolkit::shm::Shm;
 
 use crate::client_utils::SeatObject;
 use crate::constants;
 use crate::filtering;
 use crate::prelude::*;
+use crate::serialization::Capabilities;
+use crate::serialization::ClientId;
+use crate::serialization::Event;
+use crate::serialization::ObjectId;
+use crate::serialization::Request;
+use crate::serialization::Serializer;
 use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
 use crate::serialization::wayland::Buffer;
@@ -66,12 +72,6 @@ use crate::serialization::wayland::Region;
 use crate::serialization::wayland::SubsurfacePosition;
 use crate::serialization::wayland::ViewportState;
 use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::Capabilities;
-use crate::serialization::ClientId;
-use crate::serialization::Event;
-use crate::serialization::ObjectId;
-use crate::serialization::Request;
-use crate::serialization::Serializer;
 use crate::vec4u8::Vec4u8s;
 
 pub mod server_handlers;
@@ -491,7 +491,9 @@ impl RemoteSurface {
                 if new_buffer.data.is_empty() {
                     // TODO: do we want to log a warning and let the rest of the
                     // commit work? Unclear that it matters.
-                    return Err(anyhow!("Received buffer commit with empty data. This can if wprsc reattaches between wprsd sending a buffer message and a commit message."));
+                    return Err(anyhow!(
+                        "Received buffer commit with empty data. This can if wprsc reattaches between wprsd sending a buffer message and a commit message."
+                    ));
                 }
 
                 self.set_buffer(new_buffer, pool).location(loc!())?;
@@ -506,45 +508,16 @@ impl RemoteSurface {
 
     pub fn draw_buffer(&mut self) -> Result<()> {
         let wl_surface = &self.wl_surface().clone();
-        if let Some(buffer) = &mut self.buffer {
-            if buffer.dirty {
-                buffer.active_buffer.attach_to(wl_surface).context(
-                    loc!(),
-                    "attaching a buffer failed, this probably means we're leaking buffers",
-                )?;
-                if let Some(damage_rects) = self.frame_damage.take() {
-                    // avoid overwhelming wayland connection
-                    if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
-                        for damage_rect in damage_rects {
-                            wl_surface.damage_buffer(
-                                damage_rect.loc.x,
-                                damage_rect.loc.y,
-                                damage_rect.size.w,
-                                damage_rect.size.h,
-                            );
-                        }
-                    } else {
-                        wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                    }
-                } else {
-                    wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-                }
-                buffer.dirty = false;
-            }
-        }
-        self.commit();
-        Ok(())
-    }
-
-    pub fn draw_buffer_send_frame(&mut self, qh: &QueueHandle<WprsClientState>) -> Result<()> {
-        let wl_surface = &self.wl_surface().clone();
-        if let Some(buffer) = &mut self.buffer {
-            if buffer.dirty {
-                buffer.active_buffer.attach_to(wl_surface).context(
-                    loc!(),
-                    "attaching a buffer failed, this probably means we're leaking buffers",
-                )?;
-                if let Some(damage_rects) = self.frame_damage.take() {
+        if let Some(buffer) = &mut self.buffer
+            && buffer.dirty
+        {
+            buffer.active_buffer.attach_to(wl_surface).context(
+                loc!(),
+                "attaching a buffer failed, this probably means we're leaking buffers",
+            )?;
+            if let Some(damage_rects) = self.frame_damage.take() {
+                // avoid overwhelming wayland connection
+                if damage_rects.len() < constants::SENT_DAMAGE_LIMIT {
                     for damage_rect in damage_rects {
                         wl_surface.damage_buffer(
                             damage_rect.loc.x,
@@ -556,10 +529,39 @@ impl RemoteSurface {
                 } else {
                     wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
                 }
-                buffer.dirty = false;
-                self.frame(qh);
-                self.frame_callback_completed = false;
+            } else {
+                wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
             }
+            buffer.dirty = false;
+        }
+        self.commit();
+        Ok(())
+    }
+
+    pub fn draw_buffer_send_frame(&mut self, qh: &QueueHandle<WprsClientState>) -> Result<()> {
+        let wl_surface = &self.wl_surface().clone();
+        if let Some(buffer) = &mut self.buffer
+            && buffer.dirty
+        {
+            buffer.active_buffer.attach_to(wl_surface).context(
+                loc!(),
+                "attaching a buffer failed, this probably means we're leaking buffers",
+            )?;
+            if let Some(damage_rects) = self.frame_damage.take() {
+                for damage_rect in damage_rects {
+                    wl_surface.damage_buffer(
+                        damage_rect.loc.x,
+                        damage_rect.loc.y,
+                        damage_rect.size.w,
+                        damage_rect.size.h,
+                    );
+                }
+            } else {
+                wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+            }
+            buffer.dirty = false;
+            self.frame(qh);
+            self.frame_callback_completed = false;
         }
         self.commit();
         Ok(())

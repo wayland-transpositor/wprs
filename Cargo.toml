@@ -3,7 +3,7 @@ name = "wprs"
 version = "0.1.0"
 authors = ["Nicolas Avrutin <rasputin@google.com>"]
 license = "Apache-2.0"
-edition = "2021"
+edition = "2024"
 build = "build.rs"
 
 [profile.release-with-symbols]

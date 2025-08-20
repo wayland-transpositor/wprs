@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 
+use smithay_client_toolkit::compositor::Surface;
 use smithay_client_toolkit::reexports::client::Proxy;
 use smithay_client_toolkit::reexports::client::QueueHandle;
 use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_positioner;
@@ -243,6 +244,10 @@ impl RemoteXdgToplevel {
         let surface = surfaces.get_mut(&surface_id).location(loc!())?;
         Self::update(surface_state, surface)
     }
+
+    pub fn destroy(self) -> Surface {
+        self.local_window.destroy()
+    }
 }
 
 #[derive(Debug)]
@@ -427,5 +432,9 @@ impl RemoteXdgPopup {
         .location(loc!())?;
         let surface = surfaces.get_mut(&surface_id).location(loc!())?;
         Self::update(surface_state, surface, xdg_shell_state)
+    }
+
+    pub fn destroy(self) -> Surface {
+        self.local_popup.destroy()
     }
 }

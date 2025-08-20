@@ -151,7 +151,7 @@ impl WprsServerState {
                 client: serialization::ClientId::new(&surface.client().unwrap()),
                 surface: (&surface.id()).into(),
                 payload,
-            })))
+            })));
     }
 
     #[allow(clippy::missing_panics_doc)]
@@ -212,12 +212,23 @@ impl XdgShellHandler for WprsServerState {
     }
 
     #[instrument(skip(self), level = "debug")]
-    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+    fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
         // If client() returns None, the surface was already destroyed and an
         // appropriate message would have been sent to the client, so we don't
         // need to worry about destroying the toplevel,
-        if surface.wl_surface().client().is_some() {
-            self.send_toplevel_request(&surface, ToplevelRequestPayload::Destroyed);
+        if toplevel.wl_surface().client().is_some() {
+            compositor::with_states(toplevel.wl_surface(), |surface_data| {
+                let surface_state = &mut surface_data
+                    .data_map
+                    .get::<LockedSurfaceState>()
+                    .unwrap()
+                    .0
+                    .lock()
+                    .unwrap();
+                surface_state.role = None;
+            });
+
+            self.send_toplevel_request(&toplevel, ToplevelRequestPayload::Destroyed);
         }
     }
 
@@ -246,16 +257,28 @@ impl XdgShellHandler for WprsServerState {
     }
 
     #[instrument(skip(self), level = "debug")]
-    fn popup_destroyed(&mut self, surface: PopupSurface) {
+    fn popup_destroyed(&mut self, popup: PopupSurface) {
         // If client() returns None, the surface was already destroyed and an
         // appropriate message would have been sent to the client, so we don't
         // need to worry about destroying the popup,
-        if let Some(client) = surface.wl_surface().client() {
+        if let Some(client) = popup.wl_surface().client() {
+            // Uses with_states internally and with_states is not reentrant.
+            compositor::with_states(popup.wl_surface(), |surface_data| {
+                let surface_state = &mut surface_data
+                    .data_map
+                    .get::<LockedSurfaceState>()
+                    .unwrap()
+                    .0
+                    .lock()
+                    .unwrap();
+                surface_state.role = None;
+            });
+
             self.serializer
                 .writer()
                 .send(SendType::Object(Request::Popup(PopupRequest {
                     client: serialization::ClientId::new(&client),
-                    surface: (&surface.wl_surface().id()).into(),
+                    surface: (&popup.wl_surface().id()).into(),
                     payload: PopupRequestPayload::Destroyed,
                 })));
         };

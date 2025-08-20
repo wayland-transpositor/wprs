@@ -253,6 +253,10 @@ impl WprsClientState {
             match request.payload {
                 ToplevelRequestPayload::Destroyed => {
                     surface.role = None;
+                    // TODO(https://github.com/wayland-transpositor/wprs/pull/114):
+                    // remove this workaround.
+                    self.handle_surface_destroy(request.client, request.surface)
+                        .location(loc!())?;
                 },
                 ToplevelRequestPayload::SetMaximized => {
                     toplevel.local_window.set_maximized();
@@ -304,6 +308,10 @@ impl WprsClientState {
         match request.payload {
             PopupRequestPayload::Destroyed => {
                 surface.role = None;
+                // TODO(https://github.com/wayland-transpositor/wprs/pull/114):
+                // remove this workaround.
+                self.handle_surface_destroy(request.client, request.surface)
+                    .location(loc!())?;
             },
         }
         Ok(())

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::env;
 use std::fs;
 use std::fs::File;
 use std::num::NonZeroUsize;
@@ -227,9 +228,13 @@ fn mean(numbers: &[f64]) -> f64 {
 }
 
 fn compression_benchmark(c: &mut Criterion) {
-    // TODO: replace file path with in-memory image (or add an image that is safe to distribute with the codebase)
-    // https://qoiformat.org/benchmark/
-    let files = fs::read_dir("/home/rasputin/qoi_benchmark_images/screenshot_web/")
+    let image_dir: String =
+        env::var("WPRS_BENCH_IMAGE_DIR").expect("WPRS_BENCH_IMAGE_DIR env var must be set.");
+    if image_dir.is_empty() {
+        panic!("WPRS_BENCH_IMAGE_DIR env var must be non-empty.")
+    }
+
+    let files = fs::read_dir(image_dir)
         .unwrap()
         .map(|dirent| dirent.unwrap().path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "png"));

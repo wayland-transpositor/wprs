@@ -15,6 +15,9 @@ inherits = "release-with-symbols"
 lto = true
 codegen-units = 1
 
+[profile.bench]
+inherits = "release-lto"
+
 [dependencies]
 anyhow = "1.0.86"
 arrayref = "0.3.7"
@@ -81,10 +84,19 @@ trybuild = "1.0.96"
 name = "prefix_sum"
 harness = false
 
-# TODO: Fix bench
+# To run this benchmark, uncomment the block below and specify a directory of
+# images:
+# WPRS_BENCH_IMAGE_DIR=/path/to/images cargo bench --bench image_compression
+#
+# A recommended set of images is the screenshot_web directory from
+# qoi_benchmark_suite.tar on https://qoiformat.org/benchmark/. screenshot_web
+# was chosen because it is relatively representative of general application
+# GUIs, the kind of applications wprs is likely to be used with.
+
 # [[bench]]
 # name = "image_compression"
 # harness = false
+
 
 [[bench]]
 name = "serialize"

@@ -16,6 +16,7 @@ use std::cmp;
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 
 use crate::utils;
@@ -34,16 +35,16 @@ use crate::utils::AssertN3;
 /// slice::from_raw_parts), for example if it points to shared memory that could
 /// be mutated during the lifetime of the slice.
 #[derive(Debug, Eq, PartialEq)]
-pub struct BufferPointer<'a, T: 'a> {
+pub struct BufferPointer<'a, T: 'a + Copy> {
     ptr: *const T,
     len: usize,
     lifetime: PhantomData<&'a T>,
 }
 
-impl<'a, T: 'a> Copy for BufferPointer<'a, T> {}
+impl<'a, T: 'a + Copy> Copy for BufferPointer<'a, T> {}
 
 #[allow(clippy::non_canonical_clone_impl)]
-impl<'a, T: 'a> Clone for BufferPointer<'a, T> {
+impl<'a, T: 'a + Copy> Clone for BufferPointer<'a, T> {
     fn clone(&self) -> Self {
         Self {
             ptr: self.ptr,
@@ -53,7 +54,7 @@ impl<'a, T: 'a> Clone for BufferPointer<'a, T> {
     }
 }
 
-impl<'a, T: 'a> BufferPointer<'a, T> {
+impl<'a, T: 'a + Copy> BufferPointer<'a, T> {
     /// # Safety: same as new.
     unsafe fn new_impl(ptr: *const T, len: usize, lifetime: PhantomData<&'a T>) -> Self {
         assert!(!ptr.is_null());
@@ -91,7 +92,7 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
     /// # Panics
     /// If the current type and the new type are don't have the same alignment or
     /// if the computer size of the buffer would be different after the cast.
-    pub unsafe fn cast<U>(self) -> BufferPointer<'a, U> {
+    pub unsafe fn cast<U: Copy>(self) -> BufferPointer<'a, U> {
         // TODO(https://github.com/rust-lang/rust/issues/96284): use ptr.is_aligned.
         let new_ptr = self.ptr().cast::<U>();
         assert!(new_ptr.align_offset(mem::align_of::<U>()) == 0);
@@ -181,9 +182,9 @@ impl<'a, T: 'a> BufferPointer<'a, T> {
 // makes no sense for pointers to not be Send, but that can't be changed at this
 // point for backward compatibility reasons. See
 // https://doc.rust-lang.org/nomicon/send-and-sync.html.
-unsafe impl<'a, T: 'a> Send for BufferPointer<'a, T> {}
+unsafe impl<'a, T: 'a + Copy> Send for BufferPointer<'a, T> {}
 
-impl<'a, T: 'a> IntoIterator for &'a BufferPointer<'a, T> {
+impl<'a, T: 'a + Copy> IntoIterator for &'a BufferPointer<'a, T> {
     type Item = T;
     type IntoIter = BufferPointerIter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
@@ -192,18 +193,18 @@ impl<'a, T: 'a> IntoIterator for &'a BufferPointer<'a, T> {
 }
 
 #[derive(Debug)]
-pub struct BufferPointerIter<'a, T: 'a> {
+pub struct BufferPointerIter<'a, T: 'a + Copy> {
     ptr: &'a BufferPointer<'a, T>,
     idx: usize,
 }
 
-impl<'a, T: 'a> BufferPointerIter<'a, T> {
+impl<'a, T: 'a + Copy> BufferPointerIter<'a, T> {
     fn new(ptr: &'a BufferPointer<'a, T>) -> Self {
         Self { ptr, idx: 0 }
     }
 }
 
-impl<T> Iterator for BufferPointerIter<'_, T> {
+impl<T: Copy> Iterator for BufferPointerIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
@@ -223,17 +224,17 @@ impl<T> Iterator for BufferPointerIter<'_, T> {
     }
 }
 
-impl<T> ExactSizeIterator for BufferPointerIter<'_, T> {}
-impl<T> FusedIterator for BufferPointerIter<'_, T> {}
+impl<T: Copy> ExactSizeIterator for BufferPointerIter<'_, T> {}
+impl<T: Copy> FusedIterator for BufferPointerIter<'_, T> {}
 
 #[derive(Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct Chunks<'a, T: 'a> {
+pub struct Chunks<'a, T: 'a + Copy> {
     ptr: BufferPointer<'a, T>,
     chunk_size: usize,
 }
 
-impl<'a, T: 'a> Chunks<'a, T> {
+impl<'a, T: 'a + Copy> Chunks<'a, T> {
     #[inline]
     fn new(ptr: BufferPointer<'a, T>, chunk_size: usize) -> Self {
         assert!(chunk_size != 0);
@@ -241,7 +242,7 @@ impl<'a, T: 'a> Chunks<'a, T> {
     }
 }
 
-impl<'a, T: 'a> Iterator for Chunks<'a, T> {
+impl<'a, T: 'a + Copy> Iterator for Chunks<'a, T> {
     type Item = BufferPointer<'a, T>;
 
     #[inline]
@@ -263,17 +264,17 @@ impl<'a, T: 'a> Iterator for Chunks<'a, T> {
     }
 }
 
-impl<T> ExactSizeIterator for Chunks<'_, T> {}
-impl<T> FusedIterator for Chunks<'_, T> {}
+impl<T: Copy> ExactSizeIterator for Chunks<'_, T> {}
+impl<T: Copy> FusedIterator for Chunks<'_, T> {}
 
 #[derive(Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct ArrayChunks<'a, T: 'a, const N: usize> {
+pub struct ArrayChunks<'a, T: 'a + Copy, const N: usize> {
     ptr: BufferPointer<'a, T>,
     rem: Option<BufferPointer<'a, T>>,
 }
 
-impl<'a, T: 'a, const N: usize> ArrayChunks<'a, T, N> {
+impl<'a, T: 'a + Copy, const N: usize> ArrayChunks<'a, T, N> {
     #[inline]
     fn new(ptr: BufferPointer<'a, T>) -> Self {
         _ = AssertN::<N>::NE_0;
@@ -281,7 +282,7 @@ impl<'a, T: 'a, const N: usize> ArrayChunks<'a, T, N> {
     }
 }
 
-impl<'a, T: 'a, const N: usize> Iterator for ArrayChunks<'a, T, N> {
+impl<'a, T: 'a + Copy, const N: usize> Iterator for ArrayChunks<'a, T, N> {
     type Item = KnownSizeBufferPointer<'a, T, N>;
 
     #[inline]
@@ -303,19 +304,19 @@ impl<'a, T: 'a, const N: usize> Iterator for ArrayChunks<'a, T, N> {
     }
 }
 
-impl<T, const N: usize> ExactSizeIterator for ArrayChunks<'_, T, N> {}
-impl<T, const N: usize> FusedIterator for ArrayChunks<'_, T, N> {}
+impl<T: Copy, const N: usize> ExactSizeIterator for ArrayChunks<'_, T, N> {}
+impl<T: Copy, const N: usize> FusedIterator for ArrayChunks<'_, T, N> {}
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct KnownSizeBufferPointer<'a, T: 'a, const N: usize> {
+pub struct KnownSizeBufferPointer<'a, T: 'a + Copy, const N: usize> {
     ptr: *const T,
     lifetime: PhantomData<&'a T>,
 }
 
-impl<'a, T: 'a, const N: usize> Copy for KnownSizeBufferPointer<'a, T, N> {}
+impl<'a, T: 'a + Copy, const N: usize> Copy for KnownSizeBufferPointer<'a, T, N> {}
 
 #[allow(clippy::non_canonical_clone_impl)]
-impl<'a, T: 'a, const N: usize> Clone for KnownSizeBufferPointer<'a, T, N> {
+impl<'a, T: 'a + Copy, const N: usize> Clone for KnownSizeBufferPointer<'a, T, N> {
     fn clone(&self) -> Self {
         Self {
             ptr: self.ptr,
@@ -324,7 +325,7 @@ impl<'a, T: 'a, const N: usize> Clone for KnownSizeBufferPointer<'a, T, N> {
     }
 }
 
-impl<'a, T: 'a, const N: usize> KnownSizeBufferPointer<'a, T, N> {
+impl<'a, T: 'a + Copy, const N: usize> KnownSizeBufferPointer<'a, T, N> {
     /// # Safety: same as new.
     unsafe fn new_impl(ptr: *const T, lifetime: PhantomData<&'a T>) -> Self {
         let _ = AssertN::<N>::NE_0;
@@ -354,6 +355,25 @@ impl<'a, T: 'a, const N: usize> KnownSizeBufferPointer<'a, T, N> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn get(&self, i: usize) -> &T {
+        unsafe { &*self.ptr.add(i) }
+    }
+
+    /// # Panics
+    /// If dst.len > len or if dst overlaps with self.
+    pub fn copy_to_array(self) -> [T; N] {
+        let mut out = MaybeUninit::<[T; N]>::uninit();
+
+        // SAFETY: precondition for BufferPointer::new requires self.ptr to be
+        // valid for reads of self.len elements and we verified that dst.len()
+        // >= self.len() and that self and dst are non-overlapping.
+        unsafe {
+            self.ptr()
+                .copy_to_nonoverlapping(out.as_mut_ptr().cast(), self.len());
+            out.assume_init()
+        }
     }
 
     // TODO(https://github.com/rust-lang/rust/issues/76560): derive N_PARTS from

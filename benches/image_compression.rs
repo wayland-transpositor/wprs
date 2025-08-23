@@ -19,6 +19,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 
 use anyhow::Error;
+use criterion::BatchSize;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -32,11 +33,6 @@ use wprs::sharding_compression::CompressedShard;
 use wprs::sharding_compression::ShardingCompressor;
 use wprs::sharding_compression::ShardingDecompressor;
 use wprs::vec4u8::Vec4u8s;
-
-// TODO: there a bunch of expensive clones being done in the benchmarks, try to
-// get rid of them. Until then, the runtime benchmarks are mostly useful for
-// relative comparisons and less so for absolute comparisons. The compression
-// ratio numbers are still useful absolutely.
 
 fn reorder_channels(data: &mut [u8]) {
     for pixel in data.chunks_mut(4) {
@@ -87,10 +83,13 @@ fn filter_png(c: &mut Criterion, path: &Path) {
     let mut new_data = vec![0; data.len()];
 
     c.bench_function(&format!("unfilter only: {}", path.display()), |b| {
-        b.iter(|| {
-            let mut filtered_data_copy = filtered_data.clone();
-            filtering::unfilter(&mut filtered_data_copy, &mut new_data);
-        })
+        b.iter_batched(
+            || filtered_data.clone(),
+            |mut filtered_data| {
+                filtering::unfilter(&mut filtered_data, &mut new_data);
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     // assert_eq!(new_data, _orig_data);
@@ -132,26 +131,33 @@ fn compress_png(c: &mut Criterion, path: &Path) -> f64 {
     let mut ret = 0.0;
 
     c.bench_function(&format!("decompress only: {}", path.display()), |b| {
-        b.iter(|| {
-            sharding_decompressor
-                .decompress_with(
-                    n_shards,
-                    uncompressed_size,
-                    compressed_shards.clone(),
-                    |_decompressed_data| {
-                        // assert_eq!(_decompressed_data, data_arcslice.as_ref());
+        b.iter_batched(
+            || compressed_shards.clone(),
+            |compressed_shards| {
+                sharding_decompressor
+                    .decompress_with(
+                        n_shards,
+                        uncompressed_size,
+                        compressed_shards,
+                        |_decompressed_data| {
+                            // assert_eq!(_decompressed_data, data_arcslice.as_ref());
 
-                        compression_ratio = uncompressed_size as f64 / compressed_size as f64;
-                        compression_rate = compressed_size as f64 / uncompressed_size as f64;
-                        ret = compression_ratio;
-                        Ok(())
-                    },
-                )
-                .unwrap();
-        })
+                            compression_ratio = uncompressed_size as f64 / compressed_size as f64;
+                            compression_rate = compressed_size as f64 / uncompressed_size as f64;
+                            ret = compression_ratio;
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+            },
+            BatchSize::SmallInput,
+        )
     });
-    println!("compression ratio: {compression_ratio:.1}");
-    println!("compression rate: {:.1}%", compression_rate * 100.0);
+    println!("compression ratio (higher is better): {compression_ratio:.1}");
+    println!(
+        "compression rate (lower is better): {:.1}%",
+        compression_rate * 100.0
+    );
     ret
 }
 
@@ -196,13 +202,11 @@ fn filter_compress_png(c: &mut Criterion, path: &Path) -> f64 {
     c.bench_function(
         &format!("unfilter and decompress: {}", path.display()),
         |b| {
-            b.iter(|| {
-                sharding_decompressor
-                    .decompress_with(
-                        n_shards,
-                        uncompressed_size,
-                        compressed_shards.clone(),
-                        |buf| {
+            b.iter_batched(
+                || compressed_shards.clone(),
+                |compressed_shards| {
+                    sharding_decompressor
+                        .decompress_with(n_shards, uncompressed_size, compressed_shards, |buf| {
                             let mut buf: Vec4u8s = buf.to_vec().into();
                             filtering::unfilter(&mut buf, &mut data);
 
@@ -212,14 +216,18 @@ fn filter_compress_png(c: &mut Criterion, path: &Path) -> f64 {
                             compression_rate = compressed_size as f64 / uncompressed_size as f64;
                             ret = compression_ratio;
                             Ok(())
-                        },
-                    )
-                    .unwrap();
-            })
+                        })
+                        .unwrap();
+                },
+                BatchSize::SmallInput,
+            )
         },
     );
-    println!("compression ratio: {compression_ratio:.1}");
-    println!("compression rate: {:.1}%", compression_rate * 100.0);
+    println!("compression ratio (higher is better): {compression_ratio:.1}");
+    println!(
+        "compression rate (lower is better): {:.1}%",
+        compression_rate * 100.0
+    );
     ret
 }
 
@@ -254,14 +262,16 @@ fn compression_benchmark(c: &mut Criterion) {
     let mean_compression_ratio = mean(&compression_ratios);
     let mean_filter_compression_ratio = mean(&filter_compression_ratios);
     println!("");
-    println!("mean compression only ratio: {mean_compression_ratio:.1}");
+    println!("mean compression only ratio (higher is better): {mean_compression_ratio:.1}");
     println!(
-        "mean compression only rate: {:.1}%",
+        "mean compression only rate (lower is better): {:.1}%",
         1.0 / mean_compression_ratio * 100.0
     );
-    println!("mean compression with filter ratio: {mean_filter_compression_ratio:.1}");
     println!(
-        "mean compression with filter rate: {:.1}%",
+        "mean compression with filter ratio (higher is better): {mean_filter_compression_ratio:.1}"
+    );
+    println!(
+        "mean compression with filter rate (lower is better): {:.1}%",
         1.0 / mean_filter_compression_ratio * 100.0
     );
     println!("--------------------------------------------------------------------------------");

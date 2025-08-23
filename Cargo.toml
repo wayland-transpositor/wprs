@@ -80,10 +80,6 @@ png = "0.18.0"
 proptest = "1.7.0"
 trybuild = "1.0.110"
 
-[[bench]]
-name = "prefix_sum"
-harness = false
-
 # To run this benchmark, uncomment the block below and specify a directory of
 # images:
 # WPRS_BENCH_IMAGE_DIR=/path/to/images cargo bench --bench image_compression
@@ -96,7 +92,6 @@ harness = false
 [[bench]]
 name = "image_compression"
 harness = false
-
 
 [[bench]]
 name = "serialize"

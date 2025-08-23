@@ -87,9 +87,8 @@ fn filter_png(c: &mut Criterion, path: &Path) {
     c.bench_function(&format!("unfilter only: {}", path.display()), |b| {
         b.iter_batched(
             || filtered_data.clone(),
-            |filtered_data| {
-                let mut filtered_data_copy = filtered_data;
-                filtering::unfilter(&mut filtered_data_copy, &mut new_data);
+            |mut filtered_data| {
+                filtering::unfilter(&mut filtered_data, &mut new_data);
             },
             BatchSize::SmallInput,
         )

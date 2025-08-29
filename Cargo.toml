@@ -20,7 +20,6 @@ inherits = "release-lto"
 
 [dependencies]
 anyhow = "1.0.86"
-arrayref = "0.3.7"
 bimap = "0.6.3"
 bpaf = "0.9.12"
 bytemuck = { version = "1.16.0", features = ["extern_crate_alloc"] }

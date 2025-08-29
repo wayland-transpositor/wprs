@@ -33,7 +33,7 @@ use smithay::utils::Transform as SmithayTransform;
 use smithay::wayland::compositor::RectangleKind as SmithayRectangleKind;
 use smithay::wayland::compositor::RegionAttributes;
 use smithay::wayland::selection::data_device::SourceMetadata as SmithaySourceMetadata;
-use smithay::wayland::shm::BufferData;
+use smithay::wayland::shm::BufferData as SmithayBufferData;
 use smithay::wayland::viewporter::ViewportCachedState;
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::compositor::Region as SctkRegion;
@@ -61,6 +61,8 @@ use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
 use crate::serialization::geometry::Size;
 use crate::serialization::xdg_shell;
+use crate::sharding_compression::CompressedShards;
+use crate::sharding_compression::ShardingCompressor;
 use crate::vec4u8::Vec4u8s;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -150,7 +152,7 @@ impl From<BufferFormat> for SctkBufferFormat {
 
 impl BufferMetadata {
     // TODO: replace with impl From
-    pub fn from_buffer_data(spec: &BufferData) -> Result<Self> {
+    pub fn from_buffer_data(spec: &SmithayBufferData) -> Result<Self> {
         Ok(Self {
             width: spec.width,
             height: spec.height,
@@ -172,67 +174,80 @@ impl BufferMetadata {
     }
 }
 
-// TODO: split this homehow, we need data to be set when we're storing a buffer,
-// but unset when transmitting. For now, we're doing taht by setting data to be
-// an empty Vec4u8s, which is otherwise bogus. Making data an option would be a
-// bit more correct, but even more annoying.
 #[derive(Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+pub struct UncompressedBufferData(pub Vec4u8s);
+
+impl fmt::Debug for UncompressedBufferData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("UncompressedBufferData")
+            .field(&format_args!("Vec4u8s[{}]", self.0.len()))
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+pub struct CompressedBufferData(pub Arc<CompressedShards>);
+
+impl fmt::Debug for CompressedBufferData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CompressedBufferData")
+            .field(&format_args!(
+                "ComrpessedShards[{:?}]",
+                self.0.uncompressed_size()
+            ))
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, EnumAsInner, Archive, Deserialize, Serialize)]
+pub enum BufferData {
+    External,
+    Uncompressed(UncompressedBufferData),
+    Compressed(CompressedBufferData),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
 pub struct Buffer {
     pub metadata: BufferMetadata,
-    pub data: Arc<Vec4u8s>,
+    pub data: BufferData,
 }
 
 impl Buffer {
-    pub fn new(metadata: &BufferData, data: BufferPointer<u8>) -> Result<Self> {
+    pub fn new(
+        metadata: &SmithayBufferData,
+        data: BufferPointer<u8>,
+        compressor: &mut ShardingCompressor,
+    ) -> Result<Self> {
+        let metadata = BufferMetadata::from_buffer_data(metadata).location(loc!())?;
+        let compressed_data = BufferData::Compressed(CompressedBufferData(Arc::new(
+            filtering::filter_and_compress(data, compressor),
+        )));
         debug!(
-            "New Buffer: size {}, width {}, height {}, stride {} ",
+            "New Buffer: size {:?}, width {:?}, height {:?}, stride {:?}, data {:?} ",
             &data.len(),
             metadata.width,
             metadata.height,
-            metadata.stride
+            metadata.stride,
+            compressed_data,
         );
-        let metadata = BufferMetadata::from_buffer_data(metadata).location(loc!())?;
-        let mut buf = Vec4u8s::with_total_size(data.len());
-        filtering::filter(data, &mut buf);
         Ok(Self {
             metadata,
-            data: Arc::new(buf),
+            data: compressed_data,
         })
     }
 
     #[allow(clippy::missing_panics_doc)]
-    pub fn update(&mut self, metadata: &BufferData, data: BufferPointer<u8>) -> Result<()> {
+    pub fn update(
+        &mut self,
+        metadata: &SmithayBufferData,
+        data: BufferPointer<u8>,
+        compressor: &mut ShardingCompressor,
+    ) -> Result<()> {
         self.metadata = BufferMetadata::from_buffer_data(metadata).location(loc!())?;
-        // If the buffer is still being serialized from the last commit, create
-        // a new one. This takes a few ms, but so does would waiting for the
-        // serialization to finish. This should happen rarely.
-        let self_data = match Arc::get_mut(&mut self.data) {
-            Some(self_data) => self_data,
-            None => {
-                // TODO: this happens rarely but still more frequently than we'd
-                // like. Figure out why. Also change the log line to a warning
-                // after we fix this.
-                debug!(
-                    "Next commit received for surface before serialization of previous commit finished."
-                );
-                self.data = Arc::new(Vec4u8s::with_total_size(data.len()));
-                // We just created the Arc, no one else can have a copy of it
-                // yet.
-                Arc::get_mut(&mut self.data).unwrap()
-            },
-        };
-
-        filtering::filter(data, self_data);
+        self.data = BufferData::Compressed(CompressedBufferData(Arc::new(
+            filtering::filter_and_compress(data, compressor),
+        )));
         Ok(())
-    }
-}
-
-impl fmt::Debug for Buffer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Buffer")
-            .field("metadata", &self.metadata)
-            .field("data", &format_args!("Vec4u8s[{}]", &self.data.len()))
-            .finish()
     }
 }
 
@@ -700,16 +715,21 @@ impl SurfaceState {
         })
     }
 
-    #[instrument(skip(data), level = "debug")]
-    pub fn set_buffer(&mut self, metadata: &BufferData, data: BufferPointer<u8>) -> Result<()> {
+    #[instrument(skip(data, compressor), level = "debug")]
+    pub fn set_buffer(
+        &mut self,
+        metadata: &SmithayBufferData,
+        data: BufferPointer<u8>,
+        compressor: &mut ShardingCompressor,
+    ) -> Result<()> {
         match &mut self.buffer {
             // Only buffer data was updated, we can reuse the buffer.
             Some(BufferAssignment::New(buffer)) => {
-                buffer.update(metadata, data).location(loc!())?;
+                buffer.update(metadata, data, compressor).location(loc!())?;
             },
             Some(BufferAssignment::Removed) | None => {
                 self.buffer = Some(BufferAssignment::New(
-                    Buffer::new(metadata, data).location(loc!())?,
+                    Buffer::new(metadata, data, compressor).location(loc!())?,
                 ));
             },
         }

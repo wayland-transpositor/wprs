@@ -67,9 +67,11 @@ use crate::serialization::geometry::Point;
 use crate::serialization::geometry::Rectangle;
 use crate::serialization::wayland::Buffer;
 use crate::serialization::wayland::BufferAssignment;
+use crate::serialization::wayland::BufferData;
 use crate::serialization::wayland::BufferMetadata;
 use crate::serialization::wayland::Region;
 use crate::serialization::wayland::SubsurfacePosition;
+use crate::serialization::wayland::UncompressedBufferData;
 use crate::serialization::wayland::ViewportState;
 use crate::serialization::wayland::WlSurfaceId;
 use crate::vec4u8::Vec4u8s;
@@ -147,7 +149,7 @@ pub struct WprsClientState {
 
     title_prefix: String,
 
-    buffer_cache: Option<Arc<Vec4u8s>>,
+    buffer_cache: Option<UncompressedBufferData>,
 }
 
 impl WprsClientState {
@@ -240,24 +242,17 @@ impl RemoteBuffer {
             .location(loc!())?
             .0;
 
+        let data = buffer_msg.data.into_uncompressed().unwrap().0;
         Ok(Self {
             metadata: buffer_msg.metadata,
-            // The arc is a server-side optimization and nothing else here has a
-            // reference to it. The arc is here at all because the same type
-            // needs to be present in both the server and the client for
-            // serialization/deserialization.
-            data: Arc::into_inner(buffer_msg.data).unwrap(),
+            data,
             active_buffer,
             dirty: true,
         })
     }
 
     fn update_data(&mut self, buffer: Buffer) {
-        // The arc is a server-side optimization and nothing else here has a
-        // reference to it. The arc is here at all because the same type
-        // needs to be present in both the server and the client for
-        // serialization/deserialization.
-        self.data = Arc::into_inner(buffer.data).unwrap();
+        self.data = buffer.data.into_uncompressed().unwrap().0;
         self.dirty = true;
     }
 
@@ -282,7 +277,7 @@ impl RemoteBuffer {
                 pool.canvas(&self.active_buffer).location(loc!())?
             },
         };
-        filtering::unfilter(&mut self.data, canvas);
+        filtering::unfilter(&self.data, canvas);
         Ok(())
     }
 }
@@ -473,22 +468,22 @@ impl RemoteSurface {
         wl_surface.attach(None, 0, 0);
     }
 
-    #[instrument(skip(self, buffer_cache, pool), level = "debug")]
+    #[instrument(skip(self, pool), level = "debug")]
     pub fn apply_buffer(
         &mut self,
         new_buffer: Option<BufferAssignment>,
-        buffer_cache: &mut Option<Arc<Vec4u8s>>,
+        buffer_cache: &mut Option<UncompressedBufferData>,
         pool: &mut SlotPool,
     ) -> Result<()> {
         match new_buffer {
             Some(BufferAssignment::New(mut new_buffer)) => {
                 if let Some(buffer_data) = buffer_cache.take() {
-                    new_buffer.data = buffer_data;
+                    new_buffer.data = BufferData::Uncompressed(buffer_data);
                 }
                 // else use the data in new_buffer as the buffer is data is
                 // still sent inline on connection.
 
-                if new_buffer.data.is_empty() {
+                if new_buffer.data.is_external() {
                     // TODO: do we want to log a warning and let the rest of the
                     // commit work? Unclear that it matters.
                     return Err(anyhow!(

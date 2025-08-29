@@ -23,6 +23,7 @@ use criterion::BatchSize;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use fallible_iterator::IteratorExt;
 use png::BitDepth;
 use png::ColorType;
 use png::Decoder;
@@ -30,9 +31,9 @@ use wprs::arc_slice::ArcSlice;
 use wprs::buffer_pointer::BufferPointer;
 use wprs::filtering;
 use wprs::sharding_compression::CompressedShard;
+use wprs::sharding_compression::CompressedShards;
 use wprs::sharding_compression::ShardingCompressor;
 use wprs::sharding_compression::ShardingDecompressor;
-use wprs::vec4u8::Vec4u8s;
 
 fn reorder_channels(data: &mut [u8]) {
     for pixel in data.chunks_mut(4) {
@@ -63,141 +64,88 @@ fn read_png(path: &Path) -> Vec<u8> {
     data
 }
 
-#[allow(clippy::redundant_clone)]
-fn filter_png(c: &mut Criterion, path: &Path) {
-    let data = read_png(path);
-    let _orig_data = data.clone();
-    // SAFETY: ptr was created from an owned vec, so it is non-null, aligned,
-    // and valid for reads of data.len() elements.
-    let data_ptr = &data.as_ptr();
-    let buf_ptr = unsafe { BufferPointer::new(data_ptr, data.len()) };
-
-    let mut filtered_data = Vec4u8s::with_total_size(data.len());
-
-    c.bench_function(&format!("filter only: {}", path.display()), |b| {
-        b.iter(|| {
-            filtering::filter(buf_ptr, &mut filtered_data);
-        })
-    });
-
-    let mut new_data = vec![0; data.len()];
-
-    c.bench_function(&format!("unfilter only: {}", path.display()), |b| {
-        b.iter_batched(
-            || filtered_data.clone(),
-            |mut filtered_data| {
-                filtering::unfilter(&mut filtered_data, &mut new_data);
-            },
-            BatchSize::SmallInput,
-        )
-    });
-
-    // assert_eq!(new_data, _orig_data);
-}
-
-fn compress_png(c: &mut Criterion, path: &Path) -> f64 {
+fn compress_png(c: &mut Criterion, path: &Path) {
     let data = read_png(path);
 
     let uncompressed_size = data.len();
-    let mut compressed_size = 0;
 
     let n_compressors = NonZeroUsize::new(16).unwrap();
     let n_shards = NonZeroUsize::new(32).unwrap();
-    let compressor = ShardingCompressor::new(n_compressors, 1).unwrap();
+    let mut compressor = ShardingCompressor::new(n_compressors, 1).unwrap();
 
     let data_arcslice = ArcSlice::new(data);
-
-    let mut compressed_shards = Vec::new();
+    let mut compressed_shards = CompressedShards::default();
 
     c.bench_function(&format!("compress only: {}", path.display()), |b| {
         b.iter(|| {
-            compressed_shards = compressor
-                .compress(n_shards, data_arcslice.clone())
-                .collect();
-            compressed_size = compressed_shards.iter().map(|shard| shard.data.len()).sum();
+            compressed_shards = compressor.compress(n_shards, data_arcslice.clone());
         })
     });
+
+    let compressed_size = compressed_shards.size();
 
     let n_decompressors = NonZeroUsize::new(8).unwrap();
     let mut sharding_decompressor = ShardingDecompressor::new(n_decompressors).unwrap();
 
+    let indices = compressed_shards.indices();
     let compressed_shards = compressed_shards
+        .shards
         .into_iter()
-        .map(|shard| -> Result<CompressedShard, Error> { Ok(shard) });
-    let compressed_shards = fallible_iterator::convert(compressed_shards);
-
-    let mut compression_ratio = 0.0;
-    let mut compression_rate = 0.0;
-    let mut ret = 0.0;
+        .map(Ok::<CompressedShard, Error>)
+        .transpose_into_fallible();
 
     c.bench_function(&format!("decompress only: {}", path.display()), |b| {
         b.iter_batched(
             || compressed_shards.clone(),
             |compressed_shards| {
-                sharding_decompressor
-                    .decompress_with(
-                        n_shards,
-                        uncompressed_size,
-                        compressed_shards,
-                        |_decompressed_data| {
-                            // assert_eq!(_decompressed_data, data_arcslice.as_ref());
-
-                            compression_ratio = uncompressed_size as f64 / compressed_size as f64;
-                            compression_rate = compressed_size as f64 / uncompressed_size as f64;
-                            ret = compression_ratio;
-                            Ok(())
-                        },
-                    )
+                let _decompressed_data = sharding_decompressor
+                    .decompress_to_owned(&indices, uncompressed_size, compressed_shards)
                     .unwrap();
+                // assert_eq!(_decompressed_data, data_arcslice.as_ref());
             },
             BatchSize::SmallInput,
         )
     });
+
+    let compression_ratio = uncompressed_size as f64 / compressed_size as f64;
+    let compression_rate = compressed_size as f64 / uncompressed_size as f64;
     println!("compression ratio (higher is better): {compression_ratio:.1}");
     println!(
         "compression rate (lower is better): {:.1}%",
         compression_rate * 100.0
     );
-    ret
 }
 
-fn filter_compress_png(c: &mut Criterion, path: &Path) -> f64 {
+fn filter_compress_png(c: &mut Criterion, path: &Path) {
     let mut data = read_png(path);
     let _orig_data = data.clone();
     let data_ptr = &data.as_ptr();
     let buf_ptr = unsafe { BufferPointer::new(data_ptr, data.len()) };
 
     let uncompressed_size = data.len();
-    let mut compressed_size = 0;
 
     let n_compressors = NonZeroUsize::new(16).unwrap();
-    let n_shards = NonZeroUsize::new(32).unwrap();
-    let compressor = ShardingCompressor::new(n_compressors, 1).unwrap();
+    let mut compressor = ShardingCompressor::new(n_compressors, 1).unwrap();
 
-    let mut compressed_shards = Vec::new();
+    let mut compressed_shards = CompressedShards::default();
 
     c.bench_function(&format!("filter and compress: {}", path.display()), |b| {
         b.iter(|| {
-            let mut output_buf = Vec4u8s::with_total_size(data.len());
-            filtering::filter(buf_ptr, &mut output_buf);
-            let output_vec: Vec<u8> = output_buf.into();
-            let output_arcslice = ArcSlice::new(output_vec);
-            compressed_shards = compressor.compress(n_shards, output_arcslice).collect();
-            compressed_size = compressed_shards.iter().map(|shard| shard.data.len()).sum();
+            compressed_shards = filtering::filter_and_compress(buf_ptr, &mut compressor);
         })
     });
+
+    let compressed_size = compressed_shards.size();
 
     let n_decompressors = NonZeroUsize::new(8).unwrap();
     let mut sharding_decompressor = ShardingDecompressor::new(n_decompressors).unwrap();
 
+    let indices = compressed_shards.indices();
     let compressed_shards = compressed_shards
+        .shards
         .into_iter()
-        .map(|shard| -> Result<CompressedShard, Error> { Ok(shard) });
-    let compressed_shards = fallible_iterator::convert(compressed_shards);
-
-    let mut compression_ratio = 0.0;
-    let mut compression_rate = 0.0;
-    let mut ret = 0.0;
+        .map(Ok::<CompressedShard, Error>)
+        .transpose_into_fallible();
 
     c.bench_function(
         &format!("unfilter and decompress: {}", path.display()),
@@ -205,37 +153,30 @@ fn filter_compress_png(c: &mut Criterion, path: &Path) -> f64 {
             b.iter_batched(
                 || compressed_shards.clone(),
                 |compressed_shards| {
-                    sharding_decompressor
-                        .decompress_with(n_shards, uncompressed_size, compressed_shards, |buf| {
-                            let mut buf: Vec4u8s = buf.to_vec().into();
-                            filtering::unfilter(&mut buf, &mut data);
-
-                            // assert_eq!(data, _orig_data);
-
-                            compression_ratio = uncompressed_size as f64 / compressed_size as f64;
-                            compression_rate = compressed_size as f64 / uncompressed_size as f64;
-                            ret = compression_ratio;
-                            Ok(())
-                        })
+                    let buf = sharding_decompressor
+                        .decompress_to_owned(&indices, uncompressed_size, compressed_shards)
                         .unwrap();
+
+                    filtering::unfilter(&buf.into(), &mut data);
+                    // assert_eq!(data, _orig_data);
                 },
                 BatchSize::SmallInput,
             )
         },
     );
+
+    let compression_ratio = uncompressed_size as f64 / compressed_size as f64;
+    let compression_rate = compressed_size as f64 / uncompressed_size as f64;
     println!("compression ratio (higher is better): {compression_ratio:.1}");
     println!(
         "compression rate (lower is better): {:.1}%",
         compression_rate * 100.0
     );
-    ret
-}
-
-fn mean(numbers: &[f64]) -> f64 {
-    numbers.iter().sum::<f64>() / numbers.len() as f64
 }
 
 fn compression_benchmark(c: &mut Criterion) {
+    wprs::utils::exit_on_thread_panic();
+
     let image_dir: String =
         env::var("WPRS_BENCH_IMAGE_DIR").expect("WPRS_BENCH_IMAGE_DIR env var must be set.");
     if image_dir.is_empty() {
@@ -246,37 +187,15 @@ fn compression_benchmark(c: &mut Criterion) {
         .unwrap()
         .map(|dirent| dirent.unwrap().path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "png"));
-    let mut compression_ratios = Vec::new();
-    let mut filter_compression_ratios = Vec::new();
     for file in files {
-        filter_png(c, &file);
+        compress_png(c, &file);
         println!("");
-        compression_ratios.push(compress_png(c, &file));
-        println!("");
-        filter_compression_ratios.push(filter_compress_png(c, &file));
+        filter_compress_png(c, &file);
         println!(
             "--------------------------------------------------------------------------------"
         );
         println!("");
     }
-    let mean_compression_ratio = mean(&compression_ratios);
-    let mean_filter_compression_ratio = mean(&filter_compression_ratios);
-    println!("");
-    println!("mean compression only ratio (higher is better): {mean_compression_ratio:.1}");
-    println!(
-        "mean compression only rate (lower is better): {:.1}%",
-        1.0 / mean_compression_ratio * 100.0
-    );
-    println!(
-        "mean compression with filter ratio (higher is better): {mean_filter_compression_ratio:.1}"
-    );
-    println!(
-        "mean compression with filter rate (lower is better): {:.1}%",
-        1.0 / mean_filter_compression_ratio * 100.0
-    );
-    println!("--------------------------------------------------------------------------------");
-    println!("");
-    println!("");
 }
 
 criterion_group!(benches, compression_benchmark);

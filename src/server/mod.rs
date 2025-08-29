@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -51,6 +52,7 @@ use crate::serialization::Event;
 use crate::serialization::Request;
 use crate::serialization::SendType;
 use crate::serialization::Serializer;
+use crate::sharding_compression::ShardingCompressor;
 use crate::utils::SerialMap;
 
 pub mod client_handlers;
@@ -102,6 +104,7 @@ pub struct WprsServerState {
     pub seat: Seat<Self>,
 
     pub serializer: Serializer<Request, Event>,
+    pub compressor: ShardingCompressor,
     /// Reverse map from WlSurfaceId, which is the hash of ObjectId, back to its
     /// source ObjectId. We can't put this in SurfaceState because is
     /// serializable, while this only has meaning locally. We need this for
@@ -156,6 +159,8 @@ impl WprsServerState {
             viewporter_state: ViewporterState::new::<Self>(&dh),
             seat,
             serializer,
+            // TODO: try tuning this based on the number of cpus the machine has.
+            compressor: ShardingCompressor::new(NonZeroUsize::new(16).unwrap(), 1).unwrap(),
             object_map: HashMap::new(),
             outputs: HashMap::new(),
             serial_map: SerialMap::new(),

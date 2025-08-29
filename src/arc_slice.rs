@@ -84,16 +84,6 @@ impl<T> ArcSlice<T> {
         assert!(chunk_size != 0);
         Chunks::new(self, chunk_size)
     }
-
-    /// # Panics
-    /// If chunk_size == 0.
-    pub fn chunks_exact(self, chunk_size: usize) -> (Chunks<T>, Self) {
-        assert!(chunk_size != 0);
-        let rem_len = self.len() % chunk_size;
-        let fst_len = self.len() - rem_len;
-        let (fst, snd) = self.split_at(fst_len);
-        (Chunks::new(fst, chunk_size), snd)
-    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for ArcSlice<T> {

@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// u8 AoS<>SoA conversion, based on
-/// https://stackoverflow.com/questions/44984724/whats-the-fastest-stride-3-gather-instruction-sequence.
+/// u8 AoS<>SoA conversion and filtering.
+/// Ref:
+/// * https://afrantzis.com/pixel-format-guide/wayland_drm.html
+/// * https://stackoverflow.com/questions/44984724/whats-the-fastest-stride-3-gather-instruction-sequence.
+/// * https://en.algorithmica.org/hpc/algorithms/prefix/.
 use std::arch::x86_64::__m128i;
 use std::arch::x86_64::__m256i;
 use std::arch::x86_64::_mm_add_epi8;
@@ -40,6 +43,7 @@ use std::arch::x86_64::_mm256_storeu_si256;
 use std::arch::x86_64::_mm256_sub_epi8;
 use std::cmp;
 use std::ops::IndexMut;
+use std::sync::Arc;
 
 use itertools::izip;
 use lagoon::ThreadPool;
@@ -47,10 +51,12 @@ use lagoon::ThreadPool;
 use crate::buffer_pointer::BufferPointer;
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::prelude::*;
+use crate::sharding_compression::CompressedShards;
+use crate::sharding_compression::ShardingCompressor;
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
@@ -61,7 +67,7 @@ fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     ))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
@@ -70,7 +76,7 @@ fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
     unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn load_m256i(src: &[u8; 32]) -> __m256i {
@@ -79,7 +85,7 @@ fn load_m256i(src: &[u8; 32]) -> __m256i {
     unsafe { _mm256_loadu_si256(src.as_ptr().cast::<__m256i>()) }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
@@ -88,7 +94,7 @@ fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
     unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
@@ -97,24 +103,21 @@ fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
     unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
     (_mm256_sub_epi8(b, g), _mm256_sub_epi8(r, g))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn add_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
     (_mm256_add_epi8(b, g), _mm256_add_epi8(r, g))
 }
 
-// u8 prefix sum functions, based on
-// https://en.algorithmica.org/hpc/algorithms/prefix/.
-
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn prefix_sum_32(mut block: __m256i) -> __m256i {
@@ -124,7 +127,7 @@ fn prefix_sum_32(mut block: __m256i) -> __m256i {
     _mm256_add_epi8(block, _mm256_slli_si256(block, 8))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m128i) {
@@ -133,7 +136,7 @@ fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m12
     (block, _mm_add_epi8(prev_block, cur_sum))
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
@@ -142,14 +145,14 @@ fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) 
     (_mm256_set_m128i(block1, block0), prev_block)
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn prefix_sum(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
     accumulate_sum_32(prefix_sum_32(block), prev_block)
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
@@ -200,7 +203,7 @@ fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
     (block, next)
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn aos_to_soa_u8_32x4(
@@ -214,8 +217,6 @@ fn aos_to_soa_u8_32x4(
     prev2: u8,
     prev3: u8,
 ) -> (u8, u8, u8, u8) {
-    // let mut input = input.copy_to_array();
-
     let p0: __m256i = _mm256_set_epi8(
         15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5,
         1, 12, 8, 4, 0,
@@ -234,7 +235,6 @@ fn aos_to_soa_u8_32x4(
     );
 
     let [i0, i1, i2, i3, i4, i5, i6, i7] = input.as_chunks::<4, 8>();
-    // let [i0, i1, i2, i3, i4, i5, i6, i7]: [[Vec4u8; 4]; 8] = (&input).as_chunks::<4>().0.try_into().unwrap();
 
     // let input: *const u8 = input.ptr().cast();
     // print!("i0  ");
@@ -354,7 +354,7 @@ fn aos_to_soa_u8_32x4(
     (next0, next1, next2, next3)
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn soa_to_aos_u8_32x4(
@@ -499,12 +499,18 @@ fn soa_to_aos_u8_32x4(
     (prev0, prev1, prev2, prev3)
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[instrument(skip_all, level = "debug")]
-pub fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
+fn vec4u8_aos_to_soa_avx2_parallel_compression(
+    aos: BufferPointer<Vec4u8>,
+    compressor: &mut ShardingCompressor,
+) -> CompressedShards {
+    if aos.is_empty() {
+        return CompressedShards::default();
+    }
+
     let len = aos.len();
-    assert_eq!(len, soa.len());
 
     // aos_to_soa_u8_32x4 operates on blocks of 1024 bits aka 128 bytes aka 32
     // Vec4u8s.
@@ -515,97 +521,83 @@ pub fn vec4u8_aos_to_soa_avx2_parallel(aos: BufferPointer<Vec4u8>, soa: &mut Vec
     let blocks_per_thread = cmp::max(n_blocks / n_threads, 1);
     let thread_chunk_size = blocks_per_thread * 32;
 
+    let compressor = Arc::new(compressor.begin());
+    let compression_block_size = 128 * 1024;
+
     let (aos_to_lim, aos_remainder) = aos.split_at(lim);
-    let (mut prev0, mut prev1, mut prev2, mut prev3) = (0, 0, 0, 0);
 
     debug_span!("aos_to_soa_u8_32x4_loop").in_scope(|| {
         ThreadPool::global().scoped(|s| {
-            for (aos, (soa0, soa1, soa2, soa3)) in izip!(
-                aos_to_lim.chunks(thread_chunk_size),
-                soa.chunks_mut(thread_chunk_size)
-            ) {
+            for (thread_idx, aos) in aos_to_lim.chunks(thread_chunk_size).enumerate() {
+                let compressor = compressor.clone();
                 s.run(move || {
-                    for (aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk) in izip!(
-                        aos.array_chunks::<32>(),
-                        soa0.as_chunks_mut::<32>().0,
-                        soa1.as_chunks_mut::<32>().0,
-                        soa2.as_chunks_mut::<32>().0,
-                        soa3.as_chunks_mut::<32>().0,
-                    ) {
-                        (prev0, prev1, prev2, prev3) = aos_to_soa_u8_32x4(
-                            aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk, prev0,
-                            prev1, prev2, prev3,
-                        );
+                    let mut idx = thread_idx * thread_chunk_size;
+                    let (mut prev0, mut prev1, mut prev2, mut prev3) = (0, 0, 0, 0);
+                    for aos in aos.chunks(compression_block_size) {
+                        let soa_len = cmp::min(aos.len(), compression_block_size);
+                        let mut soa0 = vec![0; soa_len];
+                        let mut soa1 = vec![0; soa_len];
+                        let mut soa2 = vec![0; soa_len];
+                        let mut soa3 = vec![0; soa_len];
+
+                        for (aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk) in izip!(
+                            aos.array_chunks::<32>(),
+                            soa0.as_chunks_mut::<32>().0,
+                            soa1.as_chunks_mut::<32>().0,
+                            soa2.as_chunks_mut::<32>().0,
+                            soa3.as_chunks_mut::<32>().0,
+                        ) {
+                            (prev0, prev1, prev2, prev3) = aos_to_soa_u8_32x4(
+                                aos_chunk, soa0_chunk, soa1_chunk, soa2_chunk, soa3_chunk, prev0,
+                                prev1, prev2, prev3,
+                            );
+                        }
+
+                        compressor.compress_shard(idx, soa0);
+                        compressor.compress_shard(idx + len, soa1);
+                        compressor.compress_shard(idx + 2 * len, soa2);
+                        compressor.compress_shard(idx + 3 * len, soa3);
+
+                        idx += aos.len();
                     }
                 });
             }
         });
     });
 
-    let mut rem0 = [0u8; 31];
-    let mut rem1 = [0u8; 31];
-    let mut rem2 = [0u8; 31];
-    let mut rem3 = [0u8; 31];
+    if rem > 0 {
+        let mut rem0 = vec![0u8; rem];
+        let mut rem1 = vec![0u8; rem];
+        let mut rem2 = vec![0u8; rem];
+        let mut rem3 = vec![0u8; rem];
 
-    // Using this style of loop for the whole thing (with this function
-    // signature, etc.) lets the compiler to a pretty good job at
-    // auto-vectorization, but aos_to_soa_u8_32x4 is still faster (e.g.,
-    // 400-500us vs 700-800us). We got here by implementing aos_to_soa_u8_32x4
-    // though, and it shouldn't be a large maintenance burden, so we might as
-    // well keep it. We can use this version for non-AVX2 platforms and hope the
-    // compiler does a reasonable job with whatever SIMD instructions are
-    // available.
-    for (s, r0, r1, r2, r3) in izip!(
-        aos_remainder.into_iter(),
-        &mut rem0,
-        &mut rem1,
-        &mut rem2,
-        &mut rem3
-    ) {
-        *r0 = s.0;
-        *r1 = s.1;
-        *r2 = s.2;
-        *r3 = s.3;
-    }
-
-    let (soa0, soa1, soa2, soa3) = soa.parts_mut();
-    soa0[lim..len].copy_from_slice(&rem0[0..rem]);
-    soa1[lim..len].copy_from_slice(&rem1[0..rem]);
-    soa2[lim..len].copy_from_slice(&rem2[0..rem]);
-    soa3[lim..len].copy_from_slice(&rem3[0..rem]);
-}
-
-// TODO: multithread this
-#[instrument(skip_all, level = "debug")]
-pub fn vec4u8_aos_to_soa_scalar(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
-    let (soa0, soa1, soa2, soa3) = soa.parts_mut();
-    for (s, r0, r1, r2, r3) in izip!(aos.into_iter(), soa0, soa1, soa2, soa3) {
-        *r0 = s.0;
-        *r1 = s.1;
-        *r2 = s.2;
-        *r3 = s.3;
-    }
-}
-
-#[instrument(skip_all, level = "debug")]
-pub fn vec4u8_aos_to_soa(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
-    soa.resize(aos.len());
-
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("avx2") {
-            // SAFETY: checked for avx2 support.
-            return unsafe { vec4u8_aos_to_soa_avx2_parallel(aos, soa) };
+        for (s, r0, r1, r2, r3) in izip!(
+            aos_remainder.into_iter(),
+            &mut rem0,
+            &mut rem1,
+            &mut rem2,
+            &mut rem3
+        ) {
+            *r0 = s.0;
+            *r1 = s.1;
+            *r2 = s.2;
+            *r3 = s.3;
         }
+
+        compressor.compress_shard(len - rem, rem0);
+        compressor.compress_shard(2 * len - rem, rem1);
+        compressor.compress_shard(3 * len - rem, rem2);
+        compressor.compress_shard(4 * len - rem, rem3);
     }
 
-    vec4u8_aos_to_soa_scalar(aos, soa)
+    // All the other clones of the Arc were inside the loops above.
+    Arc::into_inner(compressor).unwrap().collect_shards()
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 #[instrument(skip_all, level = "debug")]
-pub fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
+fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     let len = soa.len();
     assert_eq!(len, aos.len());
 
@@ -656,45 +648,50 @@ pub fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     }
 }
 
-// TODO: multithread this
-pub fn vec4u8_soa_to_aos_scalar(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
-    let (soa0, soa1, soa2, soa3) = soa.parts();
-    for (a, s0, s1, s2, s3) in izip!(aos, soa0, soa1, soa2, soa3) {
-        *a = Vec4u8(*s0, *s1, *s2, *s3);
+fn vec4u8_aos_to_soa(
+    aos: BufferPointer<Vec4u8>,
+    compressor: &mut ShardingCompressor,
+) -> CompressedShards {
+    if cfg!(all(target_arch = "x86_64", target_feature = "avx2")) {
+        // SAFETY: checked for avx2.
+        unsafe { vec4u8_aos_to_soa_avx2_parallel_compression(aos, compressor) }
+    } else {
+        unimplemented!("Only x86_64 systems with AVX2 are supported.");
     }
 }
 
-pub fn vec4u8_soa_to_aos(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("avx2") {
-            // SAFETY: checked for avx2 support.
-            return unsafe { vec4u8_soa_to_aos_avx2_parallel(soa, aos) };
-        }
+fn vec4u8_soa_to_aos(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
+    if cfg!(all(target_arch = "x86_64", target_feature = "avx2")) {
+        // SAFETY: checked for avx2.
+        unsafe { vec4u8_soa_to_aos_avx2_parallel(soa, aos) };
+    } else {
+        unimplemented!("Only x86_64 systems with AVX2 are supported.");
     }
-
-    vec4u8_soa_to_aos_scalar(soa, aos)
 }
 
-#[instrument(skip_all, level = "debug")]
-pub fn filter(data: BufferPointer<u8>, output_buf: &mut Vec4u8s) {
+pub fn filter_and_compress(
+    data: BufferPointer<u8>,
+    compressor: &mut ShardingCompressor,
+) -> CompressedShards {
     assert!(data.len().is_multiple_of(4)); // data is a buffer of argb or xrgb pixels.
     // SAFETY: Vec4u8 is a repr(C, packed) wrapper around [u8; 4].
-    let data = unsafe { data.cast::<Vec4u8>() };
-    vec4u8_aos_to_soa(data, output_buf);
+    vec4u8_aos_to_soa(unsafe { data.cast::<Vec4u8>() }, compressor)
 }
 
-#[instrument(skip_all, level = "debug")]
-pub fn unfilter(data: &mut Vec4u8s, output_buf: &mut [u8]) {
-    let output_buf = bytemuck::cast_slice_mut(output_buf);
-    vec4u8_soa_to_aos(data, output_buf);
+pub fn unfilter(data: &Vec4u8s, output_buf: &mut [u8]) {
+    vec4u8_soa_to_aos(data, bytemuck::cast_slice_mut(output_buf));
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+
+    use fallible_iterator::IteratorExt;
     use proptest::prelude::*;
 
     use super::*;
+    use crate::sharding_compression::CompressedShard;
+    use crate::sharding_compression::ShardingDecompressor;
 
     #[test]
     #[cfg_attr(miri, ignore)]
@@ -760,11 +757,26 @@ mod tests {
         let aos_ptr = aos.as_ptr();
         let aos_buf_ptr = unsafe { BufferPointer::new(&aos_ptr, aos.len()) };
 
-        let mut soa = Vec4u8s::with_total_size(data.len());
-        vec4u8_aos_to_soa(aos_buf_ptr, &mut soa);
+        let mut compressor = ShardingCompressor::new(NonZeroUsize::new(16).unwrap(), 1).unwrap();
+        let shards = vec4u8_aos_to_soa(aos_buf_ptr, &mut compressor);
+
+        let mut decompressor = ShardingDecompressor::new(NonZeroUsize::new(8).unwrap()).unwrap();
+        let indices = shards.indices();
+
+        let soa = decompressor
+            .decompress_to_owned(
+                &indices,
+                data.len(),
+                shards
+                    .shards
+                    .into_iter()
+                    .map(Ok::<CompressedShard, anyhow::Error>)
+                    .transpose_into_fallible(),
+            )
+            .unwrap();
 
         let mut expected_aos: Vec<Vec4u8> = vec![Vec4u8::new(); data.len() / 4];
-        vec4u8_soa_to_aos(&soa, &mut expected_aos);
+        vec4u8_soa_to_aos(&soa.into(), &mut expected_aos);
 
         assert_eq!(aos, expected_aos);
     }
@@ -801,6 +813,9 @@ mod tests {
             2052,
             100,
             1920 * 1080,
+            32768 * 4 + 4,
+            1008 * 9513 * 4,
+            1008 * 951 * 4,
         ] {
             test_roundtrip_impl(&test_vec(n));
         }

@@ -15,7 +15,6 @@
 /// Handlers for events from Smithay.
 use std::mem;
 use std::os::fd::OwnedFd;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
@@ -104,6 +103,7 @@ use crate::prelude::*;
 use crate::serialization;
 use crate::serialization::tuple::Tuple2;
 use crate::serialization::wayland::BufferAssignment;
+use crate::serialization::wayland::BufferData;
 use crate::serialization::wayland::ClientSurface;
 use crate::serialization::wayland::CursorImage;
 use crate::serialization::wayland::CursorImageStatus;
@@ -135,7 +135,6 @@ use crate::serialization::Request;
 use crate::serialization::SendType;
 use crate::server::LockedSurfaceState;
 use crate::server::WprsServerState;
-use crate::vec4u8::Vec4u8s;
 
 impl BufferHandler for WprsServerState {
     #[instrument(skip(self), level = "debug")]
@@ -853,7 +852,7 @@ pub fn commit_impl(
     match &surface_attributes.buffer {
         Some(SmithayBufferAssignment::NewBuffer(buffer)) if !skip_buffer => {
             compositor_utils::with_buffer_contents(buffer, |data, spec| {
-                surface_state.set_buffer(&spec, data)
+                surface_state.set_buffer(&spec, data, &mut state.compressor)
             })
             .location(loc!())?
             .location(loc!())?;
@@ -865,14 +864,13 @@ pub fn commit_impl(
             // Some(BufferAssignment::New(...)), so the 4 unwraps below should
             // never fail.
 
-            // zero-out data, see comment on wayland.rs::Buffer.
             surface_state_to_send
                 .buffer
                 .as_mut()
                 .unwrap()
                 .as_new_mut()
                 .unwrap()
-                .data = Arc::new(Vec4u8s::new());
+                .data = BufferData::External;
 
             state.serializer.writer().send(SendType::RawBuffer(
                 surface_state
@@ -882,6 +880,9 @@ pub fn commit_impl(
                     .as_new()
                     .unwrap()
                     .data
+                    .as_compressed()
+                    .unwrap()
+                    .0
                     .clone(),
             ));
         },

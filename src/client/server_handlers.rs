@@ -17,7 +17,6 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::os::fd::OwnedFd;
-use std::sync::Arc;
 use std::thread;
 
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -52,6 +51,7 @@ use crate::serialization::wayland::DataToTransfer;
 use crate::serialization::wayland::SurfaceRequest;
 use crate::serialization::wayland::SurfaceRequestPayload;
 use crate::serialization::wayland::SurfaceState;
+use crate::serialization::wayland::UncompressedBufferData;
 use crate::serialization::wayland::WlSurfaceId;
 use crate::serialization::xdg_shell;
 use crate::serialization::xdg_shell::PopupRequest;
@@ -580,7 +580,7 @@ impl WprsClientState {
 
     #[instrument(skip_all, level = "debug")]
     fn handle_buffer(&mut self, buffer: Vec<u8>) -> Result<()> {
-        self.buffer_cache = Some(Arc::new(buffer.into()));
+        self.buffer_cache = Some(UncompressedBufferData(buffer.into()));
         Ok(())
     }
 

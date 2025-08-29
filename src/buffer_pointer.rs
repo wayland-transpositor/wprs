@@ -134,16 +134,6 @@ impl<'a, T: 'a + Copy> BufferPointer<'a, T> {
         Chunks::new(self, chunk_size)
     }
 
-    /// # Panics
-    /// If chunk_size == 0.
-    pub fn chunks_exact(self, chunk_size: usize) -> (Chunks<'a, T>, Self) {
-        assert!(chunk_size != 0);
-        let rem_len = self.len() % chunk_size;
-        let fst_len = self.len() - rem_len;
-        let (fst, snd) = self.split_at(fst_len);
-        (Chunks::new(fst, chunk_size), snd)
-    }
-
     pub fn array_chunks<const N: usize>(self) -> ArrayChunks<'a, T, N> {
         ArrayChunks::new(self)
     }
@@ -512,27 +502,6 @@ mod tests {
                 unsafe { BufferPointer::new(&a_ptr4, 1) },
             ]
         );
-    }
-
-    #[test]
-    fn test_chunks_exact() {
-        let a: [u32; 5] = test_arr();
-        let a_ptr = a.as_ptr();
-        let a_bufptr = unsafe { BufferPointer::new(&a_ptr, a.len()) };
-
-        let (chunks, rem) = a_bufptr.chunks_exact(2);
-
-        let a_ptr0 = unsafe { a_ptr.offset(0) };
-        let a_ptr2 = unsafe { a_ptr.offset(2) };
-        let a_ptr4 = unsafe { a_ptr.offset(4) };
-
-        assert_eq!(
-            chunks.collect::<Vec<_>>(),
-            vec![unsafe { BufferPointer::new(&a_ptr0, 2) }, unsafe {
-                BufferPointer::new(&a_ptr2, 2)
-            },]
-        );
-        assert_eq!(rem, unsafe { BufferPointer::new(&a_ptr4, 1) })
     }
 
     #[test]

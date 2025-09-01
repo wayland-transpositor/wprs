@@ -470,7 +470,7 @@ def start_remote_command(caps: Capabilities | None) -> None:
     if caps and caps.xwayland:
       env['DISPLAY'] = args.wprsd_xwayland_display
     else:
-      print('WARNING: xwaland requested but wprsd has xwayland disabled.',
+      print('WARNING: xwayland requested but wprsd has xwayland disabled.',
             file=sys.stderr)
 
   if args.pulseaudio_forwarding:

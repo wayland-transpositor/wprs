@@ -457,6 +457,10 @@ def get_x_cursor_size() -> str:
 
   return default
 
+def get_env_vars_to_forward() -> dict[str, str]:
+    vars = ['KDE_FULL_SESSION', 'KDE_SESSION_VERSION']
+    return {var: os.environ[var] for var in vars if var in os.environ}
+
 def start_remote_command(caps: Capabilities | None) -> None:
   env = {
     'WAYLAND_DEBUG': str(int(args.command_wayland_debug)),
@@ -465,6 +469,8 @@ def start_remote_command(caps: Capabilities | None) -> None:
     'XCURSOR_SIZE': get_x_cursor_size(),
     'XDG_SESSION_TYPE': 'wayland', # Ensure session type is set to wayland for Qt apps.
   }
+
+  env.update(get_env_vars_to_forward())
 
   if args.xwayland:
     if caps and caps.xwayland:

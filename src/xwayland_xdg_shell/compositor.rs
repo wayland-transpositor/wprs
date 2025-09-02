@@ -417,15 +417,14 @@ pub(crate) fn find_x11_parent(
 ) -> Option<X11Parent> {
     if let Some(x11_surface) = &x11_surface {
         if let Some(parent_id) = x11_surface.is_transient_for() {
-            let (parent_id, parent) = state
-                .surfaces
-                .iter()
-                .find(|(_, xwls)| {
-                    xwls.x11_surface
-                        .as_ref()
-                        .is_some_and(|s| s.window_id() == parent_id)
-                })
-                .unwrap();
+            let Some((parent_id, parent)) = state.surfaces.iter().find(|(_, xwls)| {
+                xwls.x11_surface
+                    .as_ref()
+                    .is_some_and(|s| s.window_id() == parent_id)
+            }) else {
+                error!("parent_id {parent_id:?} not found");
+                return None;
+            };
 
             let Ok(parent_x11_surface) = parent.get_x11_surface() else {
                 error!("parent {parent:?} has no attached x11 surface");

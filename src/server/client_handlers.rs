@@ -518,16 +518,13 @@ impl WprsServerState {
             },
             ToplevelEvent::Close(close) => {
                 let surfaces = self.xdg_shell_state.toplevel_surfaces();
-                surfaces
-                    .iter()
-                    .find(|surface| {
-                        let surface_id = WlSurfaceId::new(surface.wl_surface());
+                if let Some(surface) = surfaces.iter().find(|surface| {
+                    let surface_id = WlSurfaceId::new(surface.wl_surface());
 
-                        surface_id == close.surface_id
-                    })
-                    .map(|surface| {
-                        surface.send_close();
-                    });
+                    surface_id == close.surface_id
+                }) {
+                    surface.send_close();
+                }
             },
         }
         Ok(())

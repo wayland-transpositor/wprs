@@ -15,6 +15,7 @@
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io::BufReader;
 use std::num::NonZeroUsize;
 use std::path::Path;
 
@@ -52,9 +53,9 @@ fn reorder_channels(data: &mut [u8]) {
 
 fn read_png(path: &Path) -> Vec<u8> {
     println!("reading png {}", path.display());
-    let decoder = Decoder::new(File::open(path).unwrap());
+    let decoder = Decoder::new(BufReader::new(File::open(path).unwrap()));
     let mut reader = decoder.read_info().unwrap();
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let mut buf = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut buf).unwrap();
     println!("INFO {info:?}");
     assert_eq!(info.color_type, ColorType::Rgba);

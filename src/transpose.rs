@@ -344,8 +344,8 @@ unsafe fn soa_to_aos_u8_32x4(
     );
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
+/// # Safety
+/// * avx2 and sse2 must be available.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[target_feature(enable = "sse2")]
@@ -454,8 +454,8 @@ pub fn vec4u8_aos_to_soa(aos: BufferPointer<Vec4u8>, soa: &mut Vec4u8s) {
     vec4u8_aos_to_soa_scalar(aos, soa)
 }
 
-// SAFETY:
-// * avx2 and sse2 must be available.
+/// # Safety
+/// * avx2 and sse2 must be available.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[target_feature(enable = "sse2")]

@@ -635,12 +635,21 @@ impl WprsServerState {
                 .unwrap()
                 .clone();
 
+            let mut surface_state_to_send = surface_state.clone_without_buffer();
+            let raw_buffer_to_send = surface_state_to_send
+                .update_with_external_buffer(&surface_state.buffer)
+                .unwrap();
+
+            self.serializer
+                .writer()
+                .send(SendType::RawBuffer(raw_buffer_to_send));
+
             self.serializer
                 .writer()
                 .send(SendType::Object(Request::Surface(SurfaceRequest {
                     client: surface_state.client,
                     surface: surface_state.id,
-                    payload: SurfaceRequestPayload::Commit(surface_state),
+                    payload: SurfaceRequestPayload::Commit(surface_state_to_send),
                 })));
         });
 

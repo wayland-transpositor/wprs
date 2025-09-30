@@ -477,6 +477,12 @@ impl RemoteSurface {
     ) -> Result<()> {
         match new_buffer {
             Some(BufferAssignment::New(mut new_buffer)) => {
+                if !new_buffer.data.is_external() {
+                    return Err(anyhow!(
+                        "Received buffer from surface state.  This means that somehow the buffer is being sent with the commit message, instead of inside the buffer message."
+                    ));
+                }
+
                 if let Some(buffer_data) = buffer_cache.take() {
                     new_buffer.data = BufferData::Uncompressed(buffer_data);
                 }
@@ -487,7 +493,7 @@ impl RemoteSurface {
                     // TODO: do we want to log a warning and let the rest of the
                     // commit work? Unclear that it matters.
                     return Err(anyhow!(
-                        "Received buffer commit with empty data. This can if wprsc reattaches between wprsd sending a buffer message and a commit message."
+                        "Received buffer commit with empty data. This can happen if wprsc reattaches between wprsd sending a buffer message and a commit message."
                     ));
                 }
 

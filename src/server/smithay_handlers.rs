@@ -103,7 +103,6 @@ use crate::prelude::*;
 use crate::serialization;
 use crate::serialization::tuple::Tuple2;
 use crate::serialization::wayland::BufferAssignment;
-use crate::serialization::wayland::BufferData;
 use crate::serialization::wayland::ClientSurface;
 use crate::serialization::wayland::CursorImage;
 use crate::serialization::wayland::CursorImageStatus;
@@ -857,34 +856,14 @@ pub fn commit_impl(
             .location(loc!())?
             .location(loc!())?;
 
-            surface_state_to_send
-                .buffer
-                .clone_from(&surface_state.buffer);
-            // surface_state.set_buffer (called above) sets buffer to
-            // Some(BufferAssignment::New(...)), so the 4 unwraps below should
-            // never fail.
+            let raw_buffer_to_send = surface_state_to_send
+                .update_with_external_buffer(&surface_state.buffer)
+                .location(loc!())?;
 
-            surface_state_to_send
-                .buffer
-                .as_mut()
-                .unwrap()
-                .as_new_mut()
-                .unwrap()
-                .data = BufferData::External;
-
-            state.serializer.writer().send(SendType::RawBuffer(
-                surface_state
-                    .buffer
-                    .as_ref()
-                    .unwrap()
-                    .as_new()
-                    .unwrap()
-                    .data
-                    .as_compressed()
-                    .unwrap()
-                    .0
-                    .clone(),
-            ));
+            state
+                .serializer
+                .writer()
+                .send(SendType::RawBuffer(raw_buffer_to_send));
         },
         Some(SmithayBufferAssignment::Removed) => {
             surface_state.buffer = None;

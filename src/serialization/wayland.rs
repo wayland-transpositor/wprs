@@ -192,7 +192,7 @@ impl fmt::Debug for CompressedBufferData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("CompressedBufferData")
             .field(&format_args!(
-                "ComrpessedShards[{:?}]",
+                "CompressedShards[{:?}]",
                 self.0.uncompressed_size()
             ))
             .finish()
@@ -734,6 +734,36 @@ impl SurfaceState {
             },
         }
         Ok(())
+    }
+
+    pub fn update_with_external_buffer(
+        &mut self,
+        buffer: &Option<BufferAssignment>,
+    ) -> Result<Arc<CompressedShards>> {
+        self.buffer.clone_from(buffer);
+        // set_buffer (found above) sets buffer to
+        // Some(BufferAssignment::New(...)), so the 4 unwraps below should
+        // never fail.
+
+        let raw_buffer_to_send = buffer
+            .as_ref()
+            .location(loc!())?
+            .as_new()
+            .location(loc!())?
+            .data
+            .as_compressed()
+            .location(loc!())?
+            .0
+            .clone();
+
+        self.buffer
+            .as_mut()
+            .location(loc!())?
+            .as_new_mut()
+            .location(loc!())?
+            .data = BufferData::External;
+
+        Ok(raw_buffer_to_send)
     }
 
     #[instrument(skip_all, level = "debug")]

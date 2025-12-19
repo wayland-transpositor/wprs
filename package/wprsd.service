@@ -1,0 +1,11 @@
+[Unit]
+Description=wprsd instance for %I
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wprsd
+Environment="RUST_BACKTRACE=1"
+
+[Install]
+WantedBy=default.target

@@ -12,10 +12,57 @@ wprs is currently only available on x86-64 with AVX2. Support for [ARM](https://
 
 Currently building wprs without AVX2 will lead to build failures.
 
+### Platform Support
+
+- `wprsc` (client) is intended to be cross-platform and should build on Linux/macOS/Windows.
+- `wprsd` has multiple backends:
+  - Wayland compositor backend (Linux/Wayland): requires the `server` feature (Smithay) and is not supported on Apple platforms.
+  - Fullscreen capture backends (macOS/Windows): use OS screen capture + input injection APIs (macOS requires Screen Recording + Accessibility permissions).
+
+In practice:
+
+- For macOS/Windows development, build `wprsc` only.
+- For Linux deployment, build both `wprsc` and `wprsd`.
+
 ### Source
 
 ```bash
 cargo build --profile=release-lto  # or release, but debug is unusably slow
+```
+
+### Cross Compilation (cross)
+
+This repo includes a `Cross.toml` with common Linux targets and the system
+dependencies needed to build the Wayland components.
+
+Examples:
+
+```bash
+# Linux x86_64
+cross build --target x86_64-unknown-linux-gnu --profile=release-lto --bin wprsc
+
+# Linux aarch64
+cross build --target aarch64-unknown-linux-gnu --profile=release-lto --bin wprsc
+```
+
+On non-Linux hosts (for example macOS), only the client is expected to build.
+By default, `wprsc` builds with the cross-platform client backend:
+
+```bash
+cargo build --bin wprsc
+```
+
+You can also run a self-contained server demo that speaks the protocol and streams a
+synthetic surface (no Wayland compositor / Smithay required):
+
+```bash
+cargo run --example wprsd_demo
+```
+
+Then connect to it with the cross-platform client backend:
+
+```bash
+cargo run --bin wprsc -- --socket /path/printed/by/demo.sock
 ```
 
 The following dependencies are required for `wprsc`, `wprsd`, `xwayland-xdg-shell`:
@@ -31,36 +78,19 @@ The launcher (`wprs`) requires:
 
 ## Packaging
 
-We officially maintain [deb](#debian) instructions for Debian-based distros.
-Contributers have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
+This repo includes packaging templates (Arch/Nix/Homebrew) and a local packaging script.
 
-### Debian
+### Local Packaging Script
+
+For local, repeatable packaging into per-target artifacts (archives + optional distro-native packages), use:
 
 ```bash
-dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
-```
-This requires cargo and a rustc matching the one in rust-toolchain.toml to be
-installed. The debian rustc package is not used due to being too old.
-
-### Docker
-
-To build .deb files without installing the above dependencies, we supply a `Dockerfile`.
-
-To build the .deb and copy it locally:
-
-```shell
-docker build . -t wprs
-docker run --user $(id -u):$(id -g)  -v $(pwd):/deb --rm wprs:latest bash -c "cp *.deb /deb/"
+./scripts/package.sh
 ```
 
-By default, the `Dockerfile` builds against `debian:trixie` but you can use the `ARG`
-`BASE_IMAGE` to overwrite this to another distribution and/or release version.
+For `deb`/`rpm` outputs, the script uses a small Docker/Podman container with packaging tools installed from the distro repos.
 
-For example:
-
-```shell
-docker build --build-arg BASE_IMAGE=ubuntu . -t wprs
-```
+Outputs are written under `dist/`.
 
 ### Arch-Linux (AUR)
 
@@ -73,7 +103,7 @@ On the remote host, put the `wprsd.service` file into place:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp wprsd.service ~/.config/systemd/user
+cp package/wprsd.service ~/.config/systemd/user
 ```
 
 and enable wprsd:
@@ -124,6 +154,37 @@ wprsd --print-default-config-and-exit=true > ~/.config/wprs/wprsd.ron
 ```
 
 Then update the `wprsc.ron` and `wprsd.ron` files with your desired settings.
+
+### Running `wprsc` Without Wayland (Experimental)
+
+`wprsc` is normally a Wayland client and requires a local Wayland compositor.
+For development and experimentation on non-Wayland desktops (for example macOS
+or Windows), `wprsc` also supports a cross-platform backend using `winit` +
+`wgpu`.
+
+When no Wayland compositor is detected, `wprsc` will automatically fall back to
+this backend (it is enabled by default). You can override the selection with
+`--backend auto|wayland|winit-wgpu`.
+
+```bash
+cargo run --profile dev --bin wprsc
+```
+
+Keyboard behavior is configurable:
+
+* `--keyboard-mode=keymap` (default): try to send an explicit XKB keymap to the
+  server. By default `wprsc` will try to generate one at runtime using external
+  tools (`setxkbmap` + `xkbcomp`). You can override by providing an explicit
+  file via `--xkb-keymap-file=/path/to/keymap`.
+* `--keyboard-mode=evdev`: send Linux evdev keycodes without sending a keymap.
+
+Current limitations of the `winit` + `wgpu` backend:
+
+* Only `xdg-toplevel` surfaces are displayed.
+* Input forwarding is best-effort (pointer and basic keyboard).
+  Keyboard events are translated to Linux evdev keycodes and may be incomplete
+  on non-Linux hosts.
+* Popups/subsurfaces are not fully supported.
 
 ## Current Limitations
 

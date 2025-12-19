@@ -17,46 +17,37 @@
 /// * https://afrantzis.com/pixel-format-guide/wayland_drm.html
 /// * https://stackoverflow.com/questions/44984724/whats-the-fastest-stride-3-gather-instruction-sequence.
 /// * https://en.algorithmica.org/hpc/algorithms/prefix/.
-use std::arch::x86_64::__m128i;
-use std::arch::x86_64::__m256i;
-use std::arch::x86_64::_mm_add_epi8;
-use std::arch::x86_64::_mm_extract_epi8;
-use std::arch::x86_64::_mm_loadu_si128;
-use std::arch::x86_64::_mm_set1_epi8;
-use std::arch::x86_64::_mm_setzero_si128;
-use std::arch::x86_64::_mm256_add_epi8;
-use std::arch::x86_64::_mm256_blend_epi32;
-use std::arch::x86_64::_mm256_castps_si256;
-use std::arch::x86_64::_mm256_castsi128_si256;
-use std::arch::x86_64::_mm256_castsi256_ps;
-use std::arch::x86_64::_mm256_castsi256_si128;
-use std::arch::x86_64::_mm256_extract_epi8;
-use std::arch::x86_64::_mm256_extracti128_si256;
-use std::arch::x86_64::_mm256_inserti128_si256;
-use std::arch::x86_64::_mm256_loadu_si256;
-use std::arch::x86_64::_mm256_set_epi8;
-use std::arch::x86_64::_mm256_set_m128i;
-use std::arch::x86_64::_mm256_shuffle_epi8;
-use std::arch::x86_64::_mm256_shuffle_ps;
-use std::arch::x86_64::_mm256_slli_si256;
-use std::arch::x86_64::_mm256_storeu_si256;
-use std::arch::x86_64::_mm256_sub_epi8;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+use std::arch::x86_64::{
+    __m128i, __m256i, _mm_add_epi8, _mm_extract_epi8, _mm_loadu_si128, _mm_set1_epi8,
+    _mm_setzero_si128, _mm256_add_epi8, _mm256_blend_epi32, _mm256_castps_si256,
+    _mm256_castsi128_si256, _mm256_castsi256_ps, _mm256_castsi256_si128, _mm256_extract_epi8,
+    _mm256_extracti128_si256, _mm256_inserti128_si256, _mm256_loadu_si256, _mm256_set_epi8,
+    _mm256_set_m128i, _mm256_shuffle_epi8, _mm256_shuffle_ps, _mm256_slli_si256,
+    _mm256_storeu_si256, _mm256_sub_epi8,
+};
 use std::cmp;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use std::ops::IndexMut;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use std::sync::Arc;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use itertools::izip;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use lagoon::ThreadPool;
 
 use crate::buffer_pointer::BufferPointer;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use crate::buffer_pointer::KnownSizeBufferPointer;
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 use crate::prelude::*;
 use crate::sharding_compression::CompressedShards;
 use crate::sharding_compression::ShardingCompressor;
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
@@ -67,7 +58,7 @@ fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     ))
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
@@ -76,7 +67,7 @@ fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
     unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn load_m256i(src: &[u8; 32]) -> __m256i {
@@ -85,7 +76,7 @@ fn load_m256i(src: &[u8; 32]) -> __m256i {
     unsafe { _mm256_loadu_si256(src.as_ptr().cast::<__m256i>()) }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
@@ -94,7 +85,7 @@ fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
     unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
@@ -103,21 +94,21 @@ fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
     unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
     (_mm256_sub_epi8(b, g), _mm256_sub_epi8(r, g))
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn add_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
     (_mm256_add_epi8(b, g), _mm256_add_epi8(r, g))
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn prefix_sum_32(mut block: __m256i) -> __m256i {
@@ -127,7 +118,7 @@ fn prefix_sum_32(mut block: __m256i) -> __m256i {
     _mm256_add_epi8(block, _mm256_slli_si256(block, 8))
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m128i) {
@@ -136,7 +127,7 @@ fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m12
     (block, _mm_add_epi8(prev_block, cur_sum))
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
@@ -145,14 +136,14 @@ fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) 
     (_mm256_set_m128i(block1, block0), prev_block)
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn prefix_sum(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
     accumulate_sum_32(prefix_sum_32(block), prev_block)
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
@@ -203,7 +194,7 @@ fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
     (block, next)
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn aos_to_soa_u8_32x4(
@@ -354,7 +345,7 @@ fn aos_to_soa_u8_32x4(
     (next0, next1, next2, next3)
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[inline]
 fn soa_to_aos_u8_32x4(
@@ -499,7 +490,7 @@ fn soa_to_aos_u8_32x4(
     (prev0, prev1, prev2, prev3)
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[instrument(skip_all, level = "debug")]
 fn vec4u8_aos_to_soa_avx2_parallel_compression(
@@ -594,7 +585,68 @@ fn vec4u8_aos_to_soa_avx2_parallel_compression(
     Arc::into_inner(compressor).unwrap().collect_shards()
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
+fn vec4u8_aos_to_soa_scalar(
+    aos: BufferPointer<Vec4u8>,
+    compressor: &mut ShardingCompressor,
+) -> CompressedShards {
+    if aos.is_empty() {
+        return CompressedShards::default();
+    }
+
+    let len = aos.len();
+    let lim = (len / 32) * 32;
+
+    // `Vec4u8s::with_total_size` takes a byte count (must be a multiple of 4),
+    // while `len` is the number of pixels (Vec4u8s).
+    let mut soa = Vec4u8s::with_total_size(len * 4);
+    let (soa0, soa1, soa2, soa3) = soa.parts_mut();
+
+    let mut prev0 = 0u8;
+    let mut prev1 = 0u8;
+    let mut prev2 = 0u8;
+    let mut prev3 = 0u8;
+
+    for (idx, Vec4u8(c0, c1, c2, c3)) in (&aos).into_iter().enumerate() {
+        if idx < lim {
+            let adj0 = c0.wrapping_sub(c1);
+            let adj1 = c1;
+            let adj2 = c2.wrapping_sub(c1);
+            let adj3 = c3;
+
+            soa0[idx] = adj0.wrapping_sub(prev0);
+            soa1[idx] = adj1.wrapping_sub(prev1);
+            soa2[idx] = adj2.wrapping_sub(prev2);
+            soa3[idx] = adj3.wrapping_sub(prev3);
+
+            prev0 = adj0;
+            prev1 = adj1;
+            prev2 = adj2;
+            prev3 = adj3;
+        } else {
+            soa0[idx] = c0;
+            soa1[idx] = c1;
+            soa2[idx] = c2;
+            soa3[idx] = c3;
+        }
+    }
+
+    let session = compressor.begin();
+    let compression_block_size = 128 * 1024;
+
+    for start in (0..len).step_by(compression_block_size) {
+        let end = cmp::min(start + compression_block_size, len);
+
+        session.compress_shard(start, soa0[start..end].to_vec());
+        session.compress_shard(start + len, soa1[start..end].to_vec());
+        session.compress_shard(start + 2 * len, soa2[start..end].to_vec());
+        session.compress_shard(start + 3 * len, soa3[start..end].to_vec());
+    }
+
+    session.collect_shards()
+}
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 #[target_feature(enable = "avx2")]
 #[instrument(skip_all, level = "debug")]
 fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
@@ -648,25 +700,68 @@ fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     }
 }
 
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
+fn vec4u8_soa_to_aos_scalar(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
+    let len = soa.len();
+    assert_eq!(len, aos.len());
+
+    let lim = (len / 32) * 32;
+    let (soa0, soa1, soa2, soa3) = soa.parts();
+
+    let mut prev0 = 0u8;
+    let mut prev1 = 0u8;
+    let mut prev2 = 0u8;
+    let mut prev3 = 0u8;
+
+    for i in 0..lim {
+        let v0 = soa0[i].wrapping_add(prev0);
+        let v1 = soa1[i].wrapping_add(prev1);
+        let v2 = soa2[i].wrapping_add(prev2);
+        let v3 = soa3[i].wrapping_add(prev3);
+
+        prev0 = v0;
+        prev1 = v1;
+        prev2 = v2;
+        prev3 = v3;
+
+        let b = v0.wrapping_add(v1);
+        let g = v1;
+        let r = v2.wrapping_add(v1);
+
+        aos[i] = Vec4u8(b, g, r, v3);
+    }
+
+    for i in lim..len {
+        aos[i] = Vec4u8(soa0[i], soa1[i], soa2[i], soa3[i]);
+    }
+}
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 fn vec4u8_aos_to_soa(
     aos: BufferPointer<Vec4u8>,
     compressor: &mut ShardingCompressor,
 ) -> CompressedShards {
-    if cfg!(all(target_arch = "x86_64", target_feature = "avx2")) {
-        // SAFETY: checked for avx2.
-        unsafe { vec4u8_aos_to_soa_avx2_parallel_compression(aos, compressor) }
-    } else {
-        unimplemented!("Only x86_64 systems with AVX2 are supported.");
-    }
+    // SAFETY: checked for avx2.
+    unsafe { vec4u8_aos_to_soa_avx2_parallel_compression(aos, compressor) }
 }
 
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
+fn vec4u8_aos_to_soa(
+    aos: BufferPointer<Vec4u8>,
+    compressor: &mut ShardingCompressor,
+) -> CompressedShards {
+    vec4u8_aos_to_soa_scalar(aos, compressor)
+}
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
 fn vec4u8_soa_to_aos(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
-    if cfg!(all(target_arch = "x86_64", target_feature = "avx2")) {
-        // SAFETY: checked for avx2.
-        unsafe { vec4u8_soa_to_aos_avx2_parallel(soa, aos) };
-    } else {
-        unimplemented!("Only x86_64 systems with AVX2 are supported.");
-    }
+    // SAFETY: checked for avx2.
+    unsafe { vec4u8_soa_to_aos_avx2_parallel(soa, aos) };
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
+fn vec4u8_soa_to_aos(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
+    vec4u8_soa_to_aos_scalar(soa, aos);
 }
 
 pub fn filter_and_compress(
@@ -694,6 +789,7 @@ mod tests {
     use crate::sharding_compression::ShardingDecompressor;
 
     #[test]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     #[cfg_attr(miri, ignore)]
     fn test_prefix_sum() {
         let input = [
@@ -719,6 +815,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
     #[cfg_attr(miri, ignore)]
     fn test_running_difference() {
         let input = [

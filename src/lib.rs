@@ -13,24 +13,34 @@
 // limitations under the License.
 
 pub mod arc_slice;
-pub mod args;
 pub mod buffer_pointer;
-pub mod channel_utils;
 pub mod client;
-pub mod client_utils;
-pub mod compositor_utils;
+pub mod config;
 pub mod constants;
 pub mod control_server;
-pub mod error_utils;
 pub mod fallible_entry;
 pub mod filtering;
 pub mod prelude;
-pub mod serialization;
+pub mod protocols;
 pub mod server;
 pub mod sharding_compression;
 pub mod utils;
 pub mod vec4u8;
+#[cfg(all(feature = "server", feature = "wayland-client"))]
 pub mod xwayland_xdg_shell;
+
+#[cfg(all(feature = "server", any(target_os = "macos", target_os = "ios")))]
+compile_error!(
+    "The `server` feature (wprsd) is not supported on Apple platforms. Build `wprsd` on Linux."
+);
+
+#[cfg(all(
+    feature = "wayland-client",
+    any(target_os = "macos", target_os = "ios")
+))]
+compile_error!(
+    "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms."
+);
 
 #[cfg(feature = "tracy-allocator")]
 pub mod tracy_allocator;

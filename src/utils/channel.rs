@@ -19,7 +19,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 
-use smithay::reexports::calloop::channel;
+use calloop::channel;
 
 pub trait Sender: Clone {
     type T;

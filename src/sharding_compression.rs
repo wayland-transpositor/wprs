@@ -39,7 +39,7 @@ use zstd::bulk::Decompressor;
 
 use crate::arc_slice::ArcSlice;
 use crate::prelude::*;
-use crate::serialization::framing::Framed;
+use crate::protocols::wprs::framing::Framed;
 
 // TODO: benchmark this and pick a value based on that.
 pub const MIN_SIZE_TO_COMPRESS: usize = 4096;

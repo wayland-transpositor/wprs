@@ -74,34 +74,34 @@ use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::ShmHandler;
 use tracing::Span;
 
-use crate::args;
-use crate::client::subsurface;
-use crate::client::ObjectBimapExt;
-use crate::client::Role;
-use crate::client::SeatObject;
-use crate::client::WprsClientState;
+use super::ObjectBimapExt;
+use super::Role;
+use super::WprsClientState;
+use super::subsurface;
+use crate::config;
 use crate::prelude::*;
-use crate::serialization::wayland;
-use crate::serialization::wayland::DataDestinationEvent;
-use crate::serialization::wayland::DataEvent;
-use crate::serialization::wayland::DataSource;
-use crate::serialization::wayland::DataSourceEvent;
-use crate::serialization::wayland::DragEnter;
-use crate::serialization::wayland::KeyInner;
-use crate::serialization::wayland::KeyState;
-use crate::serialization::wayland::KeyboardEvent;
-use crate::serialization::wayland::Output;
-use crate::serialization::wayland::OutputEvent;
-use crate::serialization::wayland::SourceMetadata;
-use crate::serialization::wayland::SurfaceEvent;
-use crate::serialization::wayland::SurfaceEventPayload::OutputsChanged;
-use crate::serialization::xdg_shell::PopupConfigure;
-use crate::serialization::xdg_shell::PopupEvent;
-use crate::serialization::xdg_shell::ToplevelClose;
-use crate::serialization::xdg_shell::ToplevelConfigure;
-use crate::serialization::xdg_shell::ToplevelEvent;
-use crate::serialization::Event;
-use crate::serialization::SendType;
+use crate::protocols::wprs::Event;
+use crate::protocols::wprs::SendType;
+use crate::protocols::wprs::wayland;
+use crate::protocols::wprs::wayland::DataDestinationEvent;
+use crate::protocols::wprs::wayland::DataEvent;
+use crate::protocols::wprs::wayland::DataSource;
+use crate::protocols::wprs::wayland::DataSourceEvent;
+use crate::protocols::wprs::wayland::DragEnter;
+use crate::protocols::wprs::wayland::KeyInner;
+use crate::protocols::wprs::wayland::KeyState;
+use crate::protocols::wprs::wayland::KeyboardEvent;
+use crate::protocols::wprs::wayland::Output;
+use crate::protocols::wprs::wayland::OutputEvent;
+use crate::protocols::wprs::wayland::SourceMetadata;
+use crate::protocols::wprs::wayland::SurfaceEvent;
+use crate::protocols::wprs::wayland::SurfaceEventPayload::OutputsChanged;
+use crate::protocols::wprs::xdg_shell::PopupConfigure;
+use crate::protocols::wprs::xdg_shell::PopupEvent;
+use crate::protocols::wprs::xdg_shell::ToplevelClose;
+use crate::protocols::wprs::xdg_shell::ToplevelConfigure;
+use crate::protocols::wprs::xdg_shell::ToplevelEvent;
+use crate::utils::client::SeatObject;
 
 impl WprsClientState {
     fn send_surface_outputs(&self, surface: &WlSurface) {
@@ -478,7 +478,7 @@ impl KeyboardHandler for WprsClientState {
         event: KeyEvent,
     ) {
         self.last_implicit_grab_serial = Some(serial);
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         self.serializer
@@ -506,7 +506,7 @@ impl KeyboardHandler for WprsClientState {
         serial: u32,
         event: KeyEvent,
     ) {
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         self.serializer
@@ -534,7 +534,7 @@ impl KeyboardHandler for WprsClientState {
         serial: u32,
         event: KeyEvent,
     ) {
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         self.serializer

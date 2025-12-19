@@ -18,38 +18,55 @@ use std::num::NonZeroU32;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
+
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode as KdeDecorationMode;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_popup;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_surface;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::backend;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::Resource;
-use smithay::wayland::shell::xdg::ToplevelSurface;
-use smithay::wayland::shell::xdg::ToplevelStateSet;
+#[cfg(feature = "server")]
 use smithay::wayland::shell::xdg::PopupSurface;
+#[cfg(feature = "server")]
 use smithay::wayland::shell::xdg::PositionerState;
-use smithay_client_toolkit::reexports::csd_frame::WindowState as CsdWindowState;
+#[cfg(feature = "server")]
+use smithay::wayland::shell::xdg::ToplevelStateSet;
+#[cfg(feature = "server")]
+use smithay::wayland::shell::xdg::ToplevelSurface;
+
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::popup::ConfigureKind;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::popup::PopupConfigure as SctkPopupConfigure;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::window::DecorationMode as SctkDecorationMode;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::window::WindowConfigure;
 
-use crate::prelude::*;
-use crate::serialization;
-use crate::serialization::geometry::Point;
-use crate::serialization::geometry::Rectangle;
-use crate::serialization::geometry::Size;
-use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::ClientId;
+use super::ClientId;
+use super::geometry::Point;
+use super::geometry::Rectangle;
+use super::geometry::Size;
+use super::wayland::WlSurfaceId;
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct XdgSurfaceId(pub u64);
 
 impl XdgSurfaceId {
+    #[cfg(feature = "server")]
     pub fn new(xdg_surface: &xdg_surface::XdgSurface) -> Self {
-        Self(serialization::hash(&xdg_surface.id()))
+        Self(super::hash(&xdg_surface.id()))
     }
 }
 
@@ -57,14 +74,16 @@ impl XdgSurfaceId {
 pub struct XdgToplevelId(pub u64);
 
 impl XdgToplevelId {
+    #[cfg(feature = "server")]
     pub fn new(xdg_toplevel: &XdgToplevel) -> Self {
-        Self(serialization::hash(&xdg_toplevel.id()))
+        Self(super::hash(&xdg_toplevel.id()))
     }
 }
 
+#[cfg(feature = "server")]
 impl From<&backend::ObjectId> for XdgToplevelId {
     fn from(object_id: &backend::ObjectId) -> Self {
-        Self(serialization::hash(object_id))
+        Self(super::hash(object_id))
     }
 }
 
@@ -72,20 +91,23 @@ impl From<&backend::ObjectId> for XdgToplevelId {
 pub struct XdgPopupId(pub u64);
 
 impl XdgPopupId {
+    #[cfg(feature = "server")]
     pub fn new(xdg_popup: &xdg_popup::XdgPopup) -> Self {
-        Self(serialization::hash(&xdg_popup.id()))
+        Self(super::hash(&xdg_popup.id()))
     }
 }
 
+#[cfg(feature = "server")]
 impl From<backend::ObjectId> for XdgPopupId {
     fn from(object_id: backend::ObjectId) -> Self {
-        Self(serialization::hash(&object_id))
+        Self(super::hash(&object_id))
     }
 }
 
+#[cfg(feature = "server")]
 impl From<&backend::ObjectId> for XdgPopupId {
     fn from(object_id: &backend::ObjectId) -> Self {
-        Self(serialization::hash(object_id))
+        Self(super::hash(object_id))
     }
 }
 
@@ -104,6 +126,7 @@ pub struct XdgPositioner {
 }
 
 impl XdgPositioner {
+    #[cfg(feature = "server")]
     pub fn new(positioner: &PositionerState) -> Self {
         Self {
             width: positioner.rect_size.w,
@@ -149,6 +172,7 @@ pub enum DecorationMode {
     Server,
 }
 
+#[cfg(feature = "server")]
 impl From<DecorationMode> for XdgDecorationMode {
     fn from(decoration_mode: DecorationMode) -> Self {
         match decoration_mode {
@@ -158,6 +182,7 @@ impl From<DecorationMode> for XdgDecorationMode {
     }
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<DecorationMode> for SctkDecorationMode {
     fn from(decoration_mode: DecorationMode) -> Self {
         match decoration_mode {
@@ -167,6 +192,7 @@ impl From<DecorationMode> for SctkDecorationMode {
     }
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkDecorationMode> for DecorationMode {
     fn from(decoration_mode: SctkDecorationMode) -> Self {
         match decoration_mode {
@@ -176,6 +202,7 @@ impl From<SctkDecorationMode> for DecorationMode {
     }
 }
 
+#[cfg(feature = "server")]
 impl TryFrom<XdgDecorationMode> for DecorationMode {
     type Error = anyhow::Error;
     fn try_from(decoration_mode: XdgDecorationMode) -> Result<Self> {
@@ -187,6 +214,7 @@ impl TryFrom<XdgDecorationMode> for DecorationMode {
     }
 }
 
+#[cfg(feature = "server")]
 impl TryFrom<KdeDecorationMode> for DecorationMode {
     type Error = anyhow::Error;
     fn try_from(decoration_mode: KdeDecorationMode) -> Result<Self> {
@@ -210,6 +238,7 @@ pub struct XdgToplevelState {
 }
 
 impl XdgToplevelState {
+    #[cfg(feature = "server")]
     pub fn new(toplevel: &ToplevelSurface) -> Self {
         Self {
             id: XdgToplevelId::new(toplevel.xdg_toplevel()),
@@ -232,6 +261,7 @@ pub struct XdgPopupState {
 }
 
 impl XdgPopupState {
+    #[cfg(feature = "server")]
     pub fn new(popup: &PopupSurface, positioner: &PositionerState) -> Result<Self> {
         Ok(Self {
             id: XdgPopupId::new(popup.xdg_popup()),
@@ -245,32 +275,65 @@ impl XdgPopupState {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
 pub struct WindowState(u16);
 
+impl WindowState {
+    pub fn from_bits(bits: u16) -> Self {
+        Self(bits)
+    }
+
+    pub fn bits(self) -> u16 {
+        self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WindowState;
+
+    #[test]
+    fn window_state_round_trip_bits() {
+        let state = WindowState::from_bits(0b1010);
+        assert_eq!(state.bits(), 0b1010);
+    }
+}
+
+#[cfg(feature = "server")]
 impl From<WindowState> for ToplevelStateSet {
     fn from(window_state: WindowState) -> Self {
         let mut states = Self::default();
-        let window_states = CsdWindowState::from_bits(window_state.0).unwrap();
-        if window_states.contains(CsdWindowState::MAXIMIZED) {
+
+        // Keep these bit positions in sync with wayland-csd-frame's WindowState.
+        const MAXIMIZED: u16 = 0b0000_0000_0000_0001;
+        const FULLSCREEN: u16 = 0b0000_0000_0000_0010;
+        const RESIZING: u16 = 0b0000_0000_0000_0100;
+        const ACTIVATED: u16 = 0b0000_0000_0000_1000;
+        const TILED_LEFT: u16 = 0b0000_0000_0001_0000;
+        const TILED_RIGHT: u16 = 0b0000_0000_0010_0000;
+        const TILED_TOP: u16 = 0b0000_0000_0100_0000;
+        const TILED_BOTTOM: u16 = 0b0000_0000_1000_0000;
+
+        let bits = window_state.0;
+        if bits & MAXIMIZED != 0 {
             states.set(State::Maximized);
         };
-        if window_states.contains(CsdWindowState::FULLSCREEN) {
+        if bits & FULLSCREEN != 0 {
             states.set(State::Fullscreen);
         };
-        if window_states.contains(CsdWindowState::RESIZING) {
+        if bits & RESIZING != 0 {
             states.set(State::Resizing);
         };
-        if window_states.contains(CsdWindowState::ACTIVATED) {
+        if bits & ACTIVATED != 0 {
             states.set(State::Activated);
         };
-        if window_states.contains(CsdWindowState::TILED_LEFT) {
+        if bits & TILED_LEFT != 0 {
             states.set(State::TiledLeft);
         };
-        if window_states.contains(CsdWindowState::TILED_RIGHT) {
+        if bits & TILED_RIGHT != 0 {
             states.set(State::TiledRight);
         };
-        if window_states.contains(CsdWindowState::TILED_TOP) {
+        if bits & TILED_TOP != 0 {
             states.set(State::TiledTop);
         };
-        if window_states.contains(CsdWindowState::TILED_BOTTOM) {
+        if bits & TILED_BOTTOM != 0 {
             states.set(State::TiledBottom);
         };
         states
@@ -287,6 +350,7 @@ pub struct ToplevelConfigure {
 }
 
 impl ToplevelConfigure {
+    #[cfg(feature = "wayland-client")]
     pub fn from_smithay(surface_id: &WlSurfaceId, configure: WindowConfigure) -> Self {
         Self {
             surface_id: *surface_id,
@@ -311,6 +375,7 @@ pub enum PopupConfigureKind {
     Reposition { token: u32 },
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<ConfigureKind> for PopupConfigureKind {
     fn from(kind: ConfigureKind) -> Self {
         match kind {
@@ -334,6 +399,7 @@ pub struct PopupConfigure {
 }
 
 impl PopupConfigure {
+    #[cfg(feature = "wayland-client")]
     pub fn from_smithay(surface_id: &WlSurfaceId, configure: SctkPopupConfigure) -> Self {
         Self {
             surface_id: *surface_id,

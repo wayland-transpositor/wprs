@@ -48,13 +48,13 @@ use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
-use crate::args;
-use crate::compositor_utils;
+use crate::config;
 use crate::constants;
 use crate::prelude::*;
-use crate::serialization::geometry::Point;
-use crate::serialization::geometry::Rectangle;
-use crate::serialization::wayland::KeyState;
+use crate::protocols::wprs::geometry::Point;
+use crate::protocols::wprs::geometry::Rectangle;
+use crate::protocols::wprs::wayland::KeyState;
+use crate::utils::compositor as compositor_utils;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;
@@ -438,7 +438,7 @@ impl WprsState {
     ) -> Result<()> {
         let keyboard = self.compositor_state.seat.get_keyboard().location(loc!())?;
 
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("keycode", field::debug(&keycode));
             Span::current().record("state", field::debug(&state));
         }
@@ -448,7 +448,7 @@ impl WprsState {
             modifiers_state: &ModifiersState,
             keysym: KeysymHandle,
         ) -> FilterResult<()> {
-            if args::get_log_priv_data() {
+            if config::get_log_priv_data() {
                 Span::current().record("modifiers_state", field::debug(&modifiers_state));
                 Span::current().record("keysym", field::debug(&keysym));
             }

@@ -16,7 +16,6 @@ pub mod arc_slice;
 pub mod config;
 pub mod client;
 pub mod buffer_pointer;
-#[cfg(feature = "server")]
 pub mod constants;
 pub mod control_server;
 pub mod fallible_entry;
@@ -27,12 +26,12 @@ pub mod server;
 pub mod sharding_compression;
 pub mod utils;
 pub mod vec4u8;
-#[cfg(all(feature = "server", feature = "wayland-client"))]
+#[cfg(all(feature = "wayland", feature = "wayland-client"))]
 pub mod xwayland_xdg_shell;
 
-#[cfg(all(feature = "server", any(target_os = "macos", target_os = "ios")))]
+#[cfg(all(feature = "wayland", any(target_os = "macos", target_os = "ios")))]
 compile_error!(
-    "The `server` feature (wprsd) is not supported on Apple platforms. Build only `wprsc` with `--features winit-wgpu-client` on macOS, or build `wprsd` on Linux."
+    "The `wayland` feature (Wayland compositor backend via Smithay) is not supported on Apple platforms."
 );
 
 #[cfg(all(

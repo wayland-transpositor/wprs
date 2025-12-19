@@ -18,7 +18,7 @@ pub mod error;
 #[cfg(feature = "wayland-client")]
 pub mod client;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 pub mod compositor;
 
 mod core;

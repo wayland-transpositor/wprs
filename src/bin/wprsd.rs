@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::fs;
+use std::env;
 use std::time::Duration;
 
 use clap::Parser;
@@ -29,26 +30,31 @@ use wprs::server::runtime::backend::ServerBackend;
 use wprs::server::runtime::backend::TickMode;
 use wprs::utils;
 
-fn infer_backend(config: &WprsdConfig) -> WprsdBackend {
+fn infer_backend(config: &WprsdConfig) -> Result<WprsdBackend> {
     if let Some(backend) = config.backend {
-        return backend;
+        return Ok(backend);
     }
 
-    if cfg!(feature = "server") {
-        return WprsdBackend::Wayland;
+    if cfg!(all(target_os = "linux", feature = "wayland")) {
+        return Ok(WprsdBackend::Wayland);
     }
 
     if cfg!(target_os = "macos") {
-        return WprsdBackend::MacosFullscreen;
+        return Ok(WprsdBackend::MacosFullscreen);
     }
     if cfg!(windows) {
-        return WprsdBackend::WindowsFullscreen;
+        return Ok(WprsdBackend::WindowsFullscreen);
     }
     if cfg!(unix) {
-        return WprsdBackend::X11Fullscreen;
+        if env::var_os("DISPLAY").is_some() {
+            return Ok(WprsdBackend::X11Fullscreen);
+        }
+        bail!(
+            "no backend selected and $DISPLAY is not set; set `backend = \"wayland\"` and rebuild with `--features wayland`, or set $DISPLAY / choose an X11 backend explicitly"
+        )
     }
 
-    WprsdBackend::WindowsFullscreen
+    Ok(WprsdBackend::WindowsFullscreen)
 }
 
 fn main() -> Result<()> {
@@ -81,7 +87,7 @@ fn make_server_serializer(config: &WprsdConfig) -> Result<Serializer<ProtoReques
 fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
     let serializer = make_server_serializer(config).location(loc!())?;
 
-    let backend_kind = infer_backend(config);
+    let backend_kind = infer_backend(config).location(loc!())?;
     let backend = build_backend(&backend_kind, config).location(loc!())?;
 
     let tick_interval = match backend.tick_mode() {
@@ -102,7 +108,7 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
         WprsdBackend::WindowsFullscreen => Ok(Box::new(backends::windows::WindowsFullscreenBackend::new())),
         WprsdBackend::MacosFullscreen => Ok(Box::new(backends::macos::MacosFullscreenBackend::new())),
         WprsdBackend::Wayland => {
-            #[cfg(feature = "server")]
+            #[cfg(feature = "wayland")]
             {
                 Ok(Box::new(
                     backends::wayland::backend::WaylandSmithayBackend::new(
@@ -118,10 +124,10 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
                     ),
                 ))
             }
-            #[cfg(not(feature = "server"))]
+            #[cfg(not(feature = "wayland"))]
             {
                 let _ = config;
-                bail!("wayland backend requires building wprsd with `--features server`")
+                bail!("wayland backend requires building wprsd with `--features wayland`")
             }
         }
     }

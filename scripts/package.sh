@@ -380,7 +380,7 @@ package_target() {
   for bin in $bins; do
     local features=""
     if [[ "$bin" == "wprsd" ]]; then
-      features="server,wayland-client"
+      features="wayland,wayland-client"
     fi
     if ! build_one "$target" "$bin" "$features"; then
       echo "skipping bin $bin for target $target due to build failure" >&2

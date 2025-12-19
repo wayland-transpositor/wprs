@@ -73,8 +73,14 @@ default = ["winit-wgpu-client"]
 # By default, avoid pulling in platform-specific Wayland compositor/client code.
 # Enable the components you need explicitly.
 
-# Build and enable the Wayland server/compositor (`wprsd`, and server-side helpers).
-server = ["dep:smithay"]
+# Build and enable the Wayland compositor backend (Smithay).
+#
+# Note: `wprsd` is the server binary regardless of backend; this feature only
+# controls whether the Wayland compositor backend is compiled in.
+wayland = ["dep:smithay"]
+
+# Backwards-compatible alias.
+server = ["wayland"]
 
 # Build and enable the Wayland client backend for `wprsc` (SCTK-based).
 wayland-client = ["dep:smithay", "dep:smithay-client-toolkit"]
@@ -95,7 +101,7 @@ name = "wprsd"
 
 [[bin]]
 name = "xwayland-xdg-shell"
-required-features = ["server", "wayland-client"]
+required-features = ["wayland", "wayland-client"]
 
 [[bin]]
 name = "wprsc"

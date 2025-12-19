@@ -66,9 +66,9 @@ use rkyv::rancor::Error as RancorError;
 use rkyv::ser::allocator::ArenaHandle;
 use rkyv::util::AlignedVec;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_server::Client;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_server::backend;
 use sysctl::Ctl;
 use sysctl::Sysctl;
@@ -611,20 +611,20 @@ use framing::Framed;
 pub struct ClientId(pub u64);
 
 impl ClientId {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(client: &Client) -> Self {
         Self(hash(&client.id()))
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<backend::ClientId> for ClientId {
     fn from(client_id: backend::ClientId) -> Self {
         (&client_id).into()
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<&backend::ClientId> for ClientId {
     fn from(client_id: &backend::ClientId) -> Self {
         Self(hash(client_id))

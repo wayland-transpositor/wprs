@@ -19,29 +19,29 @@ use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode as KdeDecorationMode;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_popup;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_surface;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::XdgToplevel;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_server::backend;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::reexports::wayland_server::Resource;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::wayland::shell::xdg::PopupSurface;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::wayland::shell::xdg::PositionerState;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::wayland::shell::xdg::ToplevelStateSet;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 #[cfg(feature = "wayland-client")]
@@ -53,7 +53,7 @@ use smithay_client_toolkit::shell::xdg::window::DecorationMode as SctkDecoration
 #[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::window::WindowConfigure;
 
-#[cfg(any(feature = "server", feature = "wayland-client"))]
+#[cfg(any(feature = "wayland", feature = "wayland-client"))]
 use crate::prelude::*;
 use super::ClientId;
 use super::geometry::Point;
@@ -65,7 +65,7 @@ use super::wayland::WlSurfaceId;
 pub struct XdgSurfaceId(pub u64);
 
 impl XdgSurfaceId {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(xdg_surface: &xdg_surface::XdgSurface) -> Self {
         Self(super::hash(&xdg_surface.id()))
     }
@@ -75,13 +75,13 @@ impl XdgSurfaceId {
 pub struct XdgToplevelId(pub u64);
 
 impl XdgToplevelId {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(xdg_toplevel: &XdgToplevel) -> Self {
         Self(super::hash(&xdg_toplevel.id()))
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<&backend::ObjectId> for XdgToplevelId {
     fn from(object_id: &backend::ObjectId) -> Self {
         Self(super::hash(object_id))
@@ -92,20 +92,20 @@ impl From<&backend::ObjectId> for XdgToplevelId {
 pub struct XdgPopupId(pub u64);
 
 impl XdgPopupId {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(xdg_popup: &xdg_popup::XdgPopup) -> Self {
         Self(super::hash(&xdg_popup.id()))
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<backend::ObjectId> for XdgPopupId {
     fn from(object_id: backend::ObjectId) -> Self {
         Self(super::hash(&object_id))
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<&backend::ObjectId> for XdgPopupId {
     fn from(object_id: &backend::ObjectId) -> Self {
         Self(super::hash(object_id))
@@ -127,7 +127,7 @@ pub struct XdgPositioner {
 }
 
 impl XdgPositioner {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(positioner: &PositionerState) -> Self {
         Self {
             width: positioner.rect_size.w,
@@ -173,7 +173,7 @@ pub enum DecorationMode {
     Server,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<DecorationMode> for XdgDecorationMode {
     fn from(decoration_mode: DecorationMode) -> Self {
         match decoration_mode {
@@ -203,7 +203,7 @@ impl From<SctkDecorationMode> for DecorationMode {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl TryFrom<XdgDecorationMode> for DecorationMode {
     type Error = anyhow::Error;
     fn try_from(decoration_mode: XdgDecorationMode) -> Result<Self> {
@@ -215,7 +215,7 @@ impl TryFrom<XdgDecorationMode> for DecorationMode {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl TryFrom<KdeDecorationMode> for DecorationMode {
     type Error = anyhow::Error;
     fn try_from(decoration_mode: KdeDecorationMode) -> Result<Self> {
@@ -239,7 +239,7 @@ pub struct XdgToplevelState {
 }
 
 impl XdgToplevelState {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(toplevel: &ToplevelSurface) -> Self {
         Self {
             id: XdgToplevelId::new(toplevel.xdg_toplevel()),
@@ -262,7 +262,7 @@ pub struct XdgPopupState {
 }
 
 impl XdgPopupState {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland")]
     pub fn new(popup: &PopupSurface, positioner: &PositionerState) -> Result<Self> {
         Ok(Self {
             id: XdgPopupId::new(popup.xdg_popup()),
@@ -297,7 +297,7 @@ mod tests {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland")]
 impl From<WindowState> for ToplevelStateSet {
     fn from(window_state: WindowState) -> Self {
         let mut states = Self::default();

@@ -148,8 +148,8 @@ impl WprsdArgs {
             .clone()
             .unwrap_or_else(|| config::default_config_file("wprsd"));
         let mut cfg = WprsdConfig::default();
-        if let Some(from_file) =
-            config::maybe_read_ron_file::<WprsdConfig>(&config_file).location(loc!())?
+        if let Some(from_file) = config::maybe_read_ron_file::<WprsdConfig>(&config_file)
+            .location(loc!())?
         {
             cfg = from_file;
         }
@@ -282,9 +282,8 @@ pub mod xwayland_xdg_shell {
                 .clone()
                 .unwrap_or_else(|| config::default_config_file("xwayland-xdg-shell"));
             let mut cfg = XwaylandXdgShellConfig::default();
-            if let Some(from_file) =
-                config::maybe_read_ron_file::<XwaylandXdgShellConfig>(&config_file)
-                    .location(loc!())?
+            if let Some(from_file) = config::maybe_read_ron_file::<XwaylandXdgShellConfig>(&config_file)
+                .location(loc!())?
             {
                 cfg = from_file;
             }

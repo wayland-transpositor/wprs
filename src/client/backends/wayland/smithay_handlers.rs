@@ -74,11 +74,12 @@ use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::ShmHandler;
 use tracing::Span;
 
+use crate::config;
 use super::ObjectBimapExt;
 use super::Role;
+use crate::utils::client::SeatObject;
 use super::WprsClientState;
 use super::subsurface;
-use crate::config;
 use crate::prelude::*;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::SendType;
@@ -101,7 +102,6 @@ use crate::protocols::wprs::xdg_shell::PopupEvent;
 use crate::protocols::wprs::xdg_shell::ToplevelClose;
 use crate::protocols::wprs::xdg_shell::ToplevelConfigure;
 use crate::protocols::wprs::xdg_shell::ToplevelEvent;
-use crate::utils::client::SeatObject;
 
 impl WprsClientState {
     fn send_surface_outputs(&self, surface: &WlSurface) {

@@ -55,8 +55,8 @@ use crate::protocols::wprs::wayland::WlSurfaceId;
 use crate::sharding_compression::ShardingCompressor;
 use crate::utils::SerialMap;
 
-pub mod backend;
 pub mod client_handlers;
+pub mod backend;
 pub mod smithay_handlers;
 
 pub(crate) struct LockedSurfaceState(pub(crate) Mutex<SurfaceState>);

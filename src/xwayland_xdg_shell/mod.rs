@@ -49,12 +49,12 @@ use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
 use crate::config;
+use crate::utils::compositor as compositor_utils;
 use crate::constants;
 use crate::prelude::*;
 use crate::protocols::wprs::geometry::Point;
 use crate::protocols::wprs::geometry::Rectangle;
 use crate::protocols::wprs::wayland::KeyState;
-use crate::utils::compositor as compositor_utils;
 use crate::xwayland_xdg_shell::client::XWaylandSubSurface;
 
 pub mod client;

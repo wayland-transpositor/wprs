@@ -8,6 +8,8 @@ use calloop::channel::Event as CalloopChannelEvent;
 use calloop::timer::TimeoutAction;
 use calloop::timer::Timer;
 
+use crate::server::runtime::backend::BackendObservation;
+use crate::server::runtime::backend::PollingBackend;
 use crate::buffer_pointer::BufferPointer;
 use crate::filtering;
 use crate::prelude::*;
@@ -16,13 +18,11 @@ use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
 use crate::protocols::wprs::Serializer;
-use crate::protocols::wprs::core::handshake;
 use crate::protocols::wprs::wayland::BufferAssignment;
 use crate::protocols::wprs::wayland::BufferData;
 use crate::protocols::wprs::wayland::CompressedBufferData;
-use crate::server::runtime::backend::BackendObservation;
-use crate::server::runtime::backend::PollingBackend;
 use crate::sharding_compression::ShardingCompressor;
+use crate::protocols::wprs::core::handshake;
 
 struct State<B> {
     backend: B,

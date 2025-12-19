@@ -26,9 +26,7 @@ impl WaylandClientBackend {
     }
 
     pub fn connect_to_env(config: ClientBackendConfig) -> Result<Self> {
-        let conn = Connection::connect_to_env()
-            .map_err(|e| anyhow!(e))
-            .location(loc!())?;
+        let conn = Connection::connect_to_env().map_err(|e| anyhow!(e)).location(loc!())?;
         Ok(Self::new(config, conn))
     }
 
@@ -79,7 +77,7 @@ fn run_wayland(
                     .expect("a map with non-string keys was added to Capabilities"),
                 _ => {
                     bail!("Unknown command: {input:?}")
-                },
+                }
             })
         })
         .location(loc!())?;

@@ -97,11 +97,7 @@ mod linux {
         let xwayland_options = XwaylandOptions {
             env: vec![(
                 "WAYLAND_DEBUG",
-                if config.xwayland_wayland_debug {
-                    "1"
-                } else {
-                    "0"
-                },
+                if config.xwayland_wayland_debug { "1" } else { "0" },
             )],
             display: Some(config.display),
         };
@@ -133,26 +129,25 @@ mod linux {
         {
             let token = event_loop
                 .handle()
-                .insert_source(
-                    Signals::new([Signal::SIGINT, Signal::SIGTERM]).unwrap(),
-                    |event, _, state| {
-                        for sig in event.signals() {
-                            match sig {
-                                Signal::SIGINT | Signal::SIGTERM => {
-                                    info!("received signal {sig:?}, exiting");
-                                    state.should_exit = true;
-                                },
-                                _ => {},
+                .insert_source(Signals::new([Signal::SIGINT, Signal::SIGTERM]).unwrap(), |event, _, state| {
+                    for sig in event.signals() {
+                        match sig {
+                            Signal::SIGINT | Signal::SIGTERM => {
+                                info!("received signal {sig:?}, exiting");
+                                state.should_exit = true;
                             }
+                            _ => {}
                         }
-                    },
-                )
+                    }
+                })
                 .location(loc!())?;
             registration_tokens.push(token);
         }
 
         info!("xwayland-xdg-shell wayland socket: {wayland_socket_name:?}");
-        event_loop.run(None, &mut state, |_| {}).location(loc!())
+        event_loop
+            .run(None, &mut state, |_| {})
+            .location(loc!())
     }
 }
 
@@ -160,3 +155,4 @@ mod linux {
 fn main() -> wprs::prelude::Result<()> {
     linux::main()
 }
+

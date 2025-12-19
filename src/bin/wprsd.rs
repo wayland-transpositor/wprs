@@ -21,6 +21,7 @@ use wprs::prelude::*;
 use wprs::protocols::wprs::Event as ProtoEvent;
 use wprs::protocols::wprs::Request as ProtoRequest;
 use wprs::protocols::wprs::Serializer;
+use wprs::server::backends;
 use wprs::server::config::WprsdArgs;
 use wprs::server::config::WprsdBackend;
 use wprs::server::config::WprsdConfig;
@@ -29,7 +30,25 @@ use wprs::server::runtime::backend::TickMode;
 use wprs::utils;
 
 fn infer_backend(config: &WprsdConfig) -> WprsdBackend {
-    config.backend.unwrap_or(WprsdBackend::Wayland)
+    if let Some(backend) = config.backend {
+        return backend;
+    }
+
+    if cfg!(feature = "server") {
+        return WprsdBackend::Wayland;
+    }
+
+    if cfg!(target_os = "macos") {
+        return WprsdBackend::MacosFullscreen;
+    }
+    if cfg!(windows) {
+        return WprsdBackend::WindowsFullscreen;
+    }
+    if cfg!(unix) {
+        return WprsdBackend::X11Fullscreen;
+    }
+
+    WprsdBackend::WindowsFullscreen
 }
 
 fn main() -> Result<()> {
@@ -77,6 +96,11 @@ fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
 
 fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn ServerBackend>> {
     match backend {
+        WprsdBackend::X11Fullscreen => Ok(Box::new(
+            backends::x11::X11FullscreenBackend::connect(config.x11_title.clone()).location(loc!())?,
+        )),
+        WprsdBackend::WindowsFullscreen => Ok(Box::new(backends::windows::WindowsFullscreenBackend::new())),
+        WprsdBackend::MacosFullscreen => Ok(Box::new(backends::macos::MacosFullscreenBackend::new())),
         WprsdBackend::Wayland => {
             #[cfg(feature = "server")]
             {
@@ -87,8 +111,7 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
                             framerate: config.framerate,
                             enable_xwayland: config.enable_xwayland,
                             xwayland_xdg_shell_path: config.xwayland_xdg_shell_path.clone(),
-                            xwayland_xdg_shell_wayland_debug: config
-                                .xwayland_xdg_shell_wayland_debug,
+                            xwayland_xdg_shell_wayland_debug: config.xwayland_xdg_shell_wayland_debug,
                             xwayland_xdg_shell_args: config.xwayland_xdg_shell_args.clone(),
                             kde_server_side_decorations: config.kde_server_side_decorations,
                         },
@@ -100,10 +123,6 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
                 let _ = config;
                 bail!("wayland backend requires building wprsd with `--features server`")
             }
-        },
-        other => {
-            let _ = config;
-            bail!("unsupported wprsd backend in this build: {other:?}")
-        },
+        }
     }
 }

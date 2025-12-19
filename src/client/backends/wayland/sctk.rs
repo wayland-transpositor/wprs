@@ -53,6 +53,7 @@ use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::slot::Buffer as SlotBuffer;
 use smithay_client_toolkit::shm::slot::SlotPool;
 
+use crate::utils::client::SeatObject;
 use crate::constants;
 use crate::filtering;
 use crate::prelude::*;
@@ -73,7 +74,6 @@ use crate::protocols::wprs::wayland::SubsurfacePosition;
 use crate::protocols::wprs::wayland::UncompressedBufferData;
 use crate::protocols::wprs::wayland::ViewportState;
 use crate::protocols::wprs::wayland::WlSurfaceId;
-use crate::utils::client::SeatObject;
 use crate::vec4u8::Vec4u8s;
 
 use super::smithay_handlers;

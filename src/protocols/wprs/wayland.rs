@@ -79,18 +79,18 @@ use smithay_client_toolkit::seat::pointer::PointerEvent as SctkPointerEvent;
 #[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::pointer::PointerEventKind as SctkPointerEventKind;
 
+use super::tuple::Tuple2;
+use crate::config;
+#[cfg(feature = "server")]
+use crate::buffer_pointer::BufferPointer;
+#[cfg(feature = "server")]
+use crate::filtering;
+use crate::prelude::*;
 use super::ClientId;
 use super::geometry::Point;
 use super::geometry::Rectangle;
 use super::geometry::Size;
-use super::tuple::Tuple2;
 use super::xdg_shell;
-#[cfg(feature = "server")]
-use crate::buffer_pointer::BufferPointer;
-use crate::config;
-#[cfg(feature = "server")]
-use crate::filtering;
-use crate::prelude::*;
 use crate::sharding_compression::CompressedShards;
 #[cfg(feature = "server")]
 use crate::sharding_compression::ShardingCompressor;

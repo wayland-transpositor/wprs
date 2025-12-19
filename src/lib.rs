@@ -13,9 +13,10 @@
 // limitations under the License.
 
 pub mod arc_slice;
-pub mod buffer_pointer;
-pub mod client;
 pub mod config;
+pub mod client;
+pub mod buffer_pointer;
+#[cfg(feature = "server")]
 pub mod constants;
 pub mod control_server;
 pub mod fallible_entry;
@@ -31,7 +32,7 @@ pub mod xwayland_xdg_shell;
 
 #[cfg(all(feature = "server", any(target_os = "macos", target_os = "ios")))]
 compile_error!(
-    "The `server` feature (wprsd) is not supported on Apple platforms. Build `wprsd` on Linux."
+    "The `server` feature (wprsd) is not supported on Apple platforms. Build only `wprsc` with `--features winit-wgpu-client` on macOS, or build `wprsd` on Linux."
 );
 
 #[cfg(all(
@@ -39,7 +40,7 @@ compile_error!(
     any(target_os = "macos", target_os = "ios")
 ))]
 compile_error!(
-    "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms."
+    "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms. Use `--features winit-wgpu-client` instead."
 );
 
 #[cfg(feature = "tracy-allocator")]

@@ -40,7 +40,23 @@ pub fn build_client_backend(
                     "Wayland backend requested but not compiled in. Rebuild with `--features wayland-client`."
                 )
             }
-        },
+        }
+        config::ClientBackend::WinitWgpu => {
+            #[cfg(feature = "winit-wgpu-client")]
+            {
+                Ok(Box::new(
+                    crate::client::backends::winit_wgpu::WinitWgpuClientBackend::new(config),
+                ))
+            }
+
+            #[cfg(not(feature = "winit-wgpu-client"))]
+            {
+                let _ = config;
+                bail!(
+                    "winit-wgpu backend requested but not compiled in. Rebuild with `--features winit-wgpu-client`."
+                )
+            }
+        }
         config::ClientBackend::Auto => {
             #[cfg(feature = "wayland-client")]
             {
@@ -54,21 +70,28 @@ pub fn build_client_backend(
                                 config, conn,
                             ),
                         ));
-                    },
+                    }
                     Err(ConnectError::NoCompositor) => {
-                        bail!("no Wayland compositor found")
-                    },
+                        // No compositor; fall back below.
+                    }
                     Err(e) => return Err(anyhow!(e)),
                 }
             }
 
-            #[cfg(not(feature = "wayland-client"))]
+            #[cfg(feature = "winit-wgpu-client")]
+            {
+                Ok(Box::new(
+                    crate::client::backends::winit_wgpu::WinitWgpuClientBackend::new(config),
+                ))
+            }
+
+            #[cfg(not(feature = "winit-wgpu-client"))]
             {
                 let _ = config;
                 bail!(
-                    "no usable client backend available; rebuild with `--features wayland-client`"
+                    "No usable client backend available. Enable `wayland-client` for the Wayland backend and/or `winit-wgpu-client` for the cross-platform backend."
                 )
             }
-        },
+        }
     }
 }

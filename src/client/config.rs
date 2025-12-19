@@ -17,6 +17,7 @@ use crate::protocols::wprs::Endpoint;
 pub enum ClientBackend {
     Auto,
     Wayland,
+    WinitWgpu,
 }
 
 impl Default for ClientBackend {
@@ -138,8 +139,8 @@ impl WprscArgs {
             .clone()
             .unwrap_or_else(|| config::default_config_file("wprsc"));
         let mut cfg = WprscConfig::default();
-        if let Some(from_file) =
-            config::maybe_read_ron_file::<WprscConfig>(&config_file).location(loc!())?
+        if let Some(from_file) = config::maybe_read_ron_file::<WprscConfig>(&config_file)
+            .location(loc!())?
         {
             cfg = from_file;
         }

@@ -111,3 +111,4 @@ pub fn set_log_priv_data(val: bool) {
 pub fn get_log_priv_data() -> bool {
     LOG_PRIV_DATA.load(Ordering::Relaxed)
 }
+

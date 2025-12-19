@@ -57,19 +57,16 @@ fn main() -> Result<()> {
     }
 
     let serializer: Serializer<proto::Event, proto::Request> = match &config.endpoint {
-        Some(endpoint) => Serializer::new_client_endpoint(endpoint.clone())
-            .with_context(loc!(), || {
-                format!("Serializer unable to connect to endpoint {endpoint:?}.")
-            })?,
+        Some(endpoint) => Serializer::new_client_endpoint(endpoint.clone()).with_context(
+            loc!(),
+            || format!("Serializer unable to connect to endpoint {endpoint:?}."),
+        )?,
         None => {
             fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
             Serializer::new_client(&config.socket).with_context(loc!(), || {
-                format!(
-                    "Serializer unable to connect to socket {:?}.",
-                    &config.socket
-                )
+                format!("Serializer unable to connect to socket {:?}.", &config.socket)
             })?
-        },
+        }
     };
 
     let writer = serializer.writer();
@@ -89,3 +86,4 @@ fn main() -> Result<()> {
     info!("wprsc using backend: {}", backend.name());
     backend.run(serializer).location(loc!())
 }
+

@@ -120,13 +120,13 @@ use smithay_client_toolkit::shm::ShmHandler;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
-use crate::buffer_pointer::BufferPointer;
 use crate::config;
+use crate::buffer_pointer::BufferPointer;
+use crate::utils::client::SeatObject;
 use crate::prelude::*;
 use crate::protocols::wprs::geometry::Point;
 use crate::protocols::wprs::wayland::BufferMetadata;
 use crate::protocols::wprs::wayland::KeyState;
-use crate::utils::client::SeatObject;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 use crate::xwayland_xdg_shell::compositor::DecorationBehavior;
@@ -1039,7 +1039,8 @@ impl XWaylandSurface {
         data: BufferPointer<u8>,
         pool: &mut SlotPool,
     ) -> Result<()> {
-        let metadata = BufferMetadata::from_buffer_data(metadata).location(loc!())?;
+        let metadata =
+            BufferMetadata::from_buffer_data(metadata).location(loc!())?;
         let buffer = match &mut self.buffer {
             // Surface was previously committed.
             Some(buffer) => {

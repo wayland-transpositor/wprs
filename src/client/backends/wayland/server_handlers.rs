@@ -21,14 +21,14 @@ use std::thread;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 
-use super::RemoteCursor;
-use super::RemoteSurface;
-use super::Role;
-use super::WprsClientState;
 use super::subsurface;
 use super::subsurface::RemoteSubSurface;
+use super::RemoteCursor;
+use super::RemoteSurface;
 use crate::client::backends::wayland::xdg_shell::RemoteXdgPopup;
 use crate::client::backends::wayland::xdg_shell::RemoteXdgToplevel;
+use super::Role;
+use super::WprsClientState;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;

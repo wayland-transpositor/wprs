@@ -56,9 +56,6 @@ parser.add_argument('--wprsc-wayland-debug',
                     type=boolean,
                     choices=[True, False],
                     default=False)
-parser.add_argument('--wprsc-args',
-                    type=shlex.split,
-                    default='')
 parser.add_argument('--additional-ssh-tunnel-args',
                     type=shlex.split,
                     default='')
@@ -102,27 +99,12 @@ title_prefix_group.add_argument('--title-prefix-fqdn',
                     help='Prefix window titles with the remote fqdn.',
                     default='false')
 
-parser.add_argument('destination')
-
-subparsers = parser.add_subparsers(title='subcommands', dest='subcommands')
-
-parser_attach = subparsers.add_parser(
+SUBCOMMANDS = {
   'attach',
-  help='Start wprsc and connect to a remote wprsd session.')
-parser_detach = subparsers.add_parser(
   'detach',
-  help='Stop wrpsc. The remote wprsd session will persist.')
-
-parser_run = subparsers.add_parser(
   'run',
-  help='Run a remote application under wprs, attaching if necessary.')
-parser_run.add_argument('remote_command')
-parser_run.add_argument('argument', nargs='*')
-
-parser_restart_wprsd = subparsers.add_parser(
   'restart-wprsd',
-  help=('Restart the remote wprsd, useful if it is stuck or in a bad state. '
-        'This will terminate any remote applications running against wprsd.'))
+}
 
 
 def xdg_runtime_dir() -> str | None:
@@ -526,13 +508,55 @@ def restart_wprsd() -> None:
   detach()
 
 
-parser_attach.set_defaults(func=attach)
-parser_detach.set_defaults(func=detach)
-parser_run.set_defaults(func=run)
-parser_restart_wprsd.set_defaults(func=restart_wprsd)
+def parse_args_and_subcommand(argv: list[str]):
+  # Parse script-level flags, but leave destination + wprsc args + subcommand
+  # untouched so we can forward to wprsc without requiring an explicit
+  # `--wprsc-args`.
+  args, remainder = parser.parse_known_args(argv)
 
-args = parser.parse_args()
+  if not remainder:
+    raise parser.error('A destination must be provided.')
+
+  args.destination = remainder[0]
+  rest = remainder[1:]
+
+  if rest and rest[0] == '--':
+    rest = rest[1:]
+
+  sub_idx = next((i for (i, tok) in enumerate(rest) if tok in SUBCOMMANDS), None)
+  if sub_idx is None:
+    raise parser.error(
+      'A subcommand must be provided (attach|detach|run|restart-wprsd). '
+      'To pass arguments to wprsc, place them between destination and subcommand.'
+    )
+
+  args.wprsc_args = rest[:sub_idx]
+  args.subcommand = rest[sub_idx]
+  subargv = rest[sub_idx+1:]
+
+  # Subcommand-specific parsing.
+  if args.subcommand == 'run':
+    if not subargv:
+      raise parser.error('run requires <remote_command> [args...]')
+    args.remote_command = subargv[0]
+    args.argument = subargv[1:]
+  else:
+    if subargv:
+      raise parser.error(f'{args.subcommand} takes no arguments (got: {subargv!r})')
+
+  return args
+
+
+args = parse_args_and_subcommand(sys.argv[1:])
 print(f'Args: {args}')
-if not args.subcommands:
-  raise parser.error("A subcommand must be provided.")
-args.func()
+
+if args.subcommand == 'attach':
+  attach()
+elif args.subcommand == 'detach':
+  detach()
+elif args.subcommand == 'run':
+  run()
+elif args.subcommand == 'restart-wprsd':
+  restart_wprsd()
+else:
+  raise RuntimeError(f'Unknown subcommand: {args.subcommand!r}')

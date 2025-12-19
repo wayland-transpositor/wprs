@@ -33,9 +33,9 @@ use nix::sys::stat::Mode;
 use smithay::utils::SERIAL_COUNTER;
 #[cfg(feature = "server")]
 use smithay::utils::Serial;
-use tracing::Level;
 #[cfg(feature = "server")]
 use tracing::instrument;
+use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 

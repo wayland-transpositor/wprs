@@ -70,16 +70,13 @@ use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
 
-use super::LockedSurfaceState;
-use super::WprsServerState;
-use super::smithay_handlers::DndGrab;
 use crate::config;
+use crate::utils::compositor as compositor_utils;
 use crate::prelude::*;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
-use crate::protocols::wprs::core;
 use crate::protocols::wprs::wayland::DataDestinationEvent;
 use crate::protocols::wprs::wayland::DataEvent;
 use crate::protocols::wprs::wayland::DataRequest;
@@ -100,7 +97,10 @@ use crate::protocols::wprs::xdg_shell::PopupConfigure;
 use crate::protocols::wprs::xdg_shell::PopupEvent;
 use crate::protocols::wprs::xdg_shell::ToplevelConfigure;
 use crate::protocols::wprs::xdg_shell::ToplevelEvent;
-use crate::utils::compositor as compositor_utils;
+use super::LockedSurfaceState;
+use super::WprsServerState;
+use super::smithay_handlers::DndGrab;
+use crate::protocols::wprs::core;
 
 enum UnknownSurfaceErr {
     ObjectId(WlSurfaceId),
@@ -652,8 +652,8 @@ impl WprsServerState {
             surfaces.push(surface_state);
         });
 
-        for msg in
-            core::handshake::initial_messages(self.xwayland_enabled, surfaces).location(loc!())?
+        for msg in core::handshake::initial_messages(self.xwayland_enabled, surfaces)
+            .location(loc!())?
         {
             self.serializer.writer().send(msg);
         }

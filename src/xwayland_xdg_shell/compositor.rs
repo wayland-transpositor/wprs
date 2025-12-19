@@ -76,12 +76,12 @@ use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surfac
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 
+use crate::utils::compositor as compositor_utils;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::geometry::Point;
 use crate::protocols::wprs::wayland::OutputInfo;
 use crate::utils::SerialMap;
-use crate::utils::compositor as compositor_utils;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 use crate::xwayland_xdg_shell::client::Role;

@@ -53,12 +53,13 @@ use smithay_client_toolkit::shell::xdg::window::DecorationMode as SctkDecoration
 #[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::window::WindowConfigure;
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
+use crate::prelude::*;
 use super::ClientId;
 use super::geometry::Point;
 use super::geometry::Rectangle;
 use super::geometry::Size;
 use super::wayland::WlSurfaceId;
-#[cfg(any(feature = "server", feature = "wayland-client"))]
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct XdgSurfaceId(pub u64);

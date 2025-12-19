@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
+pub mod channel;
+pub mod error;
 
-use merkle_hash::Algorithm;
-use merkle_hash::MerkleTree;
+#[cfg(feature = "wayland-client")]
+pub mod client;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let serialization_tree = MerkleTree::builder("./src/protocols/wprs")
-        .algorithm(Algorithm::Blake3)
-        .hash_names(false)
-        .build()?;
-    let serialization_hash = merkle_hash::bytes_to_hex(serialization_tree.root.item.hash);
-    println!("cargo:rustc-env=SERIALIZATION_TREE_HASH={serialization_hash}");
-    Ok(())
-}
+#[cfg(feature = "server")]
+pub mod compositor;
+
+mod core;
+
+pub use core::*;

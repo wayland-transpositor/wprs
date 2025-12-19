@@ -1,0 +1,250 @@
+use std::path::PathBuf;
+
+use bpaf::OptionParser;
+use bpaf::Parser;
+use bpaf::construct;
+use bpaf::long;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
+use tracing::Level;
+
+use crate::config;
+use crate::config::SerializableLevel;
+use crate::prelude::*;
+use crate::protocols::wprs::Endpoint;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClientBackend {
+    Auto,
+    Wayland,
+}
+
+impl Default for ClientBackend {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl std::str::FromStr for ClientBackend {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "wayland" => Ok(Self::Wayland),
+            other => bail!("invalid backend {other:?} (expected: auto|wayland)"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyboardMode {
+    Keymap,
+    Evdev,
+}
+
+impl Default for KeyboardMode {
+    fn default() -> Self {
+        Self::Keymap
+    }
+}
+
+impl std::str::FromStr for KeyboardMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "keymap" => Ok(Self::Keymap),
+            "evdev" => Ok(Self::Evdev),
+            other => bail!("invalid keyboard mode {other:?} (expected: keymap|evdev)"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct WprscConfig {
+    /// Path to the local UNIX socket used for direct connections.
+    pub socket: PathBuf,
+    /// Optional endpoint override for TCP or UNIX socket connections.
+    pub endpoint: Option<Endpoint>,
+    /// Path to the local control socket.
+    pub control_socket: PathBuf,
+    /// Log file path for persisted logs.
+    pub log_file: Option<PathBuf>,
+    /// Log level for stderr output.
+    pub stderr_log_level: SerializableLevel,
+    /// Log level for file output.
+    pub file_log_level: SerializableLevel,
+    /// Whether to include private data in logs.
+    pub log_priv_data: bool,
+    /// Prefix added to window titles.
+    pub title_prefix: String,
+
+    /// Client backend selection.
+    pub backend: ClientBackend,
+
+    /// Keyboard handling mode.
+    pub keyboard_mode: KeyboardMode,
+    /// Optional XKB keymap file.
+    pub xkb_keymap_file: Option<PathBuf>,
+}
+
+impl Default for WprscConfig {
+    fn default() -> Self {
+        Self {
+            socket: config::default_socket_path(),
+            endpoint: None,
+            control_socket: config::default_control_socket_path("wprsc"),
+            log_file: None,
+            stderr_log_level: SerializableLevel(Level::INFO),
+            file_log_level: SerializableLevel(Level::TRACE),
+            log_priv_data: false,
+            title_prefix: String::new(),
+
+            backend: ClientBackend::default(),
+
+            keyboard_mode: KeyboardMode::default(),
+            xkb_keymap_file: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WprscArgs {
+    pub print_default_config_and_exit: bool,
+
+    pub config_file: Option<PathBuf>,
+
+    pub socket: Option<PathBuf>,
+
+    pub endpoint: Option<Endpoint>,
+
+    pub control_socket: Option<PathBuf>,
+
+    pub log_file: Option<PathBuf>,
+
+    pub stderr_log_level: Option<SerializableLevel>,
+
+    pub file_log_level: Option<SerializableLevel>,
+
+    pub log_priv_data: Option<bool>,
+
+    pub title_prefix: Option<String>,
+
+    pub backend: Option<ClientBackend>,
+
+    pub keyboard_mode: Option<KeyboardMode>,
+
+    pub xkb_keymap_file: Option<PathBuf>,
+}
+
+fn wprsc_args() -> OptionParser<WprscArgs> {
+    let print_default_config_and_exit = long("print-default-config-and-exit")
+        .argument::<bool>("BOOL")
+        .fallback(false);
+
+    let config_file = long("config-file").argument::<PathBuf>("PATH").optional();
+    let socket = long("socket").argument::<PathBuf>("PATH").optional();
+    let endpoint = long("endpoint").argument::<Endpoint>("ENDPOINT").optional();
+    let control_socket = long("control-socket")
+        .argument::<PathBuf>("PATH")
+        .optional();
+    let log_file = long("log-file").argument::<PathBuf>("PATH").optional();
+    let stderr_log_level = long("stderr-log-level")
+        .argument::<SerializableLevel>("LEVEL")
+        .optional();
+    let file_log_level = long("file-log-level")
+        .argument::<SerializableLevel>("LEVEL")
+        .optional();
+    let log_priv_data = long("log-priv-data")
+        .argument::<bool>("BOOL")
+        .optional();
+    let title_prefix = long("title-prefix").argument::<String>("STRING").optional();
+    let backend = long("backend")
+        .argument::<ClientBackend>("BACKEND")
+        .optional();
+    let keyboard_mode = long("keyboard-mode")
+        .argument::<KeyboardMode>("MODE")
+        .optional();
+    let xkb_keymap_file = long("xkb-keymap-file")
+        .argument::<PathBuf>("PATH")
+        .optional();
+
+    construct!(WprscArgs {
+        print_default_config_and_exit,
+        config_file,
+        socket,
+        endpoint,
+        control_socket,
+        log_file,
+        stderr_log_level,
+        file_log_level,
+        log_priv_data,
+        title_prefix,
+        backend,
+        keyboard_mode,
+        xkb_keymap_file,
+    })
+    .to_options()
+    .version(env!("CARGO_PKG_VERSION"))
+}
+
+impl WprscArgs {
+    pub fn parse() -> Self {
+        wprsc_args().run()
+    }
+
+    pub fn load_config(self) -> Result<WprscConfig> {
+        if self.print_default_config_and_exit {
+            config::print_default_config_and_exit::<WprscConfig>();
+        }
+
+        let config_file = self
+            .config_file
+            .clone()
+            .unwrap_or_else(|| config::default_config_file("wprsc"));
+        let mut cfg = WprscConfig::default();
+        if let Some(from_file) =
+            config::maybe_read_ron_file::<WprscConfig>(&config_file).location(loc!())?
+        {
+            cfg = from_file;
+        }
+
+        if let Some(socket) = self.socket {
+            cfg.socket = socket;
+        }
+        if let Some(endpoint) = self.endpoint {
+            cfg.endpoint = Some(endpoint);
+        }
+        if let Some(control_socket) = self.control_socket {
+            cfg.control_socket = control_socket;
+        }
+        if let Some(log_file) = self.log_file {
+            cfg.log_file = Some(log_file);
+        }
+        if let Some(level) = self.stderr_log_level {
+            cfg.stderr_log_level = level;
+        }
+        if let Some(level) = self.file_log_level {
+            cfg.file_log_level = level;
+        }
+        if let Some(val) = self.log_priv_data {
+            cfg.log_priv_data = val;
+        }
+        if let Some(prefix) = self.title_prefix {
+            cfg.title_prefix = prefix;
+        }
+        if let Some(backend) = self.backend {
+            cfg.backend = backend;
+        }
+        if let Some(mode) = self.keyboard_mode {
+            cfg.keyboard_mode = mode;
+        }
+        if let Some(path) = self.xkb_keymap_file {
+            cfg.xkb_keymap_file = Some(path);
+        }
+        Ok(cfg)
+    }
+}

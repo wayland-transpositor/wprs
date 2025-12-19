@@ -19,7 +19,9 @@ use std::fmt::Result;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 use smithay::utils;
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 use smithay::utils::Coordinate;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
@@ -53,12 +55,14 @@ impl<N> From<Point<N>> for (N, N) {
     }
 }
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 impl<N, T> From<Point<N>> for utils::Point<N, T> {
     fn from(point: Point<N>) -> Self {
         <(N, N)>::from(point).into()
     }
 }
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 impl<N, T> From<utils::Point<N, T>> for Point<N> {
     fn from(point: utils::Point<N, T>) -> Self {
         <(N, N)>::from(point).into()
@@ -96,12 +100,14 @@ impl<N> From<Size<N>> for (N, N) {
     }
 }
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 impl<N: Coordinate, T> From<Size<N>> for utils::Size<N, T> {
     fn from(size: Size<N>) -> Self {
         <(N, N)>::from(size).into()
     }
 }
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 impl<N, T> From<utils::Size<N, T>> for Size<N> {
     fn from(size: utils::Size<N, T>) -> Self {
         <(N, N)>::from(size).into()
@@ -136,6 +142,7 @@ impl<N> Rectangle<N> {
     }
 }
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 impl<N, T> From<utils::Rectangle<N, T>> for Rectangle<N> {
     fn from(rect: utils::Rectangle<N, T>) -> Self {
         Self {

@@ -120,22 +120,21 @@ use smithay_client_toolkit::shm::ShmHandler;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
-use crate::args;
 use crate::buffer_pointer::BufferPointer;
-use crate::client_utils::SeatObject;
+use crate::config;
 use crate::prelude::*;
-use crate::serialization;
-use crate::serialization::geometry::Point;
-use crate::serialization::wayland::BufferMetadata;
-use crate::serialization::wayland::KeyState;
+use crate::protocols::wprs::geometry::Point;
+use crate::protocols::wprs::wayland::BufferMetadata;
+use crate::protocols::wprs::wayland::KeyState;
+use crate::utils::client::SeatObject;
+use crate::xwayland_xdg_shell::WprsState;
+use crate::xwayland_xdg_shell::XWaylandSurface;
 use crate::xwayland_xdg_shell::compositor::DecorationBehavior;
 use crate::xwayland_xdg_shell::compositor::X11Parent;
 use crate::xwayland_xdg_shell::compositor::X11ParentForPopup;
 use crate::xwayland_xdg_shell::compositor::X11ParentForSubsurface;
 use crate::xwayland_xdg_shell::decoration::handle_window_frame_pointer_event;
 use crate::xwayland_xdg_shell::xsurface_from_client_surface;
-use crate::xwayland_xdg_shell::WprsState;
-use crate::xwayland_xdg_shell::XWaylandSurface;
 
 const DEFAULT_WINDOW_SIZE: (i32, i32) = (512, 256);
 
@@ -680,7 +679,7 @@ impl KeyboardHandler for WprsState {
         serial: u32,
         event: KeyEvent,
     ) {
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         self.client_state.last_implicit_grab_serial = serial;
@@ -702,7 +701,7 @@ impl KeyboardHandler for WprsState {
         serial: u32,
         event: KeyEvent,
     ) {
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         self.client_state.last_implicit_grab_serial = serial;
@@ -724,7 +723,7 @@ impl KeyboardHandler for WprsState {
         serial: u32,
         event: KeyEvent,
     ) {
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             Span::current().record("event", field::debug(&event));
         }
         let serial = self.compositor_state.serial_map.insert(serial);
@@ -1040,8 +1039,7 @@ impl XWaylandSurface {
         data: BufferPointer<u8>,
         pool: &mut SlotPool,
     ) -> Result<()> {
-        let metadata =
-            serialization::wayland::BufferMetadata::from_buffer_data(metadata).location(loc!())?;
+        let metadata = BufferMetadata::from_buffer_data(metadata).location(loc!())?;
         let buffer = match &mut self.buffer {
             // Surface was previously committed.
             Some(buffer) => {

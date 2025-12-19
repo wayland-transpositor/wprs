@@ -46,7 +46,7 @@ use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_k
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::ClientData;
-use smithay::reexports::wayland_server::backend::ClientId;
+use smithay::reexports::wayland_server::backend::ClientId as WaylandClientId;
 use smithay::reexports::wayland_server::backend::DisconnectReason;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction;
@@ -97,43 +97,42 @@ use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewportCachedState;
 
-use crate::channel_utils::DiscardingSender;
-use crate::compositor_utils;
+use super::LockedSurfaceState;
+use super::WprsServerState;
 use crate::prelude::*;
-use crate::serialization;
-use crate::serialization::tuple::Tuple2;
-use crate::serialization::wayland::BufferAssignment;
-use crate::serialization::wayland::ClientSurface;
-use crate::serialization::wayland::CursorImage;
-use crate::serialization::wayland::CursorImageStatus;
-use crate::serialization::wayland::DataDestinationRequest;
-use crate::serialization::wayland::DataRequest;
-use crate::serialization::wayland::DataSource;
-use crate::serialization::wayland::DataSourceRequest;
-use crate::serialization::wayland::Role;
-use crate::serialization::wayland::SourceMetadata;
-use crate::serialization::wayland::SubSurfaceState;
-use crate::serialization::wayland::SubsurfacePosition;
-use crate::serialization::wayland::SurfaceRequest;
-use crate::serialization::wayland::SurfaceRequestPayload;
-use crate::serialization::wayland::SurfaceState;
-use crate::serialization::wayland::Transform;
-use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::xdg_shell::DecorationMode;
-use crate::serialization::xdg_shell::Move;
-use crate::serialization::xdg_shell::PopupRequest;
-use crate::serialization::xdg_shell::PopupRequestPayload;
-use crate::serialization::xdg_shell::Resize;
-use crate::serialization::xdg_shell::ToplevelRequest;
-use crate::serialization::xdg_shell::ToplevelRequestPayload;
-use crate::serialization::xdg_shell::XdgPopupState;
-use crate::serialization::xdg_shell::XdgPositioner;
-use crate::serialization::xdg_shell::XdgSurfaceState;
-use crate::serialization::xdg_shell::XdgToplevelState;
-use crate::serialization::Request;
-use crate::serialization::SendType;
-use crate::server::LockedSurfaceState;
-use crate::server::WprsServerState;
+use crate::protocols::wprs::ClientId;
+use crate::protocols::wprs::Request;
+use crate::protocols::wprs::SendType;
+use crate::protocols::wprs::core;
+use crate::protocols::wprs::tuple::Tuple2;
+use crate::protocols::wprs::wayland::BufferAssignment;
+use crate::protocols::wprs::wayland::ClientSurface;
+use crate::protocols::wprs::wayland::CursorImage;
+use crate::protocols::wprs::wayland::CursorImageStatus;
+use crate::protocols::wprs::wayland::DataDestinationRequest;
+use crate::protocols::wprs::wayland::DataRequest;
+use crate::protocols::wprs::wayland::DataSource;
+use crate::protocols::wprs::wayland::DataSourceRequest;
+use crate::protocols::wprs::wayland::Role;
+use crate::protocols::wprs::wayland::SourceMetadata;
+use crate::protocols::wprs::wayland::SubSurfaceState;
+use crate::protocols::wprs::wayland::SubsurfacePosition;
+use crate::protocols::wprs::wayland::SurfaceState;
+use crate::protocols::wprs::wayland::Transform;
+use crate::protocols::wprs::wayland::WlSurfaceId;
+use crate::protocols::wprs::xdg_shell::DecorationMode;
+use crate::protocols::wprs::xdg_shell::Move;
+use crate::protocols::wprs::xdg_shell::PopupRequest;
+use crate::protocols::wprs::xdg_shell::PopupRequestPayload;
+use crate::protocols::wprs::xdg_shell::Resize;
+use crate::protocols::wprs::xdg_shell::ToplevelRequest;
+use crate::protocols::wprs::xdg_shell::ToplevelRequestPayload;
+use crate::protocols::wprs::xdg_shell::XdgPopupState;
+use crate::protocols::wprs::xdg_shell::XdgPositioner;
+use crate::protocols::wprs::xdg_shell::XdgSurfaceState;
+use crate::protocols::wprs::xdg_shell::XdgToplevelState;
+use crate::utils::channel::DiscardingSender;
+use crate::utils::compositor as compositor_utils;
 
 impl BufferHandler for WprsServerState {
     #[instrument(skip(self), level = "debug")]
@@ -146,7 +145,7 @@ impl WprsServerState {
         self.serializer
             .writer()
             .send(SendType::Object(Request::Toplevel(ToplevelRequest {
-                client: serialization::ClientId::new(&surface.client().unwrap()),
+                client: ClientId::new(&surface.client().unwrap()),
                 surface: (&surface.id()).into(),
                 payload,
             })))
@@ -275,7 +274,7 @@ impl XdgShellHandler for WprsServerState {
             self.serializer
                 .writer()
                 .send(SendType::Object(Request::Popup(PopupRequest {
-                    client: serialization::ClientId::new(&client),
+                    client: ClientId::new(&client),
                     surface: (&popup.wl_surface().id()).into(),
                     payload: PopupRequestPayload::Destroyed,
                 })));
@@ -289,7 +288,7 @@ impl XdgShellHandler for WprsServerState {
 
         // let mut surface_state = self
         //     .surfaces
-        //     .get_mut(&serialization::wayland::WlSurfaceId::new(surface.wl_surface()))
+        //     .get_mut(&crate::protocols::wprs::wayland::WlSurfaceId::new(surface.wl_surface()))
         //     .unwrap();
         // surface_state.xdg_popup().unwrap().grab_requested = true;
     }
@@ -397,14 +396,9 @@ impl XdgShellHandler for WprsServerState {
             }
 
             let surface_state_to_send = surface_state.clone_without_buffer();
-            self.serializer
-                .writer()
-                .send(SendType::Object(Request::Surface(log_and_return!(
-                    SurfaceRequest::new(
-                        surface,
-                        SurfaceRequestPayload::Commit(surface_state_to_send),
-                    )
-                ))));
+            for msg in log_and_return!(core::handshake::surface_messages(surface_state_to_send)) {
+                self.serializer.writer().send(msg);
+            }
         });
     }
 
@@ -500,7 +494,7 @@ impl ClientDndGrabHandler for WprsServerState {
                             source_metadata.clone().into(),
                             icon.map(|surface| {
                                 Tuple2(
-                                    serialization::ClientId::new(&surface.client().unwrap()),
+                                    ClientId::new(&surface.client().unwrap()),
                                     (&surface.id()).into(),
                                 )
                             }),
@@ -896,16 +890,9 @@ pub fn commit_impl(
         .collect();
     surface_state_to_send.damage = Some(damage);
 
-    state
-        .serializer
-        .writer()
-        .send(SendType::Object(Request::Surface(
-            SurfaceRequest::new(
-                surface,
-                SurfaceRequestPayload::Commit(surface_state_to_send),
-            )
-            .location(loc!())?,
-        )));
+    for msg in core::handshake::surface_messages(surface_state_to_send).location(loc!())? {
+        state.serializer.writer().send(msg);
+    }
     Ok(true)
 }
 
@@ -926,7 +913,7 @@ impl SeatHandler for WprsServerState {
 
     #[instrument(skip(self, _seat), level = "debug")]
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: SmithayCursorImageStatus) {
-        // TODO: move to a fn on serialization::CursorImaveStatus
+        // TODO: move to a fn on wprs protocol CursorImageStatus
         let cursor_image_status = {
             match image {
                 SmithayCursorImageStatus::Hidden => CursorImageStatus::Hidden,
@@ -1218,10 +1205,10 @@ impl ClientState {
 
 impl ClientData for ClientState {
     #[instrument(skip(self), level = "debug")]
-    fn initialized(&self, client_id: ClientId) {}
+    fn initialized(&self, client_id: WaylandClientId) {}
 
     #[instrument(skip(self), level = "debug")]
-    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+    fn disconnected(&self, client_id: WaylandClientId, reason: DisconnectReason) {
         self.writer
             .send(SendType::Object(Request::ClientDisconnected(client_id.into())))
             // This should be infallible, writer is an InfallibleWriter,

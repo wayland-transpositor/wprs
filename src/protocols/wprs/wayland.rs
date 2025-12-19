@@ -17,51 +17,82 @@ use std::fmt::Debug;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
+#[cfg(any(feature = "server", feature = "wayland-client"))]
 use anyhow::Error;
 use enum_as_inner::EnumAsInner;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
+#[cfg(feature = "server")]
 use smithay::backend::input::AxisSource as SmithayAxisSource;
+#[cfg(feature = "server")]
 use smithay::output::Subpixel as SmithaySubpixel;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::Resource;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::backend;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::protocol::wl_output::Transform as SmithayWlTransform;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::protocol::wl_shm::Format as SmithayBufferFormat;
+#[cfg(feature = "server")]
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+#[cfg(feature = "server")]
 use smithay::utils::Transform as SmithayTransform;
+#[cfg(feature = "server")]
 use smithay::wayland::compositor::RectangleKind as SmithayRectangleKind;
+#[cfg(feature = "server")]
 use smithay::wayland::compositor::RegionAttributes;
+#[cfg(feature = "server")]
 use smithay::wayland::selection::data_device::SourceMetadata as SmithaySourceMetadata;
+#[cfg(feature = "server")]
 use smithay::wayland::shm::BufferData as SmithayBufferData;
+#[cfg(feature = "server")]
 use smithay::wayland::viewporter::ViewportCachedState;
+
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::compositor::CompositorState;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::compositor::Region as SctkRegion;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::output::Mode as SctkMode;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::output::OutputInfo as SctkOutputInfo;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::reexports::client::protocol::wl_data_device_manager::DndAction as SctkWlDndAction;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::reexports::client::protocol::wl_output::Subpixel as SctkSubpixel;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::reexports::client::protocol::wl_output::Transform as SctkTransform;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::reexports::client::protocol::wl_pointer::AxisSource as SctkAxisSource;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::reexports::client::protocol::wl_shm::Format as SctkBufferFormat;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::keyboard::Modifiers as SmithayModifiers;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::keyboard::RepeatInfo as SctkRepeatInfo;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::pointer::AxisScroll as SctkAxisScroll;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::pointer::PointerEvent as SctkPointerEvent;
+#[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::seat::pointer::PointerEventKind as SctkPointerEventKind;
 
+use super::ClientId;
+use super::geometry::Point;
+use super::geometry::Rectangle;
+use super::geometry::Size;
 use super::tuple::Tuple2;
-use crate::args;
+use super::xdg_shell;
+#[cfg(feature = "server")]
 use crate::buffer_pointer::BufferPointer;
+use crate::config;
+#[cfg(feature = "server")]
 use crate::filtering;
 use crate::prelude::*;
-use crate::serialization;
-use crate::serialization::ClientId;
-use crate::serialization::geometry::Point;
-use crate::serialization::geometry::Rectangle;
-use crate::serialization::geometry::Size;
-use crate::serialization::xdg_shell;
 use crate::sharding_compression::CompressedShards;
+#[cfg(feature = "server")]
 use crate::sharding_compression::ShardingCompressor;
 use crate::vec4u8::Vec4u8s;
 
@@ -69,14 +100,16 @@ use crate::vec4u8::Vec4u8s;
 pub struct WlSurfaceId(pub u64);
 
 impl WlSurfaceId {
+    #[cfg(feature = "server")]
     pub fn new(wl_surface: &WlSurface) -> Self {
-        Self(serialization::hash(&wl_surface.id()))
+        Self(super::hash(&wl_surface.id()))
     }
 }
 
+#[cfg(feature = "server")]
 impl From<&backend::ObjectId> for WlSurfaceId {
     fn from(object_id: &backend::ObjectId) -> Self {
-        Self(serialization::hash(object_id))
+        Self(super::hash(object_id))
     }
 }
 
@@ -88,6 +121,7 @@ pub struct ClientSurface {
 }
 
 impl ClientSurface {
+    #[cfg(feature = "server")]
     pub fn new(wl_surface: &WlSurface) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&wl_surface.client().location(loc!())?),
@@ -101,7 +135,7 @@ pub struct SubSurfaceId(pub u64);
 
 impl SubSurfaceId {
     pub fn new(subsurface_id: &WlSurfaceId) -> Self {
-        Self(serialization::hash(&subsurface_id))
+        Self(super::hash(&subsurface_id))
     }
 }
 
@@ -119,6 +153,7 @@ pub struct BufferMetadata {
     pub format: BufferFormat,
 }
 
+#[cfg(feature = "server")]
 impl TryFrom<SmithayBufferFormat> for BufferFormat {
     type Error = Error;
     fn try_from(format: SmithayBufferFormat) -> Result<Self> {
@@ -130,6 +165,7 @@ impl TryFrom<SmithayBufferFormat> for BufferFormat {
     }
 }
 
+#[cfg(feature = "wayland-client")]
 impl TryFrom<SctkBufferFormat> for BufferFormat {
     type Error = Error;
     fn try_from(format: SctkBufferFormat) -> Result<Self> {
@@ -141,6 +177,7 @@ impl TryFrom<SctkBufferFormat> for BufferFormat {
     }
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<BufferFormat> for SctkBufferFormat {
     fn from(format: BufferFormat) -> Self {
         match format {
@@ -152,6 +189,7 @@ impl From<BufferFormat> for SctkBufferFormat {
 
 impl BufferMetadata {
     // TODO: replace with impl From
+    #[cfg(feature = "server")]
     pub fn from_buffer_data(spec: &SmithayBufferData) -> Result<Self> {
         Ok(Self {
             width: spec.width,
@@ -213,6 +251,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    #[cfg(feature = "server")]
     pub fn new(
         metadata: &SmithayBufferData,
         data: BufferPointer<u8>,
@@ -237,6 +276,7 @@ impl Buffer {
     }
 
     #[allow(clippy::missing_panics_doc)]
+    #[cfg(feature = "server")]
     pub fn update(
         &mut self,
         metadata: &SmithayBufferData,
@@ -288,6 +328,7 @@ pub enum RepeatInfo {
     Disable,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkRepeatInfo> for RepeatInfo {
     fn from(info: SctkRepeatInfo) -> Self {
         match info {
@@ -311,7 +352,7 @@ impl fmt::Debug for KeyInner {
             .field("serial", &self.serial)
             .field(
                 "raw_code",
-                if args::get_log_priv_data() {
+                if config::get_log_priv_data() {
                     &self.raw_code
                 } else {
                     &"<redacted>"
@@ -332,6 +373,7 @@ pub struct ModifierState {
     pub num_lock: bool,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SmithayModifiers> for ModifierState {
     fn from(modifiers: SmithayModifiers) -> Self {
         Self {
@@ -372,6 +414,7 @@ pub struct AxisScroll {
     pub stop: bool,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkAxisScroll> for AxisScroll {
     fn from(axis_scroll: SctkAxisScroll) -> Self {
         Self {
@@ -390,6 +433,7 @@ pub enum AxisSource {
     WheelTilt,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkAxisSource> for AxisSource {
     fn from(axis_source: SctkAxisSource) -> Self {
         match axis_source {
@@ -402,6 +446,7 @@ impl From<SctkAxisSource> for AxisSource {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<AxisSource> for SmithayAxisSource {
     fn from(axis_source: AxisSource) -> Self {
         match axis_source {
@@ -437,6 +482,7 @@ pub enum PointerEventKind {
     },
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkPointerEventKind> for PointerEventKind {
     fn from(event: SctkPointerEventKind) -> Self {
         match event {
@@ -475,6 +521,7 @@ pub struct PointerEvent {
 }
 
 impl PointerEvent {
+    #[cfg(feature = "wayland-client")]
     pub fn from_smithay(surface_id: &WlSurfaceId, event: &SctkPointerEvent) -> Self {
         Self {
             surface_id: *surface_id,
@@ -492,6 +539,7 @@ pub struct SubSurfaceState {
 }
 
 impl SubSurfaceState {
+    #[cfg(feature = "server")]
     pub fn new(parent: &WlSurface) -> Self {
         Self {
             parent: WlSurfaceId::new(parent),
@@ -515,6 +563,7 @@ pub enum RectangleKind {
     Subtract,
 }
 
+#[cfg(feature = "server")]
 impl From<&SmithayRectangleKind> for RectangleKind {
     fn from(kind: &SmithayRectangleKind) -> Self {
         match kind {
@@ -529,6 +578,7 @@ pub struct Region {
     rects: Vec<Tuple2<RectangleKind, Rectangle<i32>>>,
 }
 
+#[cfg(feature = "server")]
 impl From<&RegionAttributes> for Region {
     fn from(region: &RegionAttributes) -> Self {
         Self {
@@ -546,6 +596,7 @@ impl Region {
         Self { rects: Vec::new() }
     }
 
+    #[cfg(feature = "wayland-client")]
     pub fn create_compositor_region(
         &self,
         compositor_state: &CompositorState,
@@ -581,6 +632,7 @@ pub enum Transform {
     Flipped270,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkTransform> for Transform {
     fn from(transform: SctkTransform) -> Self {
         match transform {
@@ -600,6 +652,7 @@ impl From<SctkTransform> for Transform {
     }
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<Transform> for SctkTransform {
     fn from(transform: Transform) -> Self {
         match transform {
@@ -615,6 +668,7 @@ impl From<Transform> for SctkTransform {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<SmithayTransform> for Transform {
     fn from(transform: SmithayTransform) -> Self {
         match transform {
@@ -630,6 +684,7 @@ impl From<SmithayTransform> for Transform {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<SmithayWlTransform> for Transform {
     fn from(transform: SmithayWlTransform) -> Self {
         match transform {
@@ -649,6 +704,7 @@ impl From<SmithayWlTransform> for Transform {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<Transform> for SmithayTransform {
     fn from(transform: Transform) -> Self {
         match transform {
@@ -695,6 +751,7 @@ pub struct SurfaceState {
 }
 
 impl SurfaceState {
+    #[cfg(feature = "server")]
     pub fn new(surface: &WlSurface, buffer: Option<BufferAssignment>) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&surface.client().location(loc!())?),
@@ -716,6 +773,7 @@ impl SurfaceState {
     }
 
     #[instrument(skip(data, compressor), level = "debug")]
+    #[cfg(feature = "server")]
     pub fn set_buffer(
         &mut self,
         metadata: &SmithayBufferData,
@@ -736,6 +794,7 @@ impl SurfaceState {
         Ok(())
     }
 
+    #[cfg(feature = "server")]
     pub fn update_with_external_buffer(
         &mut self,
         buffer: &Option<BufferAssignment>,
@@ -806,6 +865,7 @@ pub enum Subpixel {
     VerticalBgr,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkSubpixel> for Subpixel {
     fn from(subpixel: SctkSubpixel) -> Self {
         match subpixel {
@@ -820,6 +880,7 @@ impl From<SctkSubpixel> for Subpixel {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<Subpixel> for SmithaySubpixel {
     fn from(subpixel: Subpixel) -> Self {
         match subpixel {
@@ -841,6 +902,7 @@ pub struct Mode {
     pub preferred: bool,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<&SctkMode> for Mode {
     fn from(mode: &SctkMode) -> Self {
         Self {
@@ -867,6 +929,7 @@ pub struct OutputInfo {
     pub description: Option<String>,
 }
 
+#[cfg(feature = "wayland-client")]
 impl From<SctkOutputInfo> for OutputInfo {
     fn from(output: SctkOutputInfo) -> Self {
         Self {
@@ -905,6 +968,7 @@ pub struct SurfaceRequest {
 }
 
 impl SurfaceRequest {
+    #[cfg(feature = "server")]
     pub fn new(surface: &WlSurface, payload: SurfaceRequestPayload) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&surface.client().location(loc!())?),
@@ -928,6 +992,7 @@ impl SourceMetadata {
         }
     }
 
+    #[cfg(feature = "wayland-client")]
     pub fn from_dnd_actions(dnd_actions: SctkWlDndAction) -> Self {
         Self {
             mime_types: Vec::new(),
@@ -936,6 +1001,7 @@ impl SourceMetadata {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<SmithaySourceMetadata> for SourceMetadata {
     fn from(source_metadata: SmithaySourceMetadata) -> Self {
         Self {
@@ -970,7 +1036,7 @@ impl fmt::Debug for DataToTransfer {
         f.debug_struct("DataToTransfer")
             .field(
                 "0",
-                if args::get_log_priv_data() {
+                if config::get_log_priv_data() {
                     &self.0
                 } else {
                     &"<redacted>"
@@ -1104,6 +1170,7 @@ pub struct ViewportState {
     pub dst: Option<Size<i32>>,
 }
 
+#[cfg(feature = "server")]
 impl From<&ViewportCachedState> for ViewportState {
     fn from(viewport_state: &ViewportCachedState) -> Self {
         Self {

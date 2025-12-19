@@ -124,20 +124,22 @@ mod linux {
         .location(loc!())?;
         WaylandSource::new(conn, event_queue)
             .insert(event_loop.handle())
+            .map_err(|e| anyhow!("failed to insert WaylandSource: {e:?}"))
             .location(loc!())?;
 
         {
+            let loop_signal = event_loop.get_signal();
+            let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM]).location(loc!())?;
             let token = event_loop
                 .handle()
-                .insert_source(Signals::new([Signal::SIGINT, Signal::SIGTERM]).unwrap(), |event, _, state| {
-                    for sig in event.signals() {
-                        match sig {
-                            Signal::SIGINT | Signal::SIGTERM => {
-                                info!("received signal {sig:?}, exiting");
-                                state.should_exit = true;
-                            }
-                            _ => {}
+                .insert_source(signals, move |event, _, _state| {
+                    let sig = event.signal();
+                    match sig {
+                        Signal::SIGINT | Signal::SIGTERM => {
+                            info!("received signal {sig:?}, exiting");
+                            loop_signal.stop();
                         }
+                        _ => {}
                     }
                 })
                 .location(loc!())?;
@@ -155,4 +157,3 @@ mod linux {
 fn main() -> wprs::prelude::Result<()> {
     linux::main()
 }
-

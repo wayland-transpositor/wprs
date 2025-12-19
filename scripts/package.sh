@@ -154,7 +154,7 @@ package_deb_from_staging() {
   fi
 
   local out_deb="$dist_dir/wprs_${version}_${deb_arch}.deb"
-  ensure_packager_image "wprs-packager-deb:latest" "package/debian/Dockerfile" || return 0
+  ensure_packager_image "wprs-packager-deb:latest" "package/deb/Dockerfile" || return 0
 
   echo "+ docker run (deb) -> $out_deb" >&2
   docker run --rm \

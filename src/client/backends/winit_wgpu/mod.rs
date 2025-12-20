@@ -35,25 +35,25 @@ use crate::client::config::KeyboardMode;
 use crate::filtering;
 use crate::prelude::*;
 use crate::protocols::wprs as proto;
-use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::DisplayConfig;
+use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
 use crate::protocols::wprs::Serializer;
 use crate::protocols::wprs::geometry::{Point, Size};
+use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::{
     AxisScroll, AxisSource, KeyInner, KeyState, KeyboardEvent, ModifierState, PointerEvent,
     PointerEventKind,
 };
-use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::{
     BufferAssignment, BufferData, Mode, OutputEvent, OutputInfo, Subpixel, SurfaceRequest,
     SurfaceRequestPayload, Transform, UncompressedBufferData, WlSurfaceId,
 };
+use crate::protocols::wprs::xdg_shell::XdgPopupState;
 use crate::protocols::wprs::xdg_shell::{
     DecorationMode, ToplevelClose, ToplevelConfigure, ToplevelEvent, WindowState,
 };
-use crate::protocols::wprs::xdg_shell::XdgPopupState;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct PinchGestureState {
@@ -110,7 +110,6 @@ struct WindowRenderer {
     bind_group: Option<wgpu::BindGroup>,
     texture: Option<wgpu::Texture>,
     texture_size: Option<(u32, u32)>,
-
 }
 
 impl WindowRenderer {
@@ -475,11 +474,28 @@ struct App {
     pressed_keycodes: HashSet<u32>,
     last_cursor_pos: HashMap<winit::window::WindowId, crate::protocols::wprs::geometry::Point<f64>>,
     pointer_inside: HashSet<winit::window::WindowId>,
+    pointer_surface: Option<WlSurfaceId>,
 
     pinch_state: HashMap<WlSurfaceId, PinchGestureState>,
+
+    popup_state_by_surface: HashMap<WlSurfaceId, XdgPopupState>,
 }
 
 impl App {
+    fn ui_scale(&self) -> f64 {
+        self.ui_scale_factor.max(0.1)
+    }
+
+    fn to_remote_surface_coords(
+        &self,
+        window_logical: crate::protocols::wprs::geometry::Point<f64>,
+    ) -> crate::protocols::wprs::geometry::Point<f64> {
+        let scale = self.ui_scale();
+        crate::protocols::wprs::geometry::Point {
+            x: window_logical.x / scale,
+            y: window_logical.y / scale,
+        }
+    }
     fn schedule_decode(
         &self,
         surface_id: WlSurfaceId,
@@ -496,21 +512,21 @@ impl App {
 
     fn compute_popup_position(&self, popup: &XdgPopupState) -> Option<PhysicalPosition<i32>> {
         let parent_renderer = self.windows.get(&popup.parent_surface_id)?;
-        let parent_pos = parent_renderer.window.outer_position().ok()?;
+        // Popups are positioned relative to the parent surface coordinate space (i.e. the parent
+        // window's inner content origin). Using outer_position() shifts popups by decorations.
+        let parent_pos = parent_renderer
+            .window
+            .inner_position()
+            .or_else(|_| parent_renderer.window.outer_position())
+            .ok()?;
 
         // The positioner is expressed in the parent's surface coordinate space.
         // Map it into a global coordinate space using the parent's outer position.
         let anchor = popup.positioner.anchor_rect;
         let offset = popup.positioner.offset;
 
-        let server_scale = self
-            .surface_scale_factor
-            .get(&popup.parent_surface_id)
-            .copied()
-            .unwrap_or(1)
-            .max(1) as f64;
         let client_scale = parent_renderer.window.scale_factor();
-        let total_scale = (client_scale / server_scale) * self.ui_scale_factor.max(0.1);
+        let total_scale = client_scale * self.ui_scale();
 
         let dx = (anchor.loc.x + offset.x) as f64 * total_scale;
         let dy = (anchor.loc.y + offset.y) as f64 * total_scale;
@@ -519,6 +535,102 @@ impl App {
             parent_pos.x.saturating_add(dx.round() as i32),
             parent_pos.y.saturating_add(dy.round() as i32),
         ))
+    }
+
+    fn update_popup_position(&self, popup_surface_id: WlSurfaceId, popup: &XdgPopupState) {
+        let Some(renderer) = self.windows.get(&popup_surface_id) else {
+            return;
+        };
+        let Some(pos) = self.compute_popup_position(popup) else {
+            return;
+        };
+        renderer.window.set_outer_position(pos);
+    }
+
+    fn update_popups_for_parent(&self, parent_surface_id: WlSurfaceId) {
+        for (popup_surface_id, popup) in &self.popup_state_by_surface {
+            if popup.parent_surface_id == parent_surface_id {
+                self.update_popup_position(*popup_surface_id, popup);
+            }
+        }
+    }
+
+    fn cursor_icon_from_wayland_name(name: &str) -> winit::window::CursorIcon {
+        use winit::window::CursorIcon;
+
+        match name {
+            "default" | "left_ptr" | "arrow" => CursorIcon::Default,
+            "pointer" | "hand" | "hand1" | "hand2" => CursorIcon::Pointer,
+            "text" | "xterm" | "ibeam" => CursorIcon::Text,
+            "crosshair" => CursorIcon::Crosshair,
+            "move" | "all-scroll" => CursorIcon::Move,
+            "not-allowed" | "forbidden" => CursorIcon::NotAllowed,
+            "wait" | "watch" => CursorIcon::Wait,
+            "progress" | "left_ptr_watch" => CursorIcon::Progress,
+            "help" | "question_arrow" => CursorIcon::Help,
+            "context-menu" => CursorIcon::ContextMenu,
+
+            "e-resize" => CursorIcon::EResize,
+            "w-resize" => CursorIcon::WResize,
+            "n-resize" => CursorIcon::NResize,
+            "s-resize" => CursorIcon::SResize,
+            "ne-resize" => CursorIcon::NeResize,
+            "nw-resize" => CursorIcon::NwResize,
+            "se-resize" => CursorIcon::SeResize,
+            "sw-resize" => CursorIcon::SwResize,
+            "col-resize" | "ew-resize" | "sb_h_double_arrow" => CursorIcon::EwResize,
+            "row-resize" | "ns-resize" | "sb_v_double_arrow" => CursorIcon::NsResize,
+
+            "grab" => CursorIcon::Grab,
+            "grabbing" => CursorIcon::Grabbing,
+            "zoom-in" => CursorIcon::ZoomIn,
+            "zoom-out" => CursorIcon::ZoomOut,
+
+            _ => CursorIcon::Default,
+        }
+    }
+
+    fn handle_cursor_image(&mut self, cursor: crate::protocols::wprs::wayland::CursorImage) {
+        let serial = cursor.serial;
+        let status = cursor.status;
+
+        let target_surface = self.pointer_surface.or(self.focused_surface);
+        let Some(surface_id) = target_surface else {
+            debug!(
+                "cursor image update without an active window: serial={serial} status={status:?}"
+            );
+            return;
+        };
+        let Some(renderer) = self.windows.get(&surface_id) else {
+            return;
+        };
+
+        match status {
+            crate::protocols::wprs::wayland::CursorImageStatus::Hidden => {
+                debug!("cursor hidden: surface={surface_id:?} serial={serial}");
+                renderer.window.set_cursor_visible(false);
+            },
+            crate::protocols::wprs::wayland::CursorImageStatus::Named(name) => {
+                let icon = Self::cursor_icon_from_wayland_name(&name);
+                debug!(
+                    "cursor named: surface={surface_id:?} serial={} name={name:?} icon={icon:?}",
+                    serial
+                );
+                renderer.window.set_cursor_visible(true);
+                renderer.window.set_cursor(icon);
+            },
+            crate::protocols::wprs::wayland::CursorImageStatus::Surface { .. } => {
+                // winit doesn't expose a cross-platform API to set a custom bitmap cursor.
+                debug!(
+                    "cursor surface: surface={surface_id:?} serial={} (custom cursor unsupported in winit backend)",
+                    serial
+                );
+                renderer.window.set_cursor_visible(true);
+                renderer
+                    .window
+                    .set_cursor(winit::window::CursorIcon::Default);
+            },
+        }
     }
 
     fn generate_keymap_from_tools() -> Result<String> {
@@ -833,7 +945,17 @@ impl App {
             },
             RecvType::Object(Request::Surface(surface)) => self.handle_surface(event_loop, surface),
             RecvType::Object(Request::DisplayConfig(cfg)) => {
+                if self.server_display_config.is_none() {
+                    info!(
+                        "server display config: scale_factor={} dpi={:?}",
+                        cfg.scale_factor, cfg.dpi
+                    );
+                }
                 self.server_display_config = Some(cfg);
+                Ok(())
+            },
+            RecvType::Object(Request::CursorImage(cursor)) => {
+                self.handle_cursor_image(cursor);
                 Ok(())
             },
             // Not yet handled in this backend.
@@ -847,14 +969,17 @@ impl App {
         };
         let size = renderer.window.inner_size();
         let logical: winit::dpi::LogicalSize<f64> = size.to_logical(renderer.window.scale_factor());
-        let w = logical.width.round().max(1.0) as u32;
-        let h = logical.height.round().max(1.0) as u32;
+        // Window sizes are in local logical points, but the server expects surface logical points.
+        // When `ui_scale_factor` is set, we scale the view (local window size) without resizing the
+        // remote surface, so we need to map back into the server's coordinate space.
+        let server_logical_w = (logical.width / self.ui_scale()).round().max(1.0) as u32;
+        let server_logical_h = (logical.height / self.ui_scale()).round().max(1.0) as u32;
         let configure = ToplevelConfigure {
             surface_id,
             // Configure sizes are in logical points.
             new_size: Size {
-                w: NonZeroU32::new(w),
-                h: NonZeroU32::new(h),
+                w: NonZeroU32::new(server_logical_w),
+                h: NonZeroU32::new(server_logical_h),
             },
             suggested_bounds: None,
             decoration_mode: DecorationMode::Server,
@@ -878,6 +1003,7 @@ impl App {
                 if let Some(renderer) = self.windows.remove(&surface_id) {
                     self.surface_by_window.remove(&renderer.window.id());
                 }
+                self.popup_state_by_surface.remove(&surface_id);
                 return Ok(());
             },
             SurfaceRequestPayload::Commit(mut state) => {
@@ -891,6 +1017,13 @@ impl App {
                 let popup = role.as_xdg_popup();
                 if toplevel.is_none() && popup.is_none() {
                     return Ok(());
+                }
+
+                if let Some(popup) = popup {
+                    self.popup_state_by_surface
+                        .insert(surface_id, popup.clone());
+                } else {
+                    self.popup_state_by_surface.remove(&surface_id);
                 }
 
                 // Ensure we have a window for this surface.
@@ -913,14 +1046,30 @@ impl App {
                         let logical_h = (f64::from(h) / server_scale).max(1.0);
                         // Client-side scaling knob: magnify/shrink the window in logical units.
                         attrs = attrs.with_inner_size(LogicalSize::new(
-                            logical_w * self.ui_scale_factor.max(0.1),
-                            logical_h * self.ui_scale_factor.max(0.1),
+                            logical_w * self.ui_scale(),
+                            logical_h * self.ui_scale(),
                         ));
+
+                        info!(
+                            "creating window: surface={surface_id:?} kind={} buffer_px=({w}x{h}) buffer_scale={} ui_scale_factor={}",
+                            if toplevel.is_some() {
+                                "toplevel"
+                            } else {
+                                "popup"
+                            },
+                            state.buffer_scale,
+                            self.ui_scale_factor
+                        );
                     } else if let Some(popup) = popup {
                         attrs = attrs.with_inner_size(LogicalSize::new(
-                            (popup.positioner.width.max(1) as f64) * self.ui_scale_factor.max(0.1),
-                            (popup.positioner.height.max(1) as f64) * self.ui_scale_factor.max(0.1),
+                            (popup.positioner.width.max(1) as f64) * self.ui_scale(),
+                            (popup.positioner.height.max(1) as f64) * self.ui_scale(),
                         ));
+
+                        info!(
+                            "creating window: surface={surface_id:?} kind=popup positioner_px=({}x{}) ui_scale_factor={}",
+                            popup.positioner.width, popup.positioner.height, self.ui_scale_factor
+                        );
                     }
 
                     let window = Arc::new(event_loop.create_window(attrs).location(loc!())?);
@@ -941,6 +1090,11 @@ impl App {
                     }
                 }
 
+                // Keep popup windows in sync with their parent.
+                if let Some(popup) = popup {
+                    self.update_popup_position(surface_id, popup);
+                }
+
                 // Apply buffer if present.
                 if let Some(BufferAssignment::New(mut buf)) = state.buffer.take() {
                     if buf.data.is_external() {
@@ -955,7 +1109,7 @@ impl App {
                                 "Received buffer commit with inline Compressed data; skipping frame for {surface_id:?}"
                             );
                             return Ok(());
-                        }
+                        },
                         BufferData::External => {
                             if self.surfaces_with_frame.contains(&surface_id) {
                                 warn!(
@@ -967,7 +1121,7 @@ impl App {
                                 );
                             }
                             return Ok(());
-                        }
+                        },
                     };
                     // Unfiltering can be expensive on non-SIMD platforms; do it
                     // off the winit/UI thread to keep the window responsive.
@@ -990,9 +1144,9 @@ impl ApplicationHandler<UserEvent> for App {
         for (idx, monitor) in event_loop.available_monitors().enumerate() {
             self.serializer
                 .writer()
-                .send(SendType::Object(proto::Event::Output(
-                    OutputEvent::New(output_info_from_monitor(idx as u32, &monitor)),
-                )));
+                .send(SendType::Object(proto::Event::Output(OutputEvent::New(
+                    output_info_from_monitor(idx as u32, &monitor),
+                ))));
         }
     }
 
@@ -1014,7 +1168,7 @@ impl ApplicationHandler<UserEvent> for App {
                 );
                 renderer.window.request_redraw();
                 self.surfaces_with_frame.insert(frame.surface_id);
-            }
+            },
         }
     }
 
@@ -1036,10 +1190,15 @@ impl ApplicationHandler<UserEvent> for App {
                     renderer.resize(&self.shared, *size);
                     debug!("winit window resized: surface={surface_id:?} size={size:?}");
                     self.send_configure_for_surface(surface_id);
+                    self.update_popups_for_parent(surface_id);
                 },
                 WindowEvent::ScaleFactorChanged { .. } => {
                     debug!("winit window scale factor changed: surface={surface_id:?}");
                     self.send_configure_for_surface(surface_id);
+                    self.update_popups_for_parent(surface_id);
+                },
+                WindowEvent::Moved(_) => {
+                    self.update_popups_for_parent(surface_id);
                 },
                 WindowEvent::RedrawRequested => {
                     renderer.render(&self.shared).log_and_ignore(loc!());
@@ -1103,11 +1262,13 @@ impl ApplicationHandler<UserEvent> for App {
                     return;
                 };
                 let logical = position.to_logical::<f64>(renderer.window.scale_factor());
-                let pos = crate::protocols::wprs::geometry::Point {
+                let window_pos = crate::protocols::wprs::geometry::Point {
                     x: logical.x,
                     y: logical.y,
                 };
+                let pos = self.to_remote_surface_coords(window_pos);
                 self.last_cursor_pos.insert(window_id, pos);
+                self.pointer_surface = Some(surface_id);
 
                 // Some platforms don't emit CursorEntered if the cursor is
                 // already inside the window when it is created.
@@ -1121,12 +1282,16 @@ impl ApplicationHandler<UserEvent> for App {
                 let pos = self.cursor_pos_for(window_id);
                 let serial = self.next_serial();
                 self.pointer_inside.insert(window_id);
+                self.pointer_surface = Some(surface_id);
                 self.send_pointer_event(surface_id, pos, PointerEventKind::Enter { serial });
             },
             WindowEvent::CursorLeft { .. } => {
                 let pos = self.cursor_pos_for(window_id);
                 let serial = self.next_serial();
                 self.pointer_inside.remove(&window_id);
+                if self.pointer_surface == Some(surface_id) {
+                    self.pointer_surface = None;
+                }
                 self.send_pointer_event(surface_id, pos, PointerEventKind::Leave { serial });
             },
             WindowEvent::MouseInput { state, button, .. } => {
@@ -1158,7 +1323,9 @@ impl ApplicationHandler<UserEvent> for App {
                             return;
                         };
                         let logical = pos.to_logical::<f64>(renderer.window.scale_factor());
-                        (logical.x, logical.y, 0, 0)
+                        let dx = logical.x / self.ui_scale();
+                        let dy = logical.y / self.ui_scale();
+                        (dx, dy, 0, 0)
                     },
                 };
                 let pos = self.cursor_pos_for(window_id);
@@ -1166,6 +1333,10 @@ impl ApplicationHandler<UserEvent> for App {
                     MouseScrollDelta::LineDelta(_, _) => Some(AxisSource::Wheel),
                     MouseScrollDelta::PixelDelta(_) => Some(AxisSource::Finger),
                 };
+
+                debug!(
+                    "scroll: surface={surface_id:?} source={source:?} h_abs={h_abs:.2} v_abs={v_abs:.2} h_discrete={h_discrete} v_discrete={v_discrete}"
+                );
                 self.send_pointer_event(
                     surface_id,
                     pos,
@@ -1185,6 +1356,7 @@ impl ApplicationHandler<UserEvent> for App {
                 );
             },
             WindowEvent::PinchGesture { delta, phase, .. } => {
+                debug!("pinch: surface={surface_id:?} phase={phase:?} delta={delta:?}");
                 let pos = self.cursor_pos_for(window_id);
                 let state = self.pinch_state.entry(surface_id).or_default();
                 let was_active = state.active_pinch || state.active_rotation;
@@ -1197,35 +1369,31 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                         if !was_active {
                             let serial = self.next_serial();
-                            self.serializer
-                                .writer()
-                                .send(SendType::Object(proto::Event::PointerGesture(
-                                    PointerGestureEvent::PinchBegin {
-                                        surface_id,
-                                        position: pos,
-                                        serial,
-                                        fingers: 2,
-                                    },
-                                )));
+                            self.serializer.writer().send(SendType::Object(
+                                proto::Event::PointerGesture(PointerGestureEvent::PinchBegin {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    fingers: 2,
+                                }),
+                            ));
                         }
-                    }
+                    },
                     winit::event::TouchPhase::Moved => {
                         if delta.is_finite() {
                             // NSEvent magnification is additive; store an absolute scale for smithay.
                             state.scale = (state.scale + delta).clamp(0.1, 10.0);
                         }
-                        self.serializer
-                            .writer()
-                            .send(SendType::Object(proto::Event::PointerGesture(
-                                PointerGestureEvent::PinchUpdate {
-                                    surface_id,
-                                    position: pos,
-                                    delta: (0.0, 0.0).into(),
-                                    scale: state.scale.max(0.1),
-                                    rotation: 0.0,
-                                },
-                            )));
-                    }
+                        self.serializer.writer().send(SendType::Object(
+                            proto::Event::PointerGesture(PointerGestureEvent::PinchUpdate {
+                                surface_id,
+                                position: pos,
+                                delta: (0.0, 0.0).into(),
+                                scale: state.scale.max(0.1),
+                                rotation: 0.0,
+                            }),
+                        ));
+                    },
                     winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
                         state.active_pinch = false;
                         let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
@@ -1233,22 +1401,21 @@ impl ApplicationHandler<UserEvent> for App {
                         if !is_active {
                             self.pinch_state.remove(&surface_id);
                             let serial = self.next_serial();
-                            self.serializer
-                                .writer()
-                                .send(SendType::Object(proto::Event::PointerGesture(
-                                    PointerGestureEvent::PinchEnd {
-                                        surface_id,
-                                        position: pos,
-                                        serial,
-                                        cancelled,
-                                    },
-                                )));
+                            self.serializer.writer().send(SendType::Object(
+                                proto::Event::PointerGesture(PointerGestureEvent::PinchEnd {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    cancelled,
+                                }),
+                            ));
                         }
-                    }
+                    },
                 }
-            }
+            },
 
             WindowEvent::RotationGesture { delta, phase, .. } => {
+                debug!("rotation: surface={surface_id:?} phase={phase:?} delta_deg={delta}");
                 let pos = self.cursor_pos_for(window_id);
                 let state = self.pinch_state.entry(surface_id).or_default();
                 let was_active = state.active_pinch || state.active_rotation;
@@ -1260,33 +1427,29 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                         if !was_active {
                             let serial = self.next_serial();
-                            self.serializer
-                                .writer()
-                                .send(SendType::Object(proto::Event::PointerGesture(
-                                    PointerGestureEvent::PinchBegin {
-                                        surface_id,
-                                        position: pos,
-                                        serial,
-                                        fingers: 2,
-                                    },
-                                )));
+                            self.serializer.writer().send(SendType::Object(
+                                proto::Event::PointerGesture(PointerGestureEvent::PinchBegin {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    fingers: 2,
+                                }),
+                            ));
                         }
-                    }
+                    },
                     winit::event::TouchPhase::Moved => {
                         // winit uses CCW-positive, smithay uses clockwise-positive.
                         let rotation = -(delta as f64);
-                        self.serializer
-                            .writer()
-                            .send(SendType::Object(proto::Event::PointerGesture(
-                                PointerGestureEvent::PinchUpdate {
-                                    surface_id,
-                                    position: pos,
-                                    delta: (0.0, 0.0).into(),
-                                    scale: state.scale.max(0.1),
-                                    rotation,
-                                },
-                            )));
-                    }
+                        self.serializer.writer().send(SendType::Object(
+                            proto::Event::PointerGesture(PointerGestureEvent::PinchUpdate {
+                                surface_id,
+                                position: pos,
+                                delta: (0.0, 0.0).into(),
+                                scale: state.scale.max(0.1),
+                                rotation,
+                            }),
+                        ));
+                    },
                     winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
                         state.active_rotation = false;
                         let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
@@ -1294,20 +1457,18 @@ impl ApplicationHandler<UserEvent> for App {
                         if !is_active {
                             self.pinch_state.remove(&surface_id);
                             let serial = self.next_serial();
-                            self.serializer
-                                .writer()
-                                .send(SendType::Object(proto::Event::PointerGesture(
-                                    PointerGestureEvent::PinchEnd {
-                                        surface_id,
-                                        position: pos,
-                                        serial,
-                                        cancelled,
-                                    },
-                                )));
+                            self.serializer.writer().send(SendType::Object(
+                                proto::Event::PointerGesture(PointerGestureEvent::PinchEnd {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    cancelled,
+                                }),
+                            ));
                         }
-                    }
+                    },
                 }
-            }
+            },
             _ => {},
         }
     }
@@ -1412,7 +1573,10 @@ pub fn run(
         pressed_keycodes: HashSet::new(),
         last_cursor_pos: HashMap::new(),
         pointer_inside: HashSet::new(),
+        pointer_surface: None,
         pinch_state: HashMap::new(),
+
+        popup_state_by_surface: HashMap::new(),
     };
 
     event_loop.run_app(&mut app)?;
@@ -1441,10 +1605,7 @@ impl crate::client::backend::ClientBackend for WinitWgpuClientBackend {
         "winit-wgpu"
     }
 
-    fn run(
-        self: Box<Self>,
-        serializer: Serializer<proto::Event, proto::Request>,
-    ) -> Result<()> {
+    fn run(self: Box<Self>, serializer: Serializer<proto::Event, proto::Request>) -> Result<()> {
         run(serializer, self.options).location(loc!())
     }
 }

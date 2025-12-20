@@ -17,11 +17,18 @@ use smithay_client_toolkit::primary_selection::device::PrimarySelectionDevice;
 use smithay_client_toolkit::reexports::client::protocol::wl_keyboard::WlKeyboard;
 use smithay_client_toolkit::reexports::client::protocol::wl_seat::WlSeat;
 
+use smithay::reexports::wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gesture_hold_v1::ZwpPointerGestureHoldV1;
+use smithay::reexports::wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1;
+use smithay::reexports::wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gesture_swipe_v1::ZwpPointerGestureSwipeV1;
+
 #[derive(Debug)]
 pub(crate) struct SeatObject<P> {
     pub(crate) seat: WlSeat,
     pub(crate) keyboard: Option<WlKeyboard>,
     pub(crate) pointer: Option<P>,
+    pub(crate) pinch_gesture: Option<ZwpPointerGesturePinchV1>,
+    pub(crate) swipe_gesture: Option<ZwpPointerGestureSwipeV1>,
+    pub(crate) hold_gesture: Option<ZwpPointerGestureHoldV1>,
     pub(crate) data_device: DataDevice,
     pub(crate) primary_selection_device: Option<PrimarySelectionDevice>,
 }

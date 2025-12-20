@@ -490,6 +490,9 @@ impl SeatHandler for WprsState {
                 seat: seat.clone(),
                 keyboard: None,
                 pointer: None,
+                pinch_gesture: None,
+                swipe_gesture: None,
+                hold_gesture: None,
                 data_device,
                 primary_selection_device,
             });

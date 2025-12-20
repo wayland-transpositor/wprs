@@ -53,6 +53,8 @@ use smithay_client_toolkit::shm::Shm;
 use smithay_client_toolkit::shm::slot::Buffer as SlotBuffer;
 use smithay_client_toolkit::shm::slot::SlotPool;
 
+use smithay::reexports::wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1::ZwpPointerGesturesV1;
+
 use crate::utils::client::SeatObject;
 use crate::constants;
 use crate::filtering;
@@ -118,6 +120,7 @@ pub struct WprsClientState {
     pub(super) shm_state: Shm,
     pub(super) xdg_shell_state: XdgShell,
     pub(super) wp_viewporter: Option<SimpleGlobal<WpViewporter, 1>>,
+    pub(super) wp_pointer_gestures: Option<SimpleGlobal<ZwpPointerGesturesV1, 3>>,
 
     pub(super) data_device_manager_state: DataDeviceManagerState,
     pub(super) primary_selection_manager_state: Option<PrimarySelectionManagerState>,
@@ -145,6 +148,11 @@ pub struct WprsClientState {
     pub(super) last_implicit_grab_serial: Option<u32>,
     pub(super) last_mouse_down_serial: Option<u32>,
     pub(super) current_focus: Option<WlSurface>,
+    pub(super) last_pointer_pos: Option<(WlSurfaceId, Point<f64>)>,
+
+    pub(super) active_pinch_surface: Option<WlSurfaceId>,
+    pub(super) active_swipe_surface: Option<WlSurfaceId>,
+    pub(super) active_hold_surface: Option<WlSurfaceId>,
 
     pub(super) title_prefix: String,
 
@@ -185,6 +193,10 @@ impl WprsClientState {
                 .context(loc!(), "wp_viewporter is not available")
                 .warn(loc!())
                 .ok(),
+            wp_pointer_gestures: SimpleGlobal::<ZwpPointerGesturesV1, 3>::bind(&globals, &qh)
+                .context(loc!(), "zwp_pointer_gestures_v1 is not available")
+                .warn(loc!())
+                .ok(),
             data_device_manager_state: DataDeviceManagerState::bind(&globals, &qh)
                 .context(loc!(), "data device manager is not available")?,
             primary_selection_manager_state: PrimarySelectionManagerState::bind(&globals, &qh)
@@ -214,6 +226,11 @@ impl WprsClientState {
             last_implicit_grab_serial: None,
             last_mouse_down_serial: None,
             current_focus: None,
+            last_pointer_pos: None,
+
+            active_pinch_surface: None,
+            active_swipe_surface: None,
+            active_hold_surface: None,
             title_prefix: options.title_prefix,
             buffer_cache: None,
         })

@@ -20,10 +20,12 @@ use std::thread;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
+use winit::dpi::PhysicalPosition;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::Window;
+use winit::window::WindowLevel;
 
 use calloop::EventLoop as CalloopEventLoop;
 use calloop::channel::Event as CalloopChannelEvent;
@@ -51,6 +53,7 @@ use crate::protocols::wprs::wayland::{
 use crate::protocols::wprs::xdg_shell::{
     DecorationMode, ToplevelClose, ToplevelConfigure, ToplevelEvent, WindowState,
 };
+use crate::protocols::wprs::xdg_shell::XdgPopupState;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct PinchGestureState {
@@ -69,6 +72,22 @@ pub struct WinitWgpuOptions {
 #[derive(Debug)]
 pub enum UserEvent {
     ServerMessage(RecvType<Request>),
+    DecodedFrame(DecodedFrame),
+}
+
+#[derive(Debug)]
+pub struct DecodedFrame {
+    pub surface_id: WlSurfaceId,
+    pub metadata: crate::protocols::wprs::wayland::BufferMetadata,
+    pub padded_row_bytes: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct DecodeJob {
+    surface_id: WlSurfaceId,
+    metadata: crate::protocols::wprs::wayland::BufferMetadata,
+    filtered: crate::vec4u8::Vec4u8s,
 }
 
 #[derive(Clone)]
@@ -92,8 +111,6 @@ struct WindowRenderer {
     texture: Option<wgpu::Texture>,
     texture_size: Option<(u32, u32)>,
 
-    scratch_unfiltered: Vec<u8>,
-    scratch_padded: Vec<u8>,
 }
 
 impl WindowRenderer {
@@ -247,8 +264,6 @@ impl WindowRenderer {
             bind_group: None,
             texture: None,
             texture_size: None,
-            scratch_unfiltered: Vec::new(),
-            scratch_padded: Vec::new(),
         })
     }
 
@@ -258,29 +273,15 @@ impl WindowRenderer {
         self.surface.configure(&shared.device, &self.config);
     }
 
-    fn update_texture_from_filtered_bgra(
+    fn update_texture_from_padded_bgra(
         &mut self,
         shared: &WgpuShared,
         metadata: &crate::protocols::wprs::wayland::BufferMetadata,
-        filtered_data: &crate::vec4u8::Vec4u8s,
+        padded_row_bytes: u32,
+        padded_data: &[u8],
     ) {
         let width = metadata.width as u32;
         let height = metadata.height as u32;
-        let src_stride = metadata.stride as usize;
-        let row_bytes = metadata.width as usize * 4;
-
-        self.scratch_unfiltered.resize(metadata.len(), 0);
-        filtering::unfilter(filtered_data, &mut self.scratch_unfiltered);
-
-        let padded_row_bytes = align_up(row_bytes, 256);
-        self.scratch_padded
-            .resize(padded_row_bytes * height as usize, 0);
-        for y in 0..height as usize {
-            let src = &self.scratch_unfiltered[y * src_stride..y * src_stride + row_bytes];
-            let dst =
-                &mut self.scratch_padded[y * padded_row_bytes..y * padded_row_bytes + row_bytes];
-            dst.copy_from_slice(src);
-        }
 
         if self.texture_size != Some((width, height)) {
             let texture = shared.device.create_texture(&wgpu::TextureDescriptor {
@@ -325,10 +326,10 @@ impl WindowRenderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &self.scratch_padded,
+            padded_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(padded_row_bytes as u32),
+                bytes_per_row: Some(padded_row_bytes),
                 rows_per_image: Some(height),
             },
             wgpu::Extent3d {
@@ -397,6 +398,29 @@ fn align_up(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
 
+fn decode_filtered_to_padded_bgra(
+    metadata: &crate::protocols::wprs::wayland::BufferMetadata,
+    filtered: &crate::vec4u8::Vec4u8s,
+) -> (u32, Vec<u8>) {
+    let width = metadata.width as usize;
+    let height = metadata.height as usize;
+    let src_stride = metadata.stride as usize;
+    let row_bytes = width * 4;
+
+    let mut unfiltered = vec![0u8; metadata.len()];
+    filtering::unfilter(filtered, &mut unfiltered);
+
+    let padded_row_bytes = align_up(row_bytes, 256);
+    let mut padded = vec![0u8; padded_row_bytes * height];
+    for y in 0..height {
+        let src = &unfiltered[y * src_stride..y * src_stride + row_bytes];
+        let dst = &mut padded[y * padded_row_bytes..y * padded_row_bytes + row_bytes];
+        dst.copy_from_slice(src);
+    }
+
+    (padded_row_bytes as u32, padded)
+}
+
 fn output_info_from_monitor(id: u32, monitor: &winit::monitor::MonitorHandle) -> OutputInfo {
     let name = monitor.name();
     let scale_factor = monitor.scale_factor().round() as i32;
@@ -431,6 +455,7 @@ fn output_info_from_monitor(id: u32, monitor: &winit::monitor::MonitorHandle) ->
 struct App {
     shared: WgpuShared,
     serializer: Serializer<proto::Event, Request>,
+    decode_tx: std::sync::mpsc::Sender<DecodeJob>,
     buffer_cache: Option<UncompressedBufferData>,
     windows: HashMap<WlSurfaceId, WindowRenderer>,
     surface_by_window: HashMap<winit::window::WindowId, WlSurfaceId>,
@@ -455,6 +480,47 @@ struct App {
 }
 
 impl App {
+    fn schedule_decode(
+        &self,
+        surface_id: WlSurfaceId,
+        metadata: crate::protocols::wprs::wayland::BufferMetadata,
+        filtered: crate::vec4u8::Vec4u8s,
+    ) {
+        // If the receiver is gone, we are shutting down.
+        let _ = self.decode_tx.send(DecodeJob {
+            surface_id,
+            metadata,
+            filtered,
+        });
+    }
+
+    fn compute_popup_position(&self, popup: &XdgPopupState) -> Option<PhysicalPosition<i32>> {
+        let parent_renderer = self.windows.get(&popup.parent_surface_id)?;
+        let parent_pos = parent_renderer.window.outer_position().ok()?;
+
+        // The positioner is expressed in the parent's surface coordinate space.
+        // Map it into a global coordinate space using the parent's outer position.
+        let anchor = popup.positioner.anchor_rect;
+        let offset = popup.positioner.offset;
+
+        let server_scale = self
+            .surface_scale_factor
+            .get(&popup.parent_surface_id)
+            .copied()
+            .unwrap_or(1)
+            .max(1) as f64;
+        let client_scale = parent_renderer.window.scale_factor();
+        let total_scale = (client_scale / server_scale) * self.ui_scale_factor.max(0.1);
+
+        let dx = (anchor.loc.x + offset.x) as f64 * total_scale;
+        let dy = (anchor.loc.y + offset.y) as f64 * total_scale;
+
+        Some(PhysicalPosition::new(
+            parent_pos.x.saturating_add(dx.round() as i32),
+            parent_pos.y.saturating_add(dy.round() as i32),
+        ))
+    }
+
     fn generate_keymap_from_tools() -> Result<String> {
         // Preferred path: ask X11 for the active keymap (works under Xwayland/X11).
         // `setxkbmap -print` emits an XKB config, `xkbcomp -xkb - -` compiles it to a keymap.
@@ -821,14 +887,23 @@ impl App {
                 let Some(role) = &state.role else {
                     return Ok(());
                 };
-                let Some(toplevel) = role.as_xdg_toplevel() else {
+                let toplevel = role.as_xdg_toplevel();
+                let popup = role.as_xdg_popup();
+                if toplevel.is_none() && popup.is_none() {
                     return Ok(());
-                };
+                }
 
-                // Ensure we have a window for this toplevel.
+                // Ensure we have a window for this surface.
                 if !self.windows.contains_key(&surface_id) {
-                    let title = toplevel.title.clone().unwrap_or_else(|| "wprs".to_string());
-                    let mut attrs = Window::default_attributes().with_title(title);
+                    let mut attrs = if let Some(toplevel) = toplevel {
+                        let title = toplevel.title.clone().unwrap_or_else(|| "wprs".to_string());
+                        Window::default_attributes().with_title(title)
+                    } else {
+                        Window::default_attributes()
+                            .with_decorations(false)
+                            .with_resizable(false)
+                            .with_window_level(WindowLevel::AlwaysOnTop)
+                    };
 
                     if let Some(BufferAssignment::New(buf)) = &state.buffer {
                         let w = buf.metadata.width.max(1) as u32;
@@ -841,6 +916,11 @@ impl App {
                             logical_w * self.ui_scale_factor.max(0.1),
                             logical_h * self.ui_scale_factor.max(0.1),
                         ));
+                    } else if let Some(popup) = popup {
+                        attrs = attrs.with_inner_size(LogicalSize::new(
+                            (popup.positioner.width.max(1) as f64) * self.ui_scale_factor.max(0.1),
+                            (popup.positioner.height.max(1) as f64) * self.ui_scale_factor.max(0.1),
+                        ));
                     }
 
                     let window = Arc::new(event_loop.create_window(attrs).location(loc!())?);
@@ -849,8 +929,16 @@ impl App {
                     self.surface_by_window.insert(window.id(), surface_id);
                     self.windows.insert(surface_id, renderer);
 
+                    if let Some(popup) = popup {
+                        if let Some(pos) = self.compute_popup_position(popup) {
+                            window.set_outer_position(pos);
+                        }
+                    }
+
                     // Send an initial configure so apps can begin drawing.
-                    self.send_configure_for_surface(surface_id);
+                    if toplevel.is_some() {
+                        self.send_configure_for_surface(surface_id);
+                    }
                 }
 
                 // Apply buffer if present.
@@ -881,14 +969,9 @@ impl App {
                             return Ok(());
                         }
                     };
-                    let renderer = self.windows.get_mut(&surface_id).unwrap();
-                    renderer.update_texture_from_filtered_bgra(
-                        &self.shared,
-                        &buf.metadata,
-                        &filtered,
-                    );
-                    renderer.window.request_redraw();
-                    self.surfaces_with_frame.insert(surface_id);
+                    // Unfiltering can be expensive on non-SIMD platforms; do it
+                    // off the winit/UI thread to keep the window responsive.
+                    self.schedule_decode(surface_id, buf.metadata, filtered);
                 }
                 Ok(())
             },
@@ -919,6 +1002,19 @@ impl ApplicationHandler<UserEvent> for App {
                 self.handle_server_message(event_loop, msg)
                     .log_and_ignore(loc!());
             },
+            UserEvent::DecodedFrame(frame) => {
+                let Some(renderer) = self.windows.get_mut(&frame.surface_id) else {
+                    return;
+                };
+                renderer.update_texture_from_padded_bgra(
+                    &self.shared,
+                    &frame.metadata,
+                    frame.padded_row_bytes,
+                    &frame.data,
+                );
+                renderer.window.request_redraw();
+                self.surfaces_with_frame.insert(frame.surface_id);
+            }
         }
     }
 
@@ -1225,15 +1321,35 @@ pub fn run(
     event_loop.set_control_flow(ControlFlow::Wait);
     let proxy = event_loop.create_proxy();
 
+    let (decode_tx, decode_rx) = std::sync::mpsc::channel::<DecodeJob>();
+    {
+        let proxy = proxy.clone();
+        thread::spawn(move || {
+            while let Ok(job) = decode_rx.recv() {
+                let (padded_row_bytes, padded) =
+                    decode_filtered_to_padded_bgra(&job.metadata, &job.filtered);
+                let _ = proxy.send_event(UserEvent::DecodedFrame(DecodedFrame {
+                    surface_id: job.surface_id,
+                    metadata: job.metadata,
+                    padded_row_bytes,
+                    data: padded,
+                }));
+            }
+        });
+    }
+
     // Forward serializer messages to the winit event loop.
     let reader = serializer.reader().location(loc!())?;
+    let proxy_for_reader = proxy.clone();
     thread::spawn(move || {
         let mut loop_: CalloopEventLoop<()> = CalloopEventLoop::try_new().expect("calloop init");
         loop_
             .handle()
             .insert_source(reader, move |event, _metadata, _state| {
                 if let CalloopChannelEvent::Msg(msg) = event {
-                    proxy.send_event(UserEvent::ServerMessage(msg)).ok();
+                    proxy_for_reader
+                        .send_event(UserEvent::ServerMessage(msg))
+                        .ok();
                 }
             })
             .expect("insert serializer reader");
@@ -1276,6 +1392,7 @@ pub fn run(
     let mut app = App {
         shared,
         serializer,
+        decode_tx,
         buffer_cache: None,
         windows: HashMap::new(),
         surface_by_window: HashMap::new(),

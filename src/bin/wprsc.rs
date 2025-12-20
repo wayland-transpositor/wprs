@@ -39,10 +39,17 @@ fn main() -> Result<()> {
     utils::exit_on_thread_panic();
 
     info!(
-        "wprsc config: backend={:?} auto_reconnect={} endpoint_present={}",
+        "wprsc config: backend={:?} keyboard_mode={:?} ui_scale_factor={} auto_reconnect={} endpoint_present={}",
         config.backend,
+        config.keyboard_mode,
+        config.ui_scale_factor,
         config.auto_reconnect,
         config.endpoint.is_some()
+    );
+
+    info!(
+        "wprsc endpoints: socket={:?} control_socket={:?} endpoint={:?}",
+        config.socket, config.control_socket, config.endpoint
     );
 
     if config.forward_only {
@@ -68,21 +75,25 @@ fn main() -> Result<()> {
         on_connect: vec![proto::SendType::Object(proto::Event::WprsClientConnect)],
     };
 
-    let serializer: Serializer<proto::Event, proto::Request> = match &config.endpoint {
-        Some(endpoint) => {
-            Serializer::new_client_endpoint_with_options(endpoint.clone(), serializer_options)
-                .with_context(loc!(), || {
+    let serializer: Serializer<proto::Event, proto::Request> =
+        match &config.endpoint {
+            Some(endpoint) => {
+                Serializer::new_client_endpoint_with_options(endpoint.clone(), serializer_options)
+                    .with_context(loc!(), || {
                     format!("Serializer failed to initialize for endpoint {endpoint:?}.")
                 })?
-        }
-        None => {
-            fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
-            Serializer::new_client_with_options(&config.socket, serializer_options)
-                .with_context(loc!(), || {
-                    format!("Serializer failed to initialize for socket {:?}.", &config.socket)
-                })?
-        }
-    };
+            },
+            None => {
+                fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
+                Serializer::new_client_with_options(&config.socket, serializer_options)
+                    .with_context(loc!(), || {
+                        format!(
+                            "Serializer failed to initialize for socket {:?}.",
+                            &config.socket
+                        )
+                    })?
+            },
+        };
 
     let backend = build_client_backend(
         config.backend,

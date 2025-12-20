@@ -26,7 +26,9 @@ impl WaylandClientBackend {
     }
 
     pub fn connect_to_env(config: ClientBackendConfig) -> Result<Self> {
-        let conn = Connection::connect_to_env().map_err(|e| anyhow!(e)).location(loc!())?;
+        let conn = Connection::connect_to_env()
+            .map_err(|e| anyhow!(e))
+            .location(loc!())?;
         Ok(Self::new(config, conn))
     }
 
@@ -57,9 +59,15 @@ fn run_wayland(
     let (globals, event_queue) = registry_queue_init(&conn)?;
     let reader = serializer.reader().location(loc!())?;
 
+    info!(
+        "wprsc(wayland): starting (title_prefix={:?} ui_scale_factor={})",
+        config.title_prefix, config.ui_scale_factor
+    );
+
     let options = ClientOptions {
         title_prefix: config.title_prefix,
     };
+
     let mut state = WprsClientState::new(
         event_queue.handle(),
         globals,
@@ -69,6 +77,12 @@ fn run_wayland(
     )
     .location(loc!())?;
 
+    info!(
+        "wprsc(wayland): globals: wp_viewporter={} wp_pointer_gestures={}",
+        state.wp_viewporter.is_some(),
+        state.wp_pointer_gestures.is_some()
+    );
+
     {
         let capabilities = state.capabilities.clone();
         control_server::start(config.control_socket, move |input: &str| {
@@ -77,7 +91,7 @@ fn run_wayland(
                     .expect("a map with non-string keys was added to Capabilities"),
                 _ => {
                     bail!("Unknown command: {input:?}")
-                }
+                },
             })
         })
         .location(loc!())?;

@@ -21,18 +21,19 @@ use std::thread;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 
-use super::subsurface;
-use super::subsurface::RemoteSubSurface;
 use super::RemoteCursor;
 use super::RemoteSurface;
-use crate::client::backends::wayland::xdg_shell::RemoteXdgPopup;
-use crate::client::backends::wayland::xdg_shell::RemoteXdgToplevel;
 use super::Role;
 use super::WprsClientState;
+use super::subsurface;
+use super::subsurface::RemoteSubSurface;
+use crate::client::backends::wayland::xdg_shell::RemoteXdgPopup;
+use crate::client::backends::wayland::xdg_shell::RemoteXdgToplevel;
 use crate::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;
 use crate::protocols::wprs::ClientId;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
@@ -572,10 +573,20 @@ impl WprsClientState {
 
     #[instrument(skip(self), level = "debug")]
     fn handle_capabilities(&mut self, caps: Capabilities) -> Result<()> {
+        info!("server capabilities: xwayland={}", caps.xwayland);
         self.capabilities
             .set(caps)
             .map_err(|_| anyhow!("attempted to set capabilities more than once"))
             .location(loc!())
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    fn handle_display_config(&mut self, cfg: DisplayConfig) -> Result<()> {
+        info!(
+            "server display config: scale_factor={} dpi={:?}",
+            cfg.scale_factor, cfg.dpi
+        );
+        Ok(())
     }
 
     #[instrument(skip_all, level = "debug")]
@@ -598,10 +609,7 @@ impl WprsClientState {
                 self.handle_client_disconnected(client)
             },
             RecvType::Object(Request::Capabilities(caps)) => self.handle_capabilities(caps),
-            RecvType::Object(Request::DisplayConfig(_)) => {
-                // This backend is already driven by Wayland output scaling.
-                Ok(())
-            },
+            RecvType::Object(Request::DisplayConfig(cfg)) => self.handle_display_config(cfg),
             RecvType::RawBuffer(buffer) => self.handle_buffer(buffer),
         }
         .log_and_ignore(loc!())

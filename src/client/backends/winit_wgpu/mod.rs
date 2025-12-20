@@ -432,33 +432,6 @@ struct App {
 }
 
 impl App {
-    fn logical_pos(
-        window: &winit::window::Window,
-        position: winit::dpi::PhysicalPosition<f64>,
-    ) -> crate::protocols::wprs::geometry::Point<f64> {
-        let scale = window.scale_factor();
-        let logical: winit::dpi::LogicalPosition<f64> = position.to_logical(scale);
-        crate::protocols::wprs::geometry::Point {
-            x: logical.x,
-            y: logical.y,
-        }
-    }
-
-    fn logical_size(window: &winit::window::Window) -> Size<Option<NonZeroU32>> {
-        let scale = window.scale_factor();
-        let size = window.inner_size();
-        let logical: winit::dpi::LogicalSize<f64> = size.to_logical(scale);
-
-        // Wayland sizes are logical surface units (not physical pixels).
-        let w = (logical.width.round() as u32).max(1);
-        let h = (logical.height.round() as u32).max(1);
-
-        Size {
-            w: NonZeroU32::new(w),
-            h: NonZeroU32::new(h),
-        }
-    }
-
     fn generate_keymap_from_tools() -> Result<String> {
         // Preferred path: ask X11 for the active keymap (works under Xwayland/X11).
         // `setxkbmap -print` emits an XKB config, `xkbcomp -xkb - -` compiles it to a keymap.
@@ -779,9 +752,15 @@ impl App {
         let Some(renderer) = self.windows.get(&surface_id) else {
             return;
         };
+        let size = renderer.window.inner_size();
         let configure = ToplevelConfigure {
             surface_id,
-            new_size: Self::logical_size(&renderer.window),
+            // Keep configure sizes in physical pixels to match the wprs buffer
+            // metadata (width/height) and pointer coordinates in this backend.
+            new_size: Size {
+                w: NonZeroU32::new(size.width.max(1)),
+                h: NonZeroU32::new(size.height.max(1)),
+            },
             suggested_bounds: None,
             decoration_mode: DecorationMode::Server,
             state: WindowState::from_bits(0),
@@ -920,16 +899,18 @@ impl ApplicationHandler<UserEvent> for App {
             match &event {
                 WindowEvent::Resized(size) => {
                     renderer.resize(&self.shared, *size);
+                    debug!("winit window resized: surface={surface_id:?} size={size:?}");
                     self.send_configure_for_surface(surface_id);
                 },
                 WindowEvent::ScaleFactorChanged { .. } => {
-                    // Winit reports physical sizes; propagate the logical size.
+                    debug!("winit window scale factor changed: surface={surface_id:?}");
                     self.send_configure_for_surface(surface_id);
                 },
                 WindowEvent::RedrawRequested => {
                     renderer.render(&self.shared).log_and_ignore(loc!());
                 },
                 WindowEvent::CloseRequested => {
+                    debug!("winit close requested: surface={surface_id:?}");
                     self.serializer
                         .writer()
                         .send(SendType::Object(proto::Event::Toplevel(
@@ -983,10 +964,10 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_key(linux_keycode, state);
             },
             WindowEvent::CursorMoved { position, .. } => {
-                let Some(renderer) = self.windows.get(&surface_id) else {
-                    return;
+                let pos = crate::protocols::wprs::geometry::Point {
+                    x: position.x,
+                    y: position.y,
                 };
-                let pos = Self::logical_pos(&renderer.window, position);
                 self.last_cursor_pos.insert(window_id, pos);
 
                 // Some platforms don't emit CursorEntered if the cursor is
@@ -1033,14 +1014,7 @@ impl ApplicationHandler<UserEvent> for App {
                         let v120_y = (y * 120.0) as i32;
                         (f64::from(x) * 15.0, f64::from(y) * 15.0, v120_x, v120_y)
                     },
-                    MouseScrollDelta::PixelDelta(pos) => {
-                        let Some(renderer) = self.windows.get(&surface_id) else {
-                            return;
-                        };
-                        let scale = renderer.window.scale_factor();
-                        let logical: winit::dpi::LogicalPosition<f64> = pos.to_logical(scale);
-                        (logical.x, logical.y, 0, 0)
-                    }
+                    MouseScrollDelta::PixelDelta(pos) => (pos.x, pos.y, 0, 0),
                 };
                 let pos = self.cursor_pos_for(window_id);
                 self.send_pointer_event(

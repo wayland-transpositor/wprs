@@ -38,6 +38,13 @@ fn main() -> Result<()> {
     .location(loc!())?;
     utils::exit_on_thread_panic();
 
+    info!(
+        "wprsc config: backend={:?} auto_reconnect={} endpoint_present={}",
+        config.backend,
+        config.auto_reconnect,
+        config.endpoint.is_some()
+    );
+
     if config.forward_only {
         let endpoint = config
             .endpoint

@@ -520,6 +520,37 @@ pub struct PointerEvent {
     pub kind: PointerEventKind,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub enum TouchPhase {
+    Started,
+    Moved,
+    Ended,
+    Cancelled,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub enum PointerGestureEvent {
+    PinchBegin {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        fingers: u32,
+    },
+    PinchUpdate {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        delta: Point<f64>,
+        scale: f64,
+        rotation: f64,
+    },
+    PinchEnd {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        cancelled: bool,
+    },
+}
+
 impl PointerEvent {
     #[cfg(feature = "wayland-client")]
     pub fn from_smithay(surface_id: &WlSurfaceId, event: &SctkPointerEvent) -> Self {

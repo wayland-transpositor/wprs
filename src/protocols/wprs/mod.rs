@@ -680,6 +680,7 @@ pub enum Event {
     WprsClientConnect,
     Output(wayland::OutputEvent),
     PointerFrame(Vec<wayland::PointerEvent>),
+    PointerGesture(wayland::PointerGestureEvent),
     KeyboardEvent(wayland::KeyboardEvent),
     Toplevel(xdg_shell::ToplevelEvent),
     Popup(xdg_shell::PopupEvent),

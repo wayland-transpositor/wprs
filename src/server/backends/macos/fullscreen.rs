@@ -10,6 +10,9 @@ use crate::protocols::wprs::wayland::Buffer;
 use crate::protocols::wprs::wayland::BufferAssignment;
 use crate::protocols::wprs::wayland::BufferData;
 use crate::protocols::wprs::wayland::BufferMetadata;
+use crate::protocols::wprs::wayland::AxisSource;
+use crate::protocols::wprs::wayland::PointerEventKind;
+use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::SurfaceState;
 use crate::protocols::wprs::wayland::WlSurfaceId;
 use crate::protocols::wprs::xdg_shell;
@@ -23,6 +26,12 @@ pub struct MacosFullscreenBackend {
     pressed_buttons: u32,
     last_pos: (f64, f64),
     display_config: DisplayConfig,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum ScrollUnit {
+    Line,
+    Pixel,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -118,6 +127,9 @@ impl PollingBackend for MacosFullscreenBackend {
                     self.handle_pointer_event(e).log_and_ignore(loc!());
                 }
             }
+            Event::PointerGesture(event) => {
+                self.handle_pointer_gesture(event).log_and_ignore(loc!());
+            }
             // Keyboard input injection is currently best-effort.
             // wprsc primarily emits Linux evdev raw codes, which don't map 1:1
             // to macOS CGKeyCode.
@@ -135,26 +147,65 @@ impl MacosFullscreenBackend {
         self.last_pos = (x, y);
 
         match e.kind {
-            wayland::PointerEventKind::Enter { .. } | wayland::PointerEventKind::Leave { .. } => {
+            PointerEventKind::Enter { .. } | PointerEventKind::Leave { .. } => {
                 Ok(())
             }
-            wayland::PointerEventKind::Motion => {
+            PointerEventKind::Motion => {
                 post_mouse_motion(self.pressed_buttons, x, y).location(loc!())
             }
-            wayland::PointerEventKind::Press { button, .. } => {
+            PointerEventKind::Press { button, .. } => {
                 let mask = button_mask(button);
                 self.pressed_buttons |= mask;
                 post_mouse_button(true, button, x, y).location(loc!())
             }
-            wayland::PointerEventKind::Release { button, .. } => {
+            PointerEventKind::Release { button, .. } => {
                 let mask = button_mask(button);
                 self.pressed_buttons &= !mask;
                 post_mouse_button(false, button, x, y).location(loc!())
             }
-            wayland::PointerEventKind::Axis { horizontal, vertical, .. } => {
-                // Prefer discrete wheel steps when available.
-                post_scroll(horizontal.discrete, vertical.discrete).location(loc!())
+            PointerEventKind::Axis {
+                horizontal,
+                vertical,
+                source,
+            } => {
+                let unit = match source {
+                    Some(AxisSource::Finger | AxisSource::Continuous) => ScrollUnit::Pixel,
+                    _ => ScrollUnit::Line,
+                };
+
+                match unit {
+                    ScrollUnit::Line => post_scroll(
+                        unit,
+                        horizontal.discrete,
+                        vertical.discrete,
+                        false,
+                    )
+                    .location(loc!()),
+                    ScrollUnit::Pixel => post_scroll(
+                        unit,
+                        horizontal.absolute.round() as i32,
+                        vertical.absolute.round() as i32,
+                        false,
+                    )
+                    .location(loc!()),
+                }
             }
+        }
+    }
+
+    fn handle_pointer_gesture(&mut self, e: PointerGestureEvent) -> Result<()> {
+        match e {
+            PointerGestureEvent::PinchBegin { .. } => Ok(()),
+            PointerGestureEvent::PinchUpdate { scale, .. } => {
+                // Best-effort mapping: translate pinch-to-zoom into Ctrl+scroll.
+                // `scale` is absolute (1.0 at begin).
+                let delta = ((scale - 1.0) * 120.0).round() as i32;
+                if delta != 0 {
+                    post_scroll(ScrollUnit::Pixel, 0, delta, true).location(loc!())?;
+                }
+                Ok(())
+            }
+            PointerGestureEvent::PinchEnd { .. } => Ok(()),
         }
     }
 }
@@ -199,6 +250,7 @@ mod macos {
     type CGEventType = u32;
     type CGMouseButton = u32;
     type CGEventTapLocation = u32;
+    type CGEventFlags = u64;
 
     #[repr(C)]
     #[derive(Copy, Clone)]
@@ -248,6 +300,8 @@ mod macos {
             wheel2: i32,
         ) -> CGEventRef;
 
+        fn CGEventSetFlags(event: CGEventRef, flags: CGEventFlags);
+
         fn CGEventPost(tap: CGEventTapLocation, event: CGEventRef);
     }
 
@@ -276,6 +330,9 @@ mod macos {
     const K_CG_MOUSE_BUTTON_CENTER: CGMouseButton = 2;
 
     const K_CG_SCROLL_EVENT_UNIT_LINE: u32 = 1;
+    const K_CG_SCROLL_EVENT_UNIT_PIXEL: u32 = 0;
+
+    const K_CG_EVENT_FLAG_MASK_CONTROL: CGEventFlags = 1 << 18;
 
     pub(super) fn capture_main_display_bgra() -> Result<(BufferMetadata, Vec<u8>)> {
         unsafe {
@@ -379,18 +436,28 @@ mod macos {
         }
     }
 
-    pub(super) fn post_scroll(horizontal_discrete: i32, vertical_discrete: i32) -> Result<()> {
+    pub(super) fn post_scroll(
+        unit: super::ScrollUnit,
+        horizontal: i32,
+        vertical: i32,
+        control: bool,
+    ) -> Result<()> {
         unsafe {
-            // Wayland positive Y scroll is "down" for most toolkits; Quartz
-            // line scrolling is positive "up". Flip vertical.
+            let units = match unit {
+                super::ScrollUnit::Line => K_CG_SCROLL_EVENT_UNIT_LINE,
+                super::ScrollUnit::Pixel => K_CG_SCROLL_EVENT_UNIT_PIXEL,
+            };
             let ev = CGEventCreateScrollWheelEvent(
                 ptr::null(),
-                K_CG_SCROLL_EVENT_UNIT_LINE,
+                units,
                 2,
-                -vertical_discrete,
-                horizontal_discrete,
+                vertical,
+                horizontal,
             );
             ensure!(!ev.is_null(), "CGEventCreateScrollWheelEvent returned null");
+            if control {
+                CGEventSetFlags(ev, K_CG_EVENT_FLAG_MASK_CONTROL);
+            }
             CGEventPost(K_CG_EVENT_TAP_HID, ev);
             CFRelease(ev as CFTypeRef);
             Ok(())
@@ -478,6 +545,11 @@ fn post_mouse_button(_down: bool, _button: u32, _x: f64, _y: f64) -> Result<()> 
 }
 
 #[cfg(not(target_os = "macos"))]
-fn post_scroll(_horizontal_discrete: i32, _vertical_discrete: i32) -> Result<()> {
+fn post_scroll(
+    _unit: ScrollUnit,
+    _horizontal: i32,
+    _vertical: i32,
+    _control: bool,
+) -> Result<()> {
     Ok(())
 }

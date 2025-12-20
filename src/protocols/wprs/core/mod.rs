@@ -20,6 +20,7 @@ use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::wayland::DataEvent;
 use crate::protocols::wprs::wayland::KeyboardEvent;
 use crate::protocols::wprs::wayland::OutputEvent;
+use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::PointerEvent;
 use crate::protocols::wprs::wayland::SurfaceEvent;
 use crate::protocols::wprs::wayland::SurfaceRequest;
@@ -76,6 +77,7 @@ pub trait Backend {
     fn on_popup_event(&mut self, event: PopupEvent) -> Result<()>;
     fn on_keyboard_event(&mut self, event: KeyboardEvent) -> Result<()>;
     fn on_pointer_frame(&mut self, events: Vec<PointerEvent>) -> Result<()>;
+    fn on_pointer_gesture(&mut self, event: PointerGestureEvent) -> Result<()>;
     fn on_output_event(&mut self, event: OutputEvent) -> Result<()>;
     fn on_data_event(&mut self, event: DataEvent) -> Result<()>;
     fn on_surface_event(&mut self, event: SurfaceEvent) -> Result<()>;
@@ -94,6 +96,7 @@ pub fn dispatch_event<B: Backend>(backend: &mut B, event: Event) -> Result<()> {
         Event::Popup(event) => backend.on_popup_event(event).location(loc!())?,
         Event::KeyboardEvent(event) => backend.on_keyboard_event(event).location(loc!())?,
         Event::PointerFrame(events) => backend.on_pointer_frame(events).location(loc!())?,
+        Event::PointerGesture(event) => backend.on_pointer_gesture(event).location(loc!())?,
         Event::Output(event) => backend.on_output_event(event).location(loc!())?,
         Event::Data(event) => backend.on_data_event(event).location(loc!())?,
         Event::Surface(event) => backend.on_surface_event(event).location(loc!())?,
@@ -160,6 +163,10 @@ mod tests {
 
         fn on_pointer_frame(&mut self, events: Vec<PointerEvent>) -> Result<()> {
             self.pointer_frames.push(events);
+            Ok(())
+        }
+
+        fn on_pointer_gesture(&mut self, _event: PointerGestureEvent) -> Result<()> {
             Ok(())
         }
 

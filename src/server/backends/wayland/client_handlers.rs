@@ -55,6 +55,9 @@ use smithay::input::keyboard::ModifiersState;
 use smithay::input::keyboard::XkbContext;
 use smithay::input::pointer::AxisFrame;
 use smithay::input::pointer::ButtonEvent;
+use smithay::input::pointer::GesturePinchBeginEvent;
+use smithay::input::pointer::GesturePinchEndEvent;
+use smithay::input::pointer::GesturePinchUpdateEvent;
 use smithay::input::pointer::Focus;
 use smithay::input::pointer::MotionEvent;
 use smithay::output::Output;
@@ -91,6 +94,7 @@ use crate::protocols::wprs::wayland::KeyboardEvent;
 use crate::protocols::wprs::wayland::OutputEvent;
 use crate::protocols::wprs::wayland::PointerEvent;
 use crate::protocols::wprs::wayland::PointerEventKind;
+use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::RepeatInfo;
 use crate::protocols::wprs::wayland::SurfaceEvent;
 use crate::protocols::wprs::wayland::SurfaceEventPayload;
@@ -145,6 +149,100 @@ impl WprsServerState {
         };
 
         Ok((object_id, client, surface))
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    fn handle_pointer_gesture(&mut self, event: PointerGestureEvent) -> Result<()> {
+        let pointer = self.seat.get_pointer().location(loc!())?;
+
+        let (surface_id, position) = match event {
+            PointerGestureEvent::PinchBegin { surface_id, position, .. }
+            | PointerGestureEvent::PinchUpdate { surface_id, position, .. }
+            | PointerGestureEvent::PinchEnd { surface_id, position, .. } => (surface_id, position),
+        };
+
+        let surface = match self.object_client_surface_from_id(&surface_id) {
+            Ok((_, _, surface)) => surface,
+            Err(err) => {
+                let msg = match err {
+                    UnknownSurfaceErr::ObjectId(surface_id) => {
+                        anyhow!("Ignoring pointer gesture event for unknown object {:?}", surface_id)
+                    },
+                    UnknownSurfaceErr::Client(object_id) => {
+                        anyhow!("Ignoring pointer gesture event for unknown client {:?}", object_id)
+                    },
+                    UnknownSurfaceErr::Surface(client) => {
+                        anyhow!("Ignoring pointer gesture event for unknown surface {:?}", client)
+                    },
+                };
+                warn!("{msg:?}");
+                return Ok(());
+            },
+        };
+
+        let time = self.start_time.elapsed().as_millis() as u32;
+
+        // Ensure the pointer focus and position are correct before emitting a gesture.
+        pointer.motion(
+            self,
+            Some((surface, (0 as f64, 0 as f64).into())),
+            &MotionEvent {
+                location: position.into(),
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+            },
+        );
+
+        match event {
+            PointerGestureEvent::PinchBegin {
+                serial,
+                fingers,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_pinch_begin(
+                    self,
+                    &GesturePinchBeginEvent {
+                        serial,
+                        time,
+                        fingers,
+                    },
+                );
+            },
+            PointerGestureEvent::PinchUpdate {
+                delta,
+                scale,
+                rotation,
+                ..
+            } => {
+                pointer.gesture_pinch_update(
+                    self,
+                    &GesturePinchUpdateEvent {
+                        time,
+                        delta: delta.into(),
+                        scale,
+                        rotation,
+                    },
+                );
+            },
+            PointerGestureEvent::PinchEnd {
+                serial,
+                cancelled,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_pinch_end(
+                    self,
+                    &GesturePinchEndEvent {
+                        serial,
+                        time,
+                        cancelled,
+                    },
+                );
+            },
+        }
+
+        Ok(())
     }
 
     #[instrument(skip_all, level = "debug")]
@@ -1078,6 +1176,10 @@ impl core::Backend for WprsServerState {
 
     fn on_pointer_frame(&mut self, events: Vec<PointerEvent>) -> Result<()> {
         self.handle_pointer_frame(events)
+    }
+
+    fn on_pointer_gesture(&mut self, event: PointerGestureEvent) -> Result<()> {
+        self.handle_pointer_gesture(event)
     }
 
     fn on_output_event(&mut self, event: OutputEvent) -> Result<()> {

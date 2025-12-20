@@ -43,6 +43,7 @@ use crate::protocols::wprs::wayland::{
     AxisScroll, AxisSource, KeyInner, KeyState, KeyboardEvent, ModifierState, PointerEvent,
     PointerEventKind,
 };
+use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::{
     BufferAssignment, BufferData, Mode, OutputEvent, OutputInfo, Subpixel, SurfaceRequest,
     SurfaceRequestPayload, Transform, UncompressedBufferData, WlSurfaceId,
@@ -442,6 +443,8 @@ struct App {
     pressed_keycodes: HashSet<u32>,
     last_cursor_pos: HashMap<winit::window::WindowId, crate::protocols::wprs::geometry::Point<f64>>,
     pointer_inside: HashSet<winit::window::WindowId>,
+
+    pinch_scale: HashMap<WlSurfaceId, f64>,
 }
 
 impl App {
@@ -1056,6 +1059,10 @@ impl ApplicationHandler<UserEvent> for App {
                     },
                 };
                 let pos = self.cursor_pos_for(window_id);
+                let source = match delta {
+                    MouseScrollDelta::LineDelta(_, _) => Some(AxisSource::Wheel),
+                    MouseScrollDelta::PixelDelta(_) => Some(AxisSource::Finger),
+                };
                 self.send_pointer_event(
                     surface_id,
                     pos,
@@ -1070,10 +1077,71 @@ impl ApplicationHandler<UserEvent> for App {
                             discrete: v_discrete,
                             stop: false,
                         },
-                        source: Some(AxisSource::Wheel),
+                        source,
                     },
                 );
             },
+            WindowEvent::PinchGesture { delta, phase, .. } => {
+                let pos = self.cursor_pos_for(window_id);
+                let serial = self.next_serial();
+                match phase {
+                    winit::event::TouchPhase::Started => {
+                        self.pinch_scale.insert(surface_id, 1.0);
+                        self.serializer
+                            .writer()
+                            .send(SendType::Object(proto::Event::PointerGesture(
+                                PointerGestureEvent::PinchBegin {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    fingers: 2,
+                                },
+                            )));
+                    }
+                    winit::event::TouchPhase::Moved => {
+                        let entry = self.pinch_scale.entry(surface_id).or_insert(1.0);
+                        // `delta` is a relative magnification, keep an absolute scale for smithay.
+                        *entry = (*entry + delta).clamp(0.1, 10.0);
+                        self.serializer
+                            .writer()
+                            .send(SendType::Object(proto::Event::PointerGesture(
+                                PointerGestureEvent::PinchUpdate {
+                                    surface_id,
+                                    position: pos,
+                                    delta: (0.0, 0.0).into(),
+                                    scale: *entry,
+                                    rotation: 0.0,
+                                },
+                            )));
+                    }
+                    winit::event::TouchPhase::Ended => {
+                        self.pinch_scale.remove(&surface_id);
+                        self.serializer
+                            .writer()
+                            .send(SendType::Object(proto::Event::PointerGesture(
+                                PointerGestureEvent::PinchEnd {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    cancelled: false,
+                                },
+                            )));
+                    }
+                    winit::event::TouchPhase::Cancelled => {
+                        self.pinch_scale.remove(&surface_id);
+                        self.serializer
+                            .writer()
+                            .send(SendType::Object(proto::Event::PointerGesture(
+                                PointerGestureEvent::PinchEnd {
+                                    surface_id,
+                                    position: pos,
+                                    serial,
+                                    cancelled: true,
+                                },
+                            )));
+                    }
+                }
+            }
             _ => {},
         }
     }
@@ -1157,6 +1225,7 @@ pub fn run(
         pressed_keycodes: HashSet::new(),
         last_cursor_pos: HashMap::new(),
         pointer_inside: HashSet::new(),
+        pinch_scale: HashMap::new(),
     };
 
     event_loop.run_app(&mut app)?;

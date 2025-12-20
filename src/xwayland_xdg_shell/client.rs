@@ -738,12 +738,13 @@ impl KeyboardHandler for WprsState {
         _keyboard: &WlKeyboard,
         info: RepeatInfo,
     ) {
-        let keyboard = log_and_return!(
-            self.compositor_state
-                .seat
-                .get_keyboard()
-                .ok_or("seat has no keyboard")
-        );
+        let Some(keyboard) = self.compositor_state.seat.get_keyboard() else {
+            // The seat may not have a keyboard capability yet (or it may have
+            // been removed/replaced). This can happen during startup when the
+            // compositor is still configuring input devices.
+            debug!("ignoring repeat info update: seat has no keyboard");
+            return;
+        };
         let (rate, delay) = match info {
             RepeatInfo::Repeat { rate, delay } => (rate.get(), delay),
             RepeatInfo::Disable => (0, 0),
@@ -758,12 +759,10 @@ impl KeyboardHandler for WprsState {
         _keyboard: &WlKeyboard,
         keymap: Keymap<'_>,
     ) {
-        let keyboard = log_and_return!(
-            self.compositor_state
-                .seat
-                .get_keyboard()
-                .ok_or("seat has no keyboard")
-        );
+        let Some(keyboard) = self.compositor_state.seat.get_keyboard() else {
+            debug!("ignoring keymap update: seat has no keyboard");
+            return;
+        };
         log_and_return!(keyboard.set_keymap_from_string(self, keymap.as_string()));
     }
 
@@ -777,12 +776,10 @@ impl KeyboardHandler for WprsState {
         _raw_modifiers: RawModifiers,
         variant: u32,
     ) {
-        let keyboard = log_and_return!(
-            self.compositor_state
-                .seat
-                .get_keyboard()
-                .ok_or("seat has no keyboard")
-        );
+        let Some(keyboard) = self.compositor_state.seat.get_keyboard() else {
+            debug!("ignoring modifier update: seat has no keyboard");
+            return;
+        };
         keyboard.with_xkb_state(self, |mut context: XkbContext| {
             context.set_layout(Layout(variant));
         });

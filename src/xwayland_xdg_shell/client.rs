@@ -742,7 +742,12 @@ impl KeyboardHandler for WprsState {
             // The seat may not have a keyboard capability yet (or it may have
             // been removed/replaced). This can happen during startup when the
             // compositor is still configuring input devices.
-            debug!("ignoring repeat info update: seat has no keyboard");
+            if !self.warned_missing_keyboard {
+                warn!(
+                    "xwayland-xdg-shell: seat has no keyboard yet; XWayland integration may be non-functional"
+                );
+                self.warned_missing_keyboard = true;
+            }
             return;
         };
         let (rate, delay) = match info {
@@ -760,7 +765,12 @@ impl KeyboardHandler for WprsState {
         keymap: Keymap<'_>,
     ) {
         let Some(keyboard) = self.compositor_state.seat.get_keyboard() else {
-            debug!("ignoring keymap update: seat has no keyboard");
+            if !self.warned_missing_keyboard {
+                warn!(
+                    "xwayland-xdg-shell: seat has no keyboard yet; XWayland integration may be non-functional"
+                );
+                self.warned_missing_keyboard = true;
+            }
             return;
         };
         log_and_return!(keyboard.set_keymap_from_string(self, keymap.as_string()));
@@ -777,7 +787,12 @@ impl KeyboardHandler for WprsState {
         variant: u32,
     ) {
         let Some(keyboard) = self.compositor_state.seat.get_keyboard() else {
-            debug!("ignoring modifier update: seat has no keyboard");
+            if !self.warned_missing_keyboard {
+                warn!(
+                    "xwayland-xdg-shell: seat has no keyboard yet; XWayland integration may be non-functional"
+                );
+                self.warned_missing_keyboard = true;
+            }
             return;
         };
         keyboard.with_xkb_state(self, |mut context: XkbContext| {

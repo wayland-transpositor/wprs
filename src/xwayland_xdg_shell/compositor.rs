@@ -165,6 +165,7 @@ impl WprsCompositorState {
                 x11_socket,
                 display_number,
             } => {
+                info!("XWayland ready: set DISPLAY=:{display_number} to run X11 apps in this session");
                 let wm =
                     X11Wm::start_wm(data.event_loop_handle.clone(), x11_socket, client.clone())
                         .expect("Failed to attach X11 Window Manager.");
@@ -176,6 +177,7 @@ impl WprsCompositorState {
                 data.compositor_state.xwm = Some(wm);
             },
             XWaylandEvent::Error => {
+                error!("XWayland error: X11 apps will not work (XWayland is down)");
                 let _ = data.compositor_state.xwm.take();
             },
         });

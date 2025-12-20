@@ -362,6 +362,8 @@ pub struct WprsState {
     pub surface_bimap: BiMap<CompositorObjectId, ClientObjectId>,
     pub surfaces: HashMap<CompositorObjectId, XWaylandSurface>,
     pub outputs: HashMap<u32, Output>,
+
+    pub(crate) warned_missing_keyboard: bool,
 }
 
 impl WprsState {
@@ -395,6 +397,7 @@ impl WprsState {
             surfaces: HashMap::new(),
             outputs: HashMap::new(),
             registration_tokens,
+            warned_missing_keyboard: false,
         })
     }
 

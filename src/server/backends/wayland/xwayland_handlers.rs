@@ -35,7 +35,11 @@ pub(crate) struct XwaylandSurfaceData {
 }
 
 impl WprsServerState {
-    pub fn start_xwayland_inline_proxy(&mut self, wayland_debug: bool) -> Result<()> {
+    pub fn start_xwayland_inline_proxy(
+        &mut self,
+        wayland_debug: bool,
+        preferred_display: Option<u32>,
+    ) -> Result<()> {
         if self.xwayland_mode != XwaylandMode::InlineProxy {
             bail!("start_xwayland_inline_proxy called when xwayland_mode != inline-proxy");
         }
@@ -48,17 +52,37 @@ impl WprsServerState {
             if wayland_debug { "1" } else { "0" },
         )];
 
-        let (xwayland, client) = XWayland::spawn(
+        let (xwayland, client) = match XWayland::spawn(
             &self.dh,
-            None,
-            env,
+            preferred_display,
+            env.clone(),
             false,
             Stdio::inherit(),
             Stdio::inherit(),
             |_| {},
-        )
-        .map_err(|e| anyhow!("failed to start Xwayland: {e:?}"))
-        .location(loc!())?;
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                if preferred_display.is_some() {
+                    warn!(
+                        "failed to start Xwayland on preferred display {preferred_display:?}: {err:?}; falling back to auto-pick"
+                    );
+                    XWayland::spawn(
+                        &self.dh,
+                        None,
+                        env,
+                        false,
+                        Stdio::inherit(),
+                        Stdio::inherit(),
+                        |_| {},
+                    )
+                    .map_err(|e| anyhow!("failed to start Xwayland: {e:?}"))
+                    .location(loc!())?
+                } else {
+                    return Err(anyhow!("failed to start Xwayland: {err:?}")).location(loc!());
+                }
+            }
+        };
 
         let token = self
             .lh

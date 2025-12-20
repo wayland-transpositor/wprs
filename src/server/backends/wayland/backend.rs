@@ -26,6 +26,7 @@ pub struct WaylandSmithayBackendConfig {
     pub framerate: u32,
     pub enable_xwayland: bool,
     pub xwayland_mode: XwaylandMode,
+    pub xwayland_display: Option<u32>,
     pub xwayland_xdg_shell_path: String,
     pub xwayland_xdg_shell_wayland_debug: bool,
     pub xwayland_xdg_shell_args: Vec<String>,
@@ -159,7 +160,10 @@ impl crate::server::runtime::backend::ServerBackend for WaylandSmithayBackend {
                 },
                 XwaylandMode::InlineProxy => {
                     state
-                        .start_xwayland_inline_proxy(config.xwayland_xdg_shell_wayland_debug)
+                        .start_xwayland_inline_proxy(
+                            config.xwayland_xdg_shell_wayland_debug,
+                            config.xwayland_display,
+                        )
                         .location(loc!())?;
                 },
                 XwaylandMode::External => {

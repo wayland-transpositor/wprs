@@ -117,6 +117,7 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
                             framerate: config.framerate,
                             enable_xwayland: config.enable_xwayland,
                             xwayland_mode: config.xwayland_mode,
+                            xwayland_display: config.xwayland_display,
                             xwayland_xdg_shell_path: config.xwayland_xdg_shell_path.clone(),
                             xwayland_xdg_shell_wayland_debug: config.xwayland_xdg_shell_wayland_debug,
                             xwayland_xdg_shell_args: config.xwayland_xdg_shell_args.clone(),

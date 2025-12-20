@@ -23,8 +23,10 @@ pub enum WprsdBackend {
 #[serde(rename_all = "kebab-case")]
 pub enum XwaylandMode {
     /// Spawns the external `xwayland-xdg-shell` helper process.
+    #[serde(alias = "proxy")]
     SpawnProxy,
     /// Runs the Xwayland proxy inline inside `wprsd`.
+    #[serde(alias = "native")]
     InlineProxy,
     /// Does not spawn any helper; expects external management.
     External,
@@ -48,6 +50,9 @@ impl std::str::FromStr for XwaylandMode {
             "spawn-proxy" => Ok(Self::SpawnProxy),
             "inline-proxy" => Ok(Self::InlineProxy),
             "external" => Ok(Self::External),
+            // Backwards-compatible values.
+            "proxy" => Ok(Self::SpawnProxy),
+            "native" => Ok(Self::InlineProxy),
             other => bail!(
                 "invalid xwayland mode {other:?} (expected: inline-proxy|spawn-proxy|external)"
             ),
@@ -90,7 +95,13 @@ pub struct WprsdConfig {
     pub file_log_level: SerializableLevel,
     pub log_priv_data: bool,
     pub enable_xwayland: bool,
+    #[serde(default)]
     pub xwayland_mode: XwaylandMode,
+    /// Preferred XWayland display number (for inline-proxy mode).
+    ///
+    /// When set, `wprsd` will try to start XWayland on this display first (e.g. `:100`).
+    /// If the display is already in use, it will fall back to auto-picking a free display.
+    pub xwayland_display: Option<u32>,
     pub xwayland_xdg_shell_path: String,
     pub xwayland_xdg_shell_wayland_debug: bool,
     pub xwayland_xdg_shell_args: Vec<String>,
@@ -112,6 +123,7 @@ impl Default for WprsdConfig {
             log_priv_data: false,
             enable_xwayland: true,
             xwayland_mode: XwaylandMode::default(),
+            xwayland_display: Some(100),
             xwayland_xdg_shell_path: "xwayland-xdg-shell".to_string(),
             xwayland_xdg_shell_wayland_debug: false,
             xwayland_xdg_shell_args: Vec::new(),
@@ -164,6 +176,9 @@ pub struct WprsdArgs {
 
     #[arg(long, value_name = "MODE")]
     pub xwayland_mode: Option<XwaylandMode>,
+
+    #[arg(long, value_name = "NUM")]
+    pub xwayland_display: Option<u32>,
 
     #[arg(long, value_name = "PATH")]
     pub xwayland_xdg_shell_path: Option<String>,
@@ -230,6 +245,9 @@ impl WprsdArgs {
         }
         if let Some(v) = self.xwayland_mode {
             cfg.xwayland_mode = v;
+        }
+        if let Some(v) = self.xwayland_display {
+            cfg.xwayland_display = Some(v);
         }
         if let Some(v) = self.xwayland_xdg_shell_path {
             cfg.xwayland_xdg_shell_path = v;

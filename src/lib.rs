@@ -26,8 +26,8 @@ pub mod server;
 pub mod sharding_compression;
 pub mod utils;
 pub mod vec4u8;
-#[cfg(all(feature = "wayland", feature = "wayland-client"))]
-pub mod xwayland_xdg_shell;
+#[cfg(all(feature = "wayland", feature = "wayland-client", target_os = "linux"))]
+pub use crate::server::backends::x11::xwayland_xdg_shell;
 
 #[cfg(all(feature = "wayland", any(target_os = "macos", target_os = "ios")))]
 compile_error!(

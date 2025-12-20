@@ -624,8 +624,14 @@ impl KeyboardHandler for WprsState {
             return;
         };
         let x11_surface = log_and_return!(xwayland_surface.get_x11_surface()).clone();
-        let client = x11_surface.wl_surface().unwrap().client();
-        x11_surface.set_activated(true).unwrap();
+        let Some(wl_surface) = x11_surface.wl_surface() else {
+            warn!("keyboard enter for X11 surface without wl_surface; ignoring focus");
+            return;
+        };
+        let client = wl_surface.client();
+        if let Err(err) = x11_surface.set_activated(true) {
+            warn!("failed to activate X11 surface: {err:?}");
+        }
         let serial = self.compositor_state.serial_map.insert(serial);
         keyboard.set_focus(self, Some(x11_surface), serial);
         data_device::set_data_device_focus(

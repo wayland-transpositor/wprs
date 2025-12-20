@@ -69,6 +69,7 @@ use smithay::wayland::compositor;
 use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
+use smithay::xwayland::xwm::X11SurfaceError;
 
 use crate::config;
 use crate::utils::compositor as compositor_utils;
@@ -101,6 +102,21 @@ use super::LockedSurfaceState;
 use super::WprsServerState;
 use super::smithay_handlers::DndGrab;
 use crate::protocols::wprs::core;
+
+fn configure_x11_surface_with_override_redirect_fallback(
+    requested_configure: impl FnOnce() -> std::result::Result<(), X11SurfaceError>,
+    synthetic_configure: impl FnOnce() -> std::result::Result<(), X11SurfaceError>,
+    loc: Location,
+) -> Result<()> {
+    match requested_configure() {
+        Ok(()) => Ok(()),
+        Err(X11SurfaceError::UnsupportedForOverrideRedirect) => {
+            synthetic_configure().log_and_ignore(loc);
+            Ok(())
+        },
+        Err(err) => Err(err).location(loc),
+    }
+}
 
 enum UnknownSurfaceErr {
     ObjectId(WlSurfaceId),
@@ -537,7 +553,16 @@ impl WprsServerState {
                 if let Some(h) = configure.new_size.h {
                     geo.size.h = u32::from(h) as i32;
                 }
-                x11_surface.configure(geo).location(loc!())?;
+
+                // X11 override-redirect windows are explicitly unmanaged; smithay rejects WM-driven
+                // geometry changes for them. We still want to treat the incoming configure as
+                // handled (it can legitimately be emitted by the client side), so fall back to a
+                // synthetic configure that keeps the current geometry.
+                configure_x11_surface_with_override_redirect_fallback(
+                    || x11_surface.configure(geo),
+                    || x11_surface.configure(None),
+                    loc!(),
+                )?;
             }
         }
 
@@ -1058,5 +1083,43 @@ impl core::Backend for WprsServerState {
 
     fn on_surface_event(&mut self, event: SurfaceEvent) -> Result<()> {
         self.handle_surface_event(event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::configure_x11_surface_with_override_redirect_fallback;
+
+    use smithay::xwayland::xwm::X11SurfaceError;
+    use x11rb::rust_connection::ConnectionError;
+
+    use crate::loc;
+
+    #[test]
+    fn x11_configure_fallback_invoked_for_override_redirect() {
+        let mut synthetic_called = false;
+        let res = configure_x11_surface_with_override_redirect_fallback(
+            || Err(X11SurfaceError::UnsupportedForOverrideRedirect),
+            || {
+                synthetic_called = true;
+                Ok(())
+            },
+            loc!(),
+        );
+
+        assert!(res.is_ok());
+        assert!(synthetic_called);
+    }
+
+    #[test]
+    fn x11_configure_non_override_redirect_error_is_propagated() {
+        let res = configure_x11_surface_with_override_redirect_fallback(
+            || Err(X11SurfaceError::Connection(ConnectionError::UnknownError)),
+            || Ok(()),
+            loc!(),
+        );
+
+        let err = res.unwrap_err();
+        assert!(format!("{err:?}").contains("Unknown connection error"));
     }
 }

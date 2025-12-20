@@ -78,6 +78,7 @@ use crate::protocols::wprs::Event;
 use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::wayland::DataDestinationEvent;
 use crate::protocols::wprs::wayland::DataEvent;
 use crate::protocols::wprs::wayland::DataRequest;
@@ -695,7 +696,13 @@ impl WprsServerState {
             surfaces.push(surface_state);
         });
 
-        for msg in core::handshake::initial_messages(self.xwayland_enabled, surfaces)
+        for msg in core::handshake::initial_messages(
+            crate::protocols::wprs::Capabilities {
+                xwayland: self.xwayland_enabled,
+            },
+            DisplayConfig::default(),
+            surfaces,
+        )
             .location(loc!())?
         {
             self.serializer.writer().send(msg);

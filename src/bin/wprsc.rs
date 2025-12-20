@@ -91,6 +91,7 @@ fn main() -> Result<()> {
             control_socket: config.control_socket.clone(),
             keyboard_mode: config.keyboard_mode,
             xkb_keymap_file: config.xkb_keymap_file.clone(),
+            ui_scale_factor: config.ui_scale_factor,
         },
     )
     .location(loc!())?;

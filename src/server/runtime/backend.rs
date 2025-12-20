@@ -5,6 +5,7 @@ use crate::protocols::wprs::Capabilities;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::Serializer;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::wayland::SurfaceState;
 
 #[derive(Debug, Clone)]
@@ -38,6 +39,10 @@ pub enum TickMode {
 /// polled on a fixed interval.
 pub trait PollingBackend {
     fn capabilities(&self) -> Capabilities;
+
+    fn display_config(&self) -> DisplayConfig {
+        DisplayConfig::default()
+    }
 
     fn initial_snapshot(&mut self) -> Result<Vec<SurfaceSnapshot>>;
 

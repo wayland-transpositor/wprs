@@ -598,6 +598,10 @@ impl WprsClientState {
                 self.handle_client_disconnected(client)
             },
             RecvType::Object(Request::Capabilities(caps)) => self.handle_capabilities(caps),
+            RecvType::Object(Request::DisplayConfig(_)) => {
+                // This backend is already driven by Wayland output scaling.
+                Ok(())
+            },
             RecvType::RawBuffer(buffer) => self.handle_buffer(buffer),
         }
         .log_and_ignore(loc!())

@@ -314,6 +314,27 @@ To run the helper without letting wprsd spawn it (e.g. if you want separate
 process supervision), set `xwayland_mode = "external"` and start
 `xwayland-xdg-shell` yourself with `WAYLAND_DISPLAY` pointing at wprsd.
 
+### HiDPI
+
+wprs tracks scale using Wayland-style semantics:
+
+- `SurfaceState.buffer_scale` is the number of buffer pixels per logical point.
+  For example, a Retina capture typically uses `buffer_scale = 2`.
+- `wprsd` sends a `DisplayConfig` message on connect (currently used by capture
+  backends to advertise a best-effort DPI/scale).
+
+For the macOS fullscreen capture backend, wprsd detects the main display scale
+factor and reports it via both `DisplayConfig.scale_factor` and
+`SurfaceState.buffer_scale`.
+
+Override knobs:
+
+- Server DPI (generic): set `display_dpi = Some(110)` in the `wprsd` config (or
+  pass `--display-dpi 110`). This only affects backends that use it.
+- Client-side scaling (generic): set `ui_scale_factor = 1.25` in the `wprsc`
+  config (or pass `--ui-scale-factor 1.25`) to scale window sizes for
+  cross-platform clients.
+
 The helper binary model is the same as
 [xwayland-proxy-virtwl](https://github.com/talex5/wayland-proxy-virtwl#xwayland-support),
 which is itself inspired by

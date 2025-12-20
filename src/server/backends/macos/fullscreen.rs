@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::ClientId;
 use crate::protocols::wprs::wayland;
@@ -21,10 +22,25 @@ pub struct MacosFullscreenBackend {
     surface_state: SurfaceState,
     pressed_buttons: u32,
     last_pos: (f64, f64),
+    display_config: DisplayConfig,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MacosFullscreenBackendConfig {
+    pub dpi: Option<u32>,
 }
 
 impl MacosFullscreenBackend {
-    pub fn new() -> Self {
+    pub fn new(config: MacosFullscreenBackendConfig) -> Self {
+        let (detected_scale_factor, detected_dpi) =
+            display_scale_factor_and_dpi().unwrap_or((1, None));
+        let scale_factor = detected_scale_factor.max(1);
+        let dpi = config.dpi.or(detected_dpi);
+        let display_config = DisplayConfig {
+            scale_factor,
+            dpi,
+        };
+
         // A single synthetic surface representing the main display.
         let toplevel = xdg_shell::XdgToplevelState {
             id: xdg_shell::XdgToplevelId(1),
@@ -41,7 +57,7 @@ impl MacosFullscreenBackend {
             id: WlSurfaceId(1),
             buffer: None,
             role: Some(wayland::Role::XdgToplevel(toplevel)),
-            buffer_scale: 1,
+            buffer_scale: display_config.scale_factor,
             buffer_transform: None,
             opaque_region: None,
             input_region: None,
@@ -56,6 +72,7 @@ impl MacosFullscreenBackend {
             surface_state,
             pressed_buttons: 0,
             last_pos: (0.0, 0.0),
+            display_config,
         }
     }
 }
@@ -63,6 +80,10 @@ impl MacosFullscreenBackend {
 impl PollingBackend for MacosFullscreenBackend {
     fn capabilities(&self) -> Capabilities {
         Capabilities { xwayland: false }
+    }
+
+    fn display_config(&self) -> DisplayConfig {
+        self.display_config.clone()
     }
 
     fn initial_snapshot(&mut self) -> Result<Vec<SurfaceSnapshot>> {
@@ -148,6 +169,18 @@ fn button_mask(button: u32) -> u32 {
     }
 }
 
+fn display_scale_factor_and_dpi() -> Result<(i32, Option<u32>)> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::main_display_scale_factor_and_dpi().location(loc!())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok((1, None))
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
@@ -161,6 +194,7 @@ mod macos {
     type CGImageRef = *const c_void;
     type CGDataProviderRef = *const c_void;
     type CGDirectDisplayID = u32;
+    type CGDisplayModeRef = *const c_void;
     type CGEventRef = *const c_void;
     type CGEventType = u32;
     type CGMouseButton = u32;
@@ -173,9 +207,23 @@ mod macos {
         y: f64,
     }
 
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGMainDisplayID() -> CGDirectDisplayID;
+        fn CGDisplayCopyDisplayMode(display_id: CGDirectDisplayID) -> CGDisplayModeRef;
+        fn CGDisplayModeGetWidth(mode: CGDisplayModeRef) -> usize;
+        fn CGDisplayModeGetHeight(mode: CGDisplayModeRef) -> usize;
+        fn CGDisplayModeGetPixelWidth(mode: CGDisplayModeRef) -> usize;
+        fn CGDisplayModeGetPixelHeight(mode: CGDisplayModeRef) -> usize;
+        fn CGDisplayScreenSize(display_id: CGDirectDisplayID) -> CGSize;
+
         fn CGDisplayCreateImage(display_id: CGDirectDisplayID) -> CGImageRef;
         fn CGImageGetWidth(image: CGImageRef) -> usize;
         fn CGImageGetHeight(image: CGImageRef) -> usize;
@@ -358,6 +406,49 @@ mod macos {
             let h = CGImageGetHeight(image);
             CFRelease(image as CFTypeRef);
             Ok((w, h))
+        }
+    }
+
+    pub(super) fn main_display_scale_factor_and_dpi() -> Result<(i32, Option<u32>)> {
+        unsafe {
+            let display = CGMainDisplayID();
+            let mode = CGDisplayCopyDisplayMode(display);
+            ensure!(!mode.is_null(), "CGDisplayCopyDisplayMode returned null");
+
+            let width_points = CGDisplayModeGetWidth(mode) as f64;
+            let height_points = CGDisplayModeGetHeight(mode) as f64;
+            let width_pixels = CGDisplayModeGetPixelWidth(mode) as f64;
+            let height_pixels = CGDisplayModeGetPixelHeight(mode) as f64;
+
+            // CGDisplayModeRef is a CFType.
+            CFRelease(mode as CFTypeRef);
+
+            ensure!(width_points > 0.0 && height_points > 0.0, "invalid display mode size");
+            ensure!(width_pixels > 0.0 && height_pixels > 0.0, "invalid display mode pixel size");
+
+            let scale_w = width_pixels / width_points;
+            let scale_h = height_pixels / height_points;
+            let mut scale = scale_w;
+            // Prefer width-based scale; if height differs significantly, fall back to average.
+            if (scale_w - scale_h).abs() > 0.1 {
+                scale = (scale_w + scale_h) / 2.0;
+            }
+            let scale_factor = (scale.round() as i32).max(1);
+
+            // Best-effort DPI calculation.
+            let screen_mm = CGDisplayScreenSize(display);
+            let dpi = if screen_mm.width > 0.0 {
+                let inches = screen_mm.width / 25.4;
+                if inches > 0.0 {
+                    Some((width_pixels / inches).round() as u32)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            Ok((scale_factor, dpi))
         }
     }
 }

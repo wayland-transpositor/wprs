@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
 use crate::protocols::wprs::wayland::Buffer;
@@ -53,13 +54,13 @@ pub fn surface_messages(state: SurfaceState) -> Result<Vec<SendType<Request>>> {
 }
 
 pub fn initial_messages(
-    xwayland_enabled: bool,
+    capabilities: Capabilities,
+    display_config: DisplayConfig,
     surfaces: impl IntoIterator<Item = SurfaceState>,
 ) -> Result<Vec<SendType<Request>>> {
     let mut out = Vec::new();
-    out.push(SendType::Object(Request::Capabilities(Capabilities {
-        xwayland: xwayland_enabled,
-    })));
+    out.push(SendType::Object(Request::Capabilities(capabilities)));
+    out.push(SendType::Object(Request::DisplayConfig(display_config)));
 
     for mut surface in surfaces {
         if let Some(raw) = externalize_compressed_buffer(&mut surface) {
@@ -146,13 +147,22 @@ mod tests {
             data: BufferData::Compressed(CompressedBufferData(compressed)),
         })));
 
-        let msgs = initial_messages(false, [surface]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [surface],
+        )
+        .unwrap();
         assert!(matches!(
             msgs[0],
             SendType::Object(Request::Capabilities(_))
         ));
-        assert!(matches!(msgs[1], SendType::RawBuffer(_)));
-        assert_surface_commit_has_external_buffer(&msgs[2]);
+        assert!(matches!(
+            msgs[1],
+            SendType::Object(Request::DisplayConfig(_))
+        ));
+        assert!(matches!(msgs[2], SendType::RawBuffer(_)));
+        assert_surface_commit_has_external_buffer(&msgs[3]);
     }
 
     #[test]
@@ -172,22 +182,32 @@ mod tests {
     #[test]
     fn initial_messages_without_buffer_sends_only_surface_commit() {
         let surface = dummy_surface_state(None);
-        let msgs = initial_messages(false, [surface]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [surface],
+        )
+        .unwrap();
 
         assert!(matches!(
             msgs.as_slice(),
-            [_, SendType::Object(Request::Surface(_))]
+            [_, _, SendType::Object(Request::Surface(_))]
         ));
     }
 
     #[test]
     fn initial_messages_with_removed_buffer_sends_only_surface_commit() {
         let surface = dummy_surface_state(Some(BufferAssignment::Removed));
-        let msgs = initial_messages(false, [surface]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [surface],
+        )
+        .unwrap();
 
         assert!(matches!(
             msgs.as_slice(),
-            [_, SendType::Object(Request::Surface(_))]
+            [_, _, SendType::Object(Request::Surface(_))]
         ));
     }
 
@@ -198,10 +218,15 @@ mod tests {
             data: BufferData::External,
         })));
 
-        let msgs = initial_messages(false, [surface]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [surface],
+        )
+        .unwrap();
         assert!(matches!(
             msgs.as_slice(),
-            [_, SendType::Object(Request::Surface(_))]
+            [_, _, SendType::Object(Request::Surface(_))]
         ));
     }
 
@@ -222,13 +247,19 @@ mod tests {
         })));
         s2.id = WlSurfaceId(20);
 
-        let msgs = initial_messages(false, [s1, s2]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [s1, s2],
+        )
+        .unwrap();
 
         assert!(matches!(msgs[0], SendType::Object(Request::Capabilities(_))));
-        assert!(matches!(msgs[1], SendType::RawBuffer(_)));
-        assert_surface_commit_has_external_buffer(&msgs[2]);
-        assert!(matches!(msgs[3], SendType::RawBuffer(_)));
-        assert_surface_commit_has_external_buffer(&msgs[4]);
+        assert!(matches!(msgs[1], SendType::Object(Request::DisplayConfig(_))));
+        assert!(matches!(msgs[2], SendType::RawBuffer(_)));
+        assert_surface_commit_has_external_buffer(&msgs[3]);
+        assert!(matches!(msgs[4], SendType::RawBuffer(_)));
+        assert_surface_commit_has_external_buffer(&msgs[5]);
     }
 
     #[test]
@@ -240,10 +271,15 @@ mod tests {
             )),
         })));
 
-        let msgs = initial_messages(false, [surface]).unwrap();
+        let msgs = initial_messages(
+            Capabilities { xwayland: false },
+            DisplayConfig::default(),
+            [surface],
+        )
+        .unwrap();
         assert!(matches!(
             msgs.as_slice(),
-            [_, SendType::Object(Request::Surface(_))]
+            [_, _, SendType::Object(Request::Surface(_))]
         ));
     }
 }

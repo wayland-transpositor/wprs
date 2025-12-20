@@ -37,6 +37,13 @@ fn send_initial_snapshot<B: PollingBackend>(state: &mut State<B>) -> Result<()> 
         .writer()
         .send(SendType::Object(Request::Capabilities(caps)));
 
+    state
+        .serializer
+        .writer()
+        .send(SendType::Object(Request::DisplayConfig(
+            state.backend.display_config(),
+        )));
+
     let snapshot = state.backend.initial_snapshot().location(loc!())?;
     for surface in snapshot {
         for msg in handshake::surface_messages(surface.state).location(loc!())? {

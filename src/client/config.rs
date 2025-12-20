@@ -40,7 +40,7 @@ impl Default for KeyboardMode {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct WprscConfig {
     pub socket: PathBuf,
     pub endpoint: Option<Endpoint>,
@@ -58,6 +58,9 @@ pub struct WprscConfig {
 
     pub keyboard_mode: KeyboardMode,
     pub xkb_keymap_file: Option<PathBuf>,
+
+    #[serde(default = "default_one")]
+    pub ui_scale_factor: f64,
 
     #[serde(skip_serializing, default)]
     pub forward_only: bool,
@@ -82,6 +85,8 @@ impl Default for WprscConfig {
             keyboard_mode: KeyboardMode::default(),
             xkb_keymap_file: None,
 
+            ui_scale_factor: default_one(),
+
             forward_only: false,
         }
     }
@@ -89,6 +94,10 @@ impl Default for WprscConfig {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_one() -> f64 {
+    1.0
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -132,6 +141,9 @@ pub struct WprscArgs {
 
     #[arg(long, value_name = "PATH")]
     pub xkb_keymap_file: Option<PathBuf>,
+
+    #[arg(long, value_name = "SCALE")]
+    pub ui_scale_factor: Option<f64>,
 
     #[arg(long, value_name = "BOOL", default_value_t = false, action = clap::ArgAction::Set)]
     pub forward_only: bool,
@@ -189,6 +201,10 @@ impl WprscArgs {
         }
         if let Some(path) = self.xkb_keymap_file {
             cfg.xkb_keymap_file = Some(path);
+        }
+
+        if let Some(scale) = self.ui_scale_factor {
+            cfg.ui_scale_factor = scale;
         }
         if self.forward_only {
             cfg.forward_only = true;

@@ -644,6 +644,23 @@ pub struct Capabilities {
     pub xwayland: bool,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
+pub struct DisplayConfig {
+    /// Suggested server-side output scale (pixels per logical point).
+    pub scale_factor: i32,
+    /// Suggested server-side DPI (if known).
+    pub dpi: Option<u32>,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        Self {
+            scale_factor: 1,
+            dpi: None,
+        }
+    }
+}
+
 // TODO: https://github.com/rust-lang/rfcs/pull/2593 - simplify all the enums.
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
@@ -655,6 +672,7 @@ pub enum Request {
     Data(wayland::DataRequest),
     ClientDisconnected(ClientId),
     Capabilities(Capabilities),
+    DisplayConfig(DisplayConfig),
 }
 
 #[derive(Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]

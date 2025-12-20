@@ -106,6 +106,10 @@ pub struct WprsdConfig {
     pub xwayland_xdg_shell_wayland_debug: bool,
     pub xwayland_xdg_shell_args: Vec<String>,
     pub kde_server_side_decorations: bool,
+
+    /// Optional display DPI override (primarily used by capture backends).
+    #[serde(default)]
+    pub display_dpi: Option<u32>,
 }
 
 impl Default for WprsdConfig {
@@ -128,6 +132,7 @@ impl Default for WprsdConfig {
             xwayland_xdg_shell_wayland_debug: false,
             xwayland_xdg_shell_args: Vec::new(),
             kde_server_side_decorations: false,
+            display_dpi: None,
         }
     }
 }
@@ -191,6 +196,9 @@ pub struct WprsdArgs {
 
     #[arg(long, value_name = "BOOL")]
     pub kde_server_side_decorations: Option<bool>,
+
+    #[arg(long, value_name = "DPI")]
+    pub display_dpi: Option<u32>,
 }
 
 impl WprsdArgs {
@@ -260,6 +268,10 @@ impl WprsdArgs {
         }
         if let Some(v) = self.kde_server_side_decorations {
             cfg.kde_server_side_decorations = v;
+        }
+
+        if let Some(v) = self.display_dpi {
+            cfg.display_dpi = Some(v);
         }
 
         Ok(cfg)

@@ -16,6 +16,7 @@ use crate::prelude::*;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::wayland::DataEvent;
 use crate::protocols::wprs::wayland::KeyboardEvent;
 use crate::protocols::wprs::wayland::OutputEvent;
@@ -47,7 +48,13 @@ impl Core {
         &self,
         surfaces: impl IntoIterator<Item = crate::protocols::wprs::wayland::SurfaceState>,
     ) -> Result<Vec<SendType<Request>>> {
-        handshake::initial_messages(self.xwayland_enabled, surfaces)
+        handshake::initial_messages(
+            crate::protocols::wprs::Capabilities {
+                xwayland: self.xwayland_enabled,
+            },
+            DisplayConfig::default(),
+            surfaces,
+        )
     }
 
     /// Handles a protocol `Event` (originating from the client).

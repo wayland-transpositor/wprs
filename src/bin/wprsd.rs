@@ -106,7 +106,11 @@ fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn
             backends::x11::X11FullscreenBackend::connect(config.x11_title.clone()).location(loc!())?,
         )),
         WprsdBackend::WindowsFullscreen => Ok(Box::new(backends::windows::WindowsFullscreenBackend::new())),
-        WprsdBackend::MacosFullscreen => Ok(Box::new(backends::macos::MacosFullscreenBackend::new())),
+        WprsdBackend::MacosFullscreen => Ok(Box::new(backends::macos::MacosFullscreenBackend::new(
+            backends::macos::MacosFullscreenBackendConfig {
+                dpi: config.display_dpi,
+            },
+        ))),
         WprsdBackend::Wayland => {
             #[cfg(feature = "wayland")]
             {

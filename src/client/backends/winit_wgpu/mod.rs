@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::thread;
 
 use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -33,6 +34,7 @@ use crate::filtering;
 use crate::prelude::*;
 use crate::protocols::wprs as proto;
 use crate::protocols::wprs::RecvType;
+use crate::protocols::wprs::DisplayConfig;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
 use crate::protocols::wprs::Serializer;
@@ -53,6 +55,7 @@ use crate::protocols::wprs::xdg_shell::{
 pub struct WinitWgpuOptions {
     pub keyboard_mode: KeyboardMode,
     pub xkb_keymap_file: Option<std::path::PathBuf>,
+    pub ui_scale_factor: f64,
 }
 
 #[derive(Debug)]
@@ -425,9 +428,13 @@ struct App {
     surface_by_window: HashMap<winit::window::WindowId, WlSurfaceId>,
     outputs_sent: bool,
 
+    server_display_config: Option<DisplayConfig>,
+    surface_scale_factor: HashMap<WlSurfaceId, i32>,
+
     keyboard_mode: KeyboardMode,
     xkb_keymap_sent: bool,
     xkb_keymap_file: Option<std::path::PathBuf>,
+    ui_scale_factor: f64,
 
     serial_counter: u32,
     focused_surface: Option<WlSurfaceId>,
@@ -749,6 +756,10 @@ impl App {
                 Ok(())
             },
             RecvType::Object(Request::Surface(surface)) => self.handle_surface(event_loop, surface),
+            RecvType::Object(Request::DisplayConfig(cfg)) => {
+                self.server_display_config = Some(cfg);
+                Ok(())
+            },
             // Not yet handled in this backend.
             _ => Ok(()),
         }
@@ -759,13 +770,15 @@ impl App {
             return;
         };
         let size = renderer.window.inner_size();
+        let logical: winit::dpi::LogicalSize<f64> = size.to_logical(renderer.window.scale_factor());
+        let w = logical.width.round().max(1.0) as u32;
+        let h = logical.height.round().max(1.0) as u32;
         let configure = ToplevelConfigure {
             surface_id,
-            // Keep configure sizes in physical pixels to match the wprs buffer
-            // metadata (width/height) and pointer coordinates in this backend.
+            // Configure sizes are in logical points.
             new_size: Size {
-                w: NonZeroU32::new(size.width.max(1)),
-                h: NonZeroU32::new(size.height.max(1)),
+                w: NonZeroU32::new(w),
+                h: NonZeroU32::new(h),
             },
             suggested_bounds: None,
             decoration_mode: DecorationMode::Server,
@@ -792,6 +805,9 @@ impl App {
                 return Ok(());
             },
             SurfaceRequestPayload::Commit(mut state) => {
+                self.surface_scale_factor
+                    .insert(surface_id, state.buffer_scale.max(1));
+
                 let Some(role) = &state.role else {
                     return Ok(());
                 };
@@ -807,7 +823,14 @@ impl App {
                     if let Some(BufferAssignment::New(buf)) = &state.buffer {
                         let w = buf.metadata.width.max(1) as u32;
                         let h = buf.metadata.height.max(1) as u32;
-                        attrs = attrs.with_inner_size(PhysicalSize::new(w, h));
+                        let server_scale = state.buffer_scale.max(1) as f64;
+                        let logical_w = (f64::from(w) / server_scale).max(1.0);
+                        let logical_h = (f64::from(h) / server_scale).max(1.0);
+                        // Client-side scaling knob: magnify/shrink the window in logical units.
+                        attrs = attrs.with_inner_size(LogicalSize::new(
+                            logical_w * self.ui_scale_factor.max(0.1),
+                            logical_h * self.ui_scale_factor.max(0.1),
+                        ));
                     }
 
                     let window = Arc::new(event_loop.create_window(attrs).location(loc!())?);
@@ -970,9 +993,13 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_key(linux_keycode, state);
             },
             WindowEvent::CursorMoved { position, .. } => {
+                let Some(renderer) = self.windows.get(&surface_id) else {
+                    return;
+                };
+                let logical = position.to_logical::<f64>(renderer.window.scale_factor());
                 let pos = crate::protocols::wprs::geometry::Point {
-                    x: position.x,
-                    y: position.y,
+                    x: logical.x,
+                    y: logical.y,
                 };
                 self.last_cursor_pos.insert(window_id, pos);
 
@@ -1020,7 +1047,13 @@ impl ApplicationHandler<UserEvent> for App {
                         let v120_y = (y * 120.0) as i32;
                         (f64::from(x) * 15.0, f64::from(y) * 15.0, v120_x, v120_y)
                     },
-                    MouseScrollDelta::PixelDelta(pos) => (pos.x, pos.y, 0, 0),
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        let Some(renderer) = self.windows.get(&surface_id) else {
+                            return;
+                        };
+                        let logical = pos.to_logical::<f64>(renderer.window.scale_factor());
+                        (logical.x, logical.y, 0, 0)
+                    },
                 };
                 let pos = self.cursor_pos_for(window_id);
                 self.send_pointer_event(
@@ -1110,9 +1143,13 @@ pub fn run(
         surface_by_window: HashMap::new(),
         outputs_sent: false,
 
+        server_display_config: None,
+        surface_scale_factor: HashMap::new(),
+
         keyboard_mode: options.keyboard_mode,
         xkb_keymap_sent: false,
         xkb_keymap_file: options.xkb_keymap_file,
+        ui_scale_factor: options.ui_scale_factor,
 
         serial_counter: 1,
         focused_surface: None,
@@ -1137,6 +1174,7 @@ impl WinitWgpuClientBackend {
             options: WinitWgpuOptions {
                 keyboard_mode: config.keyboard_mode,
                 xkb_keymap_file: config.xkb_keymap_file,
+                ui_scale_factor: config.ui_scale_factor,
             },
         }
     }

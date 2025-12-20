@@ -217,8 +217,9 @@ other events from the local compositor that wprsc are serialized and sent to
 wprsd, which forwards them to the appropriate application (the owner of the
 surface which the wprsc surface which received the events corresponds to).
 
-wprs supports session resumption (wprsc disconnection and later reconnection and
-wprsc restarts). The wayland protocol is not natively resumable in this way
+wprs supports session resumption across temporary disconnects. By default,
+`wprsc` will automatically reconnect to `wprsd` (disable with
+`wprsc --no-auto-reconnect`). The wayland protocol is not natively resumable in this way
 because it relies on shared state between the compositor and client
 applications. By implementing a wayland compositor locally relative to the
 application, wprsd stores all state necessary for wayland applications and is

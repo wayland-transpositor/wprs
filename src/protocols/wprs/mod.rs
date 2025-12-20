@@ -32,11 +32,11 @@ use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process;
 use std::str;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use std::thread;
 use std::thread::Scope;
 use std::thread::ScopedJoinHandle;
@@ -918,10 +918,17 @@ where
     }
 }
 
+#[derive(Clone)]
+struct OnConnectFrame {
+    message_type: MessageType,
+    compressed_shards: Arc<CompressedShards>,
+}
+
 fn write_loop<W, ST>(
     stream: W,
     input_channel: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
 ) -> Result<()>
 where
     W: Write,
@@ -942,6 +949,20 @@ where
 
     Version::new().framed_write(&mut stream).location(loc!())?;
     stream.flush().location(loc!())?;
+
+    // Send any requested per-connection messages. This is primarily used by
+    // clients to automatically re-handshake after reconnect.
+    {
+        let frames = on_connect_frames.lock().unwrap().clone();
+        for frame in frames {
+            frame.message_type.framed_write(&mut stream).location(loc!())?;
+            frame
+                .compressed_shards
+                .framed_write(&mut stream)
+                .location(loc!())?;
+        }
+        stream.flush().location(loc!())?;
+    }
 
     loop {
         let obj = match input_channel.recv_timeout(Duration::from_secs(1)) {
@@ -1024,6 +1045,7 @@ fn spawn_rw_loops<'scope, ST, RT, S>(
     read_channel_tx: channel::SyncSender<RecvType<RT>>,
     write_channel_rx: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
 ) -> Result<(
     ScopedJoinHandle<'scope, Result<()>>,
     ScopedJoinHandle<'scope, Result<()>>,
@@ -1041,8 +1063,14 @@ where
     let read_thread = scope.spawn(move || read_loop(read_stream, read_channel_tx));
 
     let write_stream = stream.clone_stream().location(loc!())?;
-    let write_thread =
-        scope.spawn(move || write_loop(write_stream, write_channel_rx, other_end_connected));
+    let write_thread = scope.spawn(move || {
+        write_loop(
+            write_stream,
+            write_channel_rx,
+            other_end_connected,
+            on_connect_frames,
+        )
+    });
 
     Ok((read_thread, write_thread))
 }
@@ -1052,6 +1080,7 @@ fn accept_loop_inner<ST, RT, S>(
     read_channel_tx: channel::SyncSender<RecvType<RT>>,
     write_channel_rx: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
 ) where
     S: CloneableStream,
     ST: Serializable,
@@ -1068,6 +1097,7 @@ fn accept_loop_inner<ST, RT, S>(
             read_channel_tx,
             write_channel_rx,
             other_end_connected.clone(),
+            on_connect_frames,
         )
         .unwrap();
         let read_thread_result = utils::join_unwrap(read_thread);
@@ -1084,6 +1114,7 @@ fn accept_loop_unix<ST, RT>(
     read_channel_tx: channel::SyncSender<RecvType<RT>>,
     write_channel_rx: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
 ) where
     ST: Serializable,
     ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
@@ -1102,6 +1133,7 @@ fn accept_loop_unix<ST, RT>(
                 read_channel_tx.clone(),
                 write_channel_rx.clone(),
                 other_end_connected.clone(),
+                on_connect_frames.clone(),
             );
 
             // The usual reason for the read/write threads terminating will be the
@@ -1118,6 +1150,7 @@ fn accept_loop_tcp<ST, RT>(
     read_channel_tx: channel::SyncSender<RecvType<RT>>,
     write_channel_rx: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
 ) where
     ST: Serializable,
     ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
@@ -1136,20 +1169,21 @@ fn accept_loop_tcp<ST, RT>(
                 read_channel_tx.clone(),
                 write_channel_rx.clone(),
                 other_end_connected.clone(),
+                on_connect_frames.clone(),
             );
             stream.shutdown_both().unwrap();
         }
     });
 }
 
-fn client_loop<ST, RT, S>(
-    stream: S,
+#[cfg(unix)]
+fn client_connect_loop_unix<ST, RT>(
+    sock_path: PathBuf,
     read_channel_tx: channel::SyncSender<RecvType<RT>>,
     write_channel_rx: Receiver<SendType<ST>>,
     other_end_connected: Arc<AtomicBool>,
-) -> Result<()>
-where
-    S: CloneableStream,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
+) where
     ST: Serializable,
     ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
         + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
@@ -1157,29 +1191,119 @@ where
     RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
         + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
-    thread::scope(|scope| {
-        let (read_thread, _) = spawn_rw_loops(
-            scope,
-            stream,
-            read_channel_tx,
-            write_channel_rx,
-            other_end_connected,
-        )
-        .location(loc!())?;
+    let mut backoff = Duration::from_millis(100);
+    let backoff_max = Duration::from_secs(5);
 
-        // TODO: consider actually look at the error and not printing the reason
-        // if was actually just a disconnection and not some other error.
-        let result = utils::join_unwrap(read_thread);
-        debug!("read thread joined: {:?}", result);
-        eprintln!("server disconnected: {result:?}");
-        process::exit(1);
-    })
+    loop {
+        match UnixStream::connect(&sock_path) {
+            Ok(stream) => {
+                enlarge_socket_buffer(&stream);
+                other_end_connected.store(true, Ordering::Release);
+
+                accept_loop_inner(
+                    stream,
+                    read_channel_tx.clone(),
+                    write_channel_rx.clone(),
+                    other_end_connected.clone(),
+                    on_connect_frames.clone(),
+                );
+
+                // If we disconnected, try again with backoff reset.
+                backoff = Duration::from_millis(100);
+                warn!("server disconnected; reconnecting...");
+            }
+            Err(err) => {
+                other_end_connected.store(false, Ordering::Release);
+                warn!(
+                    "unable to connect to server at {:?}: {err:?}; retrying in {:?}",
+                    sock_path, backoff
+                );
+                thread::sleep(backoff);
+                backoff = backoff.saturating_mul(2).min(backoff_max);
+            }
+        }
+    }
+}
+
+fn client_connect_loop_tcp<ST, RT>(
+    addr: SocketAddr,
+    read_channel_tx: channel::SyncSender<RecvType<RT>>,
+    write_channel_rx: Receiver<SendType<ST>>,
+    other_end_connected: Arc<AtomicBool>,
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
+) where
+    ST: Serializable,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
+    RT: Serializable,
+    RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
+{
+    let mut backoff = Duration::from_millis(100);
+    let backoff_max = Duration::from_secs(5);
+
+    loop {
+        match TcpStream::connect(addr) {
+            Ok(stream) => {
+                let _ = stream.set_nodelay(true);
+                #[cfg(unix)]
+                enlarge_socket_buffer(&stream);
+
+                other_end_connected.store(true, Ordering::Release);
+
+                accept_loop_inner(
+                    stream,
+                    read_channel_tx.clone(),
+                    write_channel_rx.clone(),
+                    other_end_connected.clone(),
+                    on_connect_frames.clone(),
+                );
+
+                backoff = Duration::from_millis(100);
+                warn!("server disconnected; reconnecting...");
+            }
+            Err(err) => {
+                other_end_connected.store(false, Ordering::Release);
+                warn!(
+                    "unable to connect to server at {addr:?}: {err:?}; retrying in {:?}",
+                    backoff
+                );
+                thread::sleep(backoff);
+                backoff = backoff.saturating_mul(2).min(backoff_max);
+            }
+        }
+    }
 }
 
 // TODO: can we create a separate thread to handle serialization/deserialization
 // for each client? In principle, each client's stream is independent, but what
 // about things like setting the cursor? Rather, which client do we associate
 // that with? Any client?
+
+pub struct SerializerClientOptions<ST>
+where
+    ST: Serializable,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
+{
+    pub auto_reconnect: bool,
+    pub on_connect: Vec<SendType<ST>>,
+}
+
+impl<ST> Default for SerializerClientOptions<ST>
+where
+    ST: Serializable,
+    ST::Archived: Deserialize<ST, HighDeserializer<RancorError>>
+        + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
+{
+    fn default() -> Self {
+        Self {
+            auto_reconnect: true,
+            on_connect: Vec::new(),
+        }
+    }
+}
+
 pub struct Serializer<ST, RT>
 where
     ST: Serializable,
@@ -1192,6 +1316,8 @@ where
     read_handle: Option<Channel<RecvType<RT>>>,
     write_handle: DiscardingSender<Sender<SendType<ST>>>,
     other_end_connected: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    on_connect_frames: Arc<Mutex<Vec<OnConnectFrame>>>,
     #[allow(dead_code)]
     transport_guard: Option<TransportGuard>,
 }
@@ -1228,6 +1354,33 @@ where
     RT::Archived: Deserialize<RT, HighDeserializer<RancorError>>
         + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
+    fn encode_on_connect_frame(msg: SendType<ST>) -> Result<OnConnectFrame> {
+        match msg {
+            SendType::Object(obj) => {
+                let serialized_data = ArcSlice::new(
+                    debug_span!("serialize")
+                        .in_scope(|| rkyv::to_bytes::<RancorError>(&obj))
+                        .location(loc!())?,
+                );
+
+                // This is only used for per-connection setup (handshake style)
+                // messages; keep compression lightweight.
+                let mut compressor =
+                    ShardingCompressor::new(NonZeroUsize::new(1).unwrap(), 1).location(loc!())?;
+                let shards = compressor.compress(NonZeroUsize::new(1).unwrap(), serialized_data);
+
+                Ok(OnConnectFrame {
+                    message_type: MessageType::Object,
+                    compressed_shards: Arc::new(shards),
+                })
+            }
+            SendType::RawBuffer(compressed_shards) => Ok(OnConnectFrame {
+                message_type: MessageType::RawBuffer,
+                compressed_shards,
+            }),
+        }
+    }
+
     pub fn new_server_endpoint(endpoint: Endpoint) -> Result<Self> {
         endpoint.warn_if_non_loopback("wprs server endpoint");
 
@@ -1241,13 +1394,22 @@ where
     }
 
     pub fn new_client_endpoint(endpoint: Endpoint) -> Result<Self> {
+        Self::new_client_endpoint_with_options(endpoint, SerializerClientOptions::default())
+    }
+
+    pub fn new_client_endpoint_with_options(
+        endpoint: Endpoint,
+        options: SerializerClientOptions<ST>,
+    ) -> Result<Self> {
         let (resolved, guard) = setup_client_transport(endpoint).location(loc!())?;
         resolved.warn_if_non_loopback("wprs client endpoint");
 
         let mut s = match &resolved {
-            Endpoint::Unix { path } => Self::new_client(path),
-            Endpoint::Tcp { addr } => Self::new_client_tcp(*addr),
-            Endpoint::Ssh { .. } => unreachable!("ssh forwarding resolves to a concrete local endpoint"),
+            Endpoint::Unix { path } => Self::new_client_with_options(path, options),
+            Endpoint::Tcp { addr } => Self::new_client_tcp_with_options(*addr, options),
+            Endpoint::Ssh { .. } => {
+                unreachable!("ssh forwarding resolves to a concrete local endpoint")
+            }
         }
         .location(loc!())?;
         s.transport_guard = guard.map(|g| g.into_inner());
@@ -1271,11 +1433,19 @@ where
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
             crossbeam_channel::unbounded();
         let other_end_connected = Arc::new(AtomicBool::new(false));
+        let on_connect_frames = Arc::new(Mutex::new(Vec::new()));
 
         {
             let other_end_connected = other_end_connected.clone();
+            let on_connect_frames = on_connect_frames.clone();
             thread::spawn(move || {
-                accept_loop_unix(listener, reader_tx, writer_rx, other_end_connected)
+                accept_loop_unix(
+                    listener,
+                    reader_tx,
+                    writer_rx,
+                    other_end_connected,
+                    on_connect_frames,
+                )
             });
         }
 
@@ -1288,12 +1458,20 @@ where
             read_handle: Some(reader_rx),
             write_handle: writer_tx,
             other_end_connected,
+            on_connect_frames,
             transport_guard: None,
         })
         }
     }
 
     pub fn new_client<P: AsRef<Path>>(sock_path: P) -> Result<Self> {
+        Self::new_client_with_options(sock_path, SerializerClientOptions::default())
+    }
+
+    pub fn new_client_with_options<P: AsRef<Path>>(
+        sock_path: P,
+        options: SerializerClientOptions<ST>,
+    ) -> Result<Self> {
         #[cfg(not(unix))]
         {
             let _ = sock_path;
@@ -1302,20 +1480,51 @@ where
 
         #[cfg(unix)]
         {
-        let stream = UnixStream::connect(sock_path).location(loc!())?;
-        enlarge_socket_buffer(&stream);
+        let sock_path = sock_path.as_ref().to_path_buf();
 
         let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
             channel::sync_channel(CHANNEL_SIZE);
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
             crossbeam_channel::unbounded();
-        let other_end_connected = Arc::new(AtomicBool::new(true));
+        let other_end_connected = Arc::new(AtomicBool::new(false));
+        let on_connect_frames = Arc::new(Mutex::new(Vec::new()));
+        {
+            let mut frames = on_connect_frames.lock().unwrap();
+            for msg in options.on_connect {
+                frames.push(Self::encode_on_connect_frame(msg).location(loc!())?);
+            }
+        }
 
         {
             let other_end_connected = other_end_connected.clone();
-            thread::spawn(move || {
-                client_loop(stream, reader_tx, writer_rx, other_end_connected)
-            });
+            let on_connect_frames = on_connect_frames.clone();
+
+            if options.auto_reconnect {
+                thread::spawn(move || {
+                    client_connect_loop_unix(
+                        sock_path,
+                        reader_tx,
+                        writer_rx,
+                        other_end_connected,
+                        on_connect_frames,
+                    )
+                });
+            } else {
+                let stream = UnixStream::connect(&sock_path).location(loc!())?;
+                enlarge_socket_buffer(&stream);
+                other_end_connected.store(true, Ordering::Release);
+                thread::spawn(move || {
+                    accept_loop_inner(
+                        stream,
+                        reader_tx,
+                        writer_rx,
+                        other_end_connected,
+                        on_connect_frames,
+                    );
+                    eprintln!("server disconnected");
+                    std::process::exit(1);
+                });
+            }
         }
 
         let writer_tx = DiscardingSender {
@@ -1327,6 +1536,7 @@ where
             read_handle: Some(reader_rx),
             write_handle: writer_tx,
             other_end_connected,
+            on_connect_frames,
             transport_guard: None,
         })
         }
@@ -1342,10 +1552,20 @@ where
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
             crossbeam_channel::unbounded();
         let other_end_connected = Arc::new(AtomicBool::new(false));
+        let on_connect_frames = Arc::new(Mutex::new(Vec::new()));
 
         {
             let other_end_connected = other_end_connected.clone();
-            thread::spawn(move || accept_loop_tcp(listener, reader_tx, writer_rx, other_end_connected));
+            let on_connect_frames = on_connect_frames.clone();
+            thread::spawn(move || {
+                accept_loop_tcp(
+                    listener,
+                    reader_tx,
+                    writer_rx,
+                    other_end_connected,
+                    on_connect_frames,
+                )
+            });
         }
 
         let writer_tx = DiscardingSender {
@@ -1357,25 +1577,65 @@ where
             read_handle: Some(reader_rx),
             write_handle: writer_tx,
             other_end_connected,
+            on_connect_frames,
             transport_guard: None,
         })
     }
 
     pub fn new_client_tcp(addr: SocketAddr) -> Result<Self> {
-        let stream = TcpStream::connect(addr).location(loc!())?;
-        let _ = stream.set_nodelay(true);
-        #[cfg(unix)]
-        enlarge_socket_buffer(&stream);
+        Self::new_client_tcp_with_options(addr, SerializerClientOptions::default())
+    }
+
+    pub fn new_client_tcp_with_options(
+        addr: SocketAddr,
+        options: SerializerClientOptions<ST>,
+    ) -> Result<Self> {
+        let on_connect_frames = Arc::new(Mutex::new(Vec::new()));
+        {
+            let mut frames = on_connect_frames.lock().unwrap();
+            for msg in options.on_connect {
+                frames.push(Self::encode_on_connect_frame(msg).location(loc!())?);
+            }
+        }
 
         let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
             channel::sync_channel(CHANNEL_SIZE);
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
             crossbeam_channel::unbounded();
-        let other_end_connected = Arc::new(AtomicBool::new(true));
+        let other_end_connected = Arc::new(AtomicBool::new(false));
 
         {
             let other_end_connected = other_end_connected.clone();
-            thread::spawn(move || client_loop(stream, reader_tx, writer_rx, other_end_connected));
+            let on_connect_frames = on_connect_frames.clone();
+            if options.auto_reconnect {
+                thread::spawn(move || {
+                    client_connect_loop_tcp(
+                        addr,
+                        reader_tx,
+                        writer_rx,
+                        other_end_connected,
+                        on_connect_frames,
+                    )
+                });
+            } else {
+                let stream = TcpStream::connect(addr).location(loc!())?;
+                let _ = stream.set_nodelay(true);
+                #[cfg(unix)]
+                enlarge_socket_buffer(&stream);
+
+                other_end_connected.store(true, Ordering::Release);
+                thread::spawn(move || {
+                    accept_loop_inner(
+                        stream,
+                        reader_tx,
+                        writer_rx,
+                        other_end_connected,
+                        on_connect_frames,
+                    );
+                    eprintln!("server disconnected");
+                    std::process::exit(1);
+                });
+            }
         }
 
         let writer_tx = DiscardingSender {
@@ -1387,6 +1647,7 @@ where
             read_handle: Some(reader_rx),
             write_handle: writer_tx,
             other_end_connected,
+            on_connect_frames,
             transport_guard: None,
         })
     }
@@ -1411,5 +1672,14 @@ where
 
     pub fn set_other_end_connected(&mut self, state: bool) {
         self.other_end_connected.store(state, Ordering::Relaxed);
+    }
+
+    /// Adds a message to be sent on every new transport connection.
+    ///
+    /// Intended for client-side re-handshake after auto-reconnect.
+    pub fn add_on_connect_message(&self, msg: SendType<ST>) -> Result<()> {
+        let frame = Self::encode_on_connect_frame(msg).location(loc!())?;
+        self.on_connect_frames.lock().unwrap().push(frame);
+        Ok(())
     }
 }

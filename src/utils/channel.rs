@@ -97,7 +97,7 @@ impl<S: Sender> Sender for DiscardingSender<S> {
     type T = S::T;
     type E = S::E;
     fn send(&self, msg: Self::T) -> Result<(), Self::E> {
-        self.sender.send(msg)
+        <DiscardingSender<S>>::send(self, msg)
     }
 }
 
@@ -135,5 +135,27 @@ where
 
     pub fn into_inner(self) -> S {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discarding_sender_drops_messages_when_disabled() {
+        let (tx, rx) = mpsc::channel::<u32>();
+        let enabled = Arc::new(AtomicBool::new(false));
+        let sender = DiscardingSender {
+            sender: tx,
+            actually_send: enabled.clone(),
+        };
+
+        sender.send(1).unwrap();
+        assert!(rx.try_recv().is_err());
+
+        enabled.store(true, Ordering::Release);
+        sender.send(2).unwrap();
+        assert_eq!(rx.try_recv().unwrap(), 2);
     }
 }

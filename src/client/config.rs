@@ -51,6 +51,9 @@ pub struct WprscConfig {
     pub log_priv_data: bool,
     pub title_prefix: String,
 
+    #[serde(default = "default_true")]
+    pub auto_reconnect: bool,
+
     pub backend: ClientBackend,
 
     pub keyboard_mode: KeyboardMode,
@@ -72,6 +75,8 @@ impl Default for WprscConfig {
             log_priv_data: false,
             title_prefix: String::new(),
 
+            auto_reconnect: true,
+
             backend: ClientBackend::default(),
 
             keyboard_mode: KeyboardMode::default(),
@@ -80,6 +85,10 @@ impl Default for WprscConfig {
             forward_only: false,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -126,6 +135,9 @@ pub struct WprscArgs {
 
     #[arg(long, value_name = "BOOL", default_value_t = false, action = clap::ArgAction::Set)]
     pub forward_only: bool,
+
+    #[arg(long, default_value_t = false, action = clap::ArgAction::SetTrue)]
+    pub no_auto_reconnect: bool,
 }
 
 impl WprscArgs {
@@ -180,6 +192,10 @@ impl WprscArgs {
         }
         if self.forward_only {
             cfg.forward_only = true;
+        }
+
+        if self.no_auto_reconnect {
+            cfg.auto_reconnect = false;
         }
 
         Ok(cfg)

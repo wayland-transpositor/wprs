@@ -1230,3 +1230,4 @@ smithay::delegate_data_device!(WprsServerState);
 smithay::delegate_output!(WprsServerState);
 smithay::delegate_primary_selection!(WprsServerState);
 smithay::delegate_viewporter!(WprsServerState);
+smithay::delegate_xwayland_shell!(WprsServerState);

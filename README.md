@@ -300,10 +300,20 @@ protocol.
 
 ### XWayland
 
-XWayland support is implemented as a separate binary, `xwayland-xdg-shell`. The
-binary implements a wayland compositor (but only for the protocol features used
-by xwayland) and client, just like wprsd and wprsc, but in a single binary (so
-skipping the serialization/deserialization). This is the same model as
+XWayland support is implemented via the helper `xwayland-xdg-shell` by default.
+The helper implements a Wayland compositor (but only for the protocol features used
+by Xwayland) and client, just like wprsd and wprsc, but in a single binary (so
+skipping the serialization/deserialization).
+
+For deployments that prefer fewer processes, wprsd can also run the Xwayland
+proxy inline (without spawning `xwayland-xdg-shell`) by setting
+`xwayland_mode = "inline-proxy"`.
+
+To run the helper without letting wprsd spawn it (e.g. if you want separate
+process supervision), set `xwayland_mode = "external"` and start
+`xwayland-xdg-shell` yourself with `WAYLAND_DISPLAY` pointing at wprsd.
+
+The helper binary model is the same as
 [xwayland-proxy-virtwl](https://github.com/talex5/wayland-proxy-virtwl#xwayland-support),
 which is itself inspired by
 [sommelier](https://chromium.googlesource.com/chromiumos/platform2/+/main/vm_tools/sommelier/).
@@ -313,7 +323,7 @@ make use of common wayland development in the form of Smithay and its wayland
 crates. Additionally, xwayland-xdg-shell is more narrowly focused and its sole
 purpose is xwayland support, not virtio-gpu or virtwl.
 
-Like xwayland-proxy-virtwl, xwayland-xdg-proxy can be used to implement external
+Like xwayland-proxy-virtwl, xwayland-xdg-shell can be used to implement external
 xwayland support for any wayland compositor instead of re-implementing it inside
 the compositor. Aside from eliminating the need to implement xwayland support in
 every compositor, this approach has been reported to result in better xwayland

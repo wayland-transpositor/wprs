@@ -42,6 +42,8 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shm::ShmState;
 use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationMode;
 use smithay::wayland::viewporter::ViewporterState;
+use smithay::wayland::xwayland_shell::XWaylandShellState;
+use smithay::xwayland::X11Wm;
 
 use crate::prelude::*;
 use crate::protocols::wprs::Event;
@@ -58,6 +60,7 @@ use crate::utils::SerialMap;
 pub mod client_handlers;
 pub mod backend;
 pub mod smithay_handlers;
+pub mod xwayland_handlers;
 
 pub(crate) struct LockedSurfaceState(pub(crate) Mutex<SurfaceState>);
 
@@ -80,6 +83,7 @@ fn surface_destruction_callback(state: &mut WprsServerState, surface: &WlSurface
         })));
 
         state.object_map.remove(&surface_state.id);
+        state.xwayland_surfaces.remove(&surface.id());
     });
 }
 
@@ -101,6 +105,10 @@ pub struct WprsServerState {
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
     pub viewporter_state: ViewporterState,
+    pub xwayland_mode: crate::server::config::XwaylandMode,
+    pub xwayland_shell_state: XWaylandShellState,
+    pub xwm: Option<X11Wm>,
+    pub xwayland_surfaces: HashSet<ObjectId>,
 
     pub seat: Seat<Self>,
 
@@ -132,6 +140,7 @@ impl WprsServerState {
         lh: LoopHandle<'static, Self>,
         serializer: Serializer<Request, Event>,
         xwayland_enabled: bool,
+        xwayland_mode: crate::server::config::XwaylandMode,
         frame_interval: Duration,
         kde_server_side_decorations: bool,
     ) -> Self {
@@ -159,6 +168,10 @@ impl WprsServerState {
             data_device_state: DataDeviceState::new::<Self>(&dh),
             primary_selection_state: PrimarySelectionState::new::<Self>(&dh),
             viewporter_state: ViewporterState::new::<Self>(&dh),
+            xwayland_mode,
+            xwayland_shell_state: XWaylandShellState::new::<Self>(&dh),
+            xwm: None,
+            xwayland_surfaces: HashSet::new(),
             seat,
             serializer,
             // TODO: try tuning this based on the number of cpus the machine has.
@@ -215,6 +228,23 @@ impl WprsServerState {
                 |surface, surface_data, _| processor(surface, surface_data),
                 |_, _, _| true,
             )
+        }
+
+        // Xwayland surfaces are not `xdg-shell` surfaces, so track them separately.
+        for object_id in self.xwayland_surfaces.iter().cloned() {
+            let Ok(surface) = WlSurface::from_id(&self.dh, object_id) else {
+                continue;
+            };
+            if !surface.is_alive() {
+                continue;
+            }
+            compositor::with_surface_tree_downward(
+                &surface,
+                (),
+                |_, _, _| TraversalAction::DoChildren(()),
+                |surface, surface_data, _| processor(surface, surface_data),
+                |_, _, _| true,
+            );
         }
     }
 }

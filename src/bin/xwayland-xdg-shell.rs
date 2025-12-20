@@ -20,6 +20,7 @@ fn main() {
 #[cfg(target_os = "linux")]
 mod linux {
     use std::ffi::OsString;
+    use std::sync::Arc;
 
     use calloop::RegistrationToken;
     use calloop::signals::Signal;
@@ -53,6 +54,18 @@ mod linux {
         let listening_socket =
             ListeningSocketSource::with_name(wayland_display).location(loc!())?;
         let socket_name = listening_socket.socket_name().to_os_string();
+        let mut dh = display.handle();
+
+        let token = event_loop
+            .handle()
+            .insert_source(listening_socket, move |stream, _, _| {
+                if let Err(err) = dh.insert_client(stream, Arc::new(())) {
+                    error!("failed to insert xwayland client: {err:?}");
+                }
+            })
+            .location(loc!())?;
+
+        registration_tokens.push(token);
 
         let token = event_loop
             .handle()
@@ -148,7 +161,9 @@ mod linux {
 
         info!("xwayland-xdg-shell wayland socket: {wayland_socket_name:?}");
         event_loop
-            .run(None, &mut state, |_| {})
+            .run(None, &mut state, |state| {
+                state.dh.flush_clients().unwrap();
+            })
             .location(loc!())
     }
 }

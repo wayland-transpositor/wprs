@@ -495,7 +495,7 @@ impl WprsServerState {
     fn handle_toplevel_configure(&self, configure: &ToplevelConfigure) -> Result<()> {
         let surfaces = self.xdg_shell_state.toplevel_surfaces();
         // TODO: we can replace this with a hashmap lookup now
-        surfaces
+        let found = surfaces
             .iter()
             .find(|surface| {
                 let surface_id = WlSurfaceId::new(surface.wl_surface());
@@ -525,7 +525,21 @@ impl WprsServerState {
                 });
                 surface.send_configure();
                 debug!("sent configure to surface {surface:?}");
-            });
+            })
+            .is_some();
+
+        if !found {
+            if let Some(x11_surface) = self.x11_surface_for_wl_surface_id(&configure.surface_id) {
+                let mut geo = x11_surface.geometry();
+                if let Some(w) = configure.new_size.w {
+                    geo.size.w = u32::from(w) as i32;
+                }
+                if let Some(h) = configure.new_size.h {
+                    geo.size.h = u32::from(h) as i32;
+                }
+                x11_surface.configure(geo).location(loc!())?;
+            }
+        }
 
         Ok(())
     }
@@ -544,6 +558,10 @@ impl WprsServerState {
                     surface_id == close.surface_id
                 }) {
                     surface.send_close();
+                } else if let Some(x11_surface) =
+                    self.x11_surface_for_wl_surface_id(&close.surface_id)
+                {
+                    x11_surface.close().location(loc!())?;
                 }
             },
         }

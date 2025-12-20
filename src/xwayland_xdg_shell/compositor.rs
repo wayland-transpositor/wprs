@@ -147,7 +147,11 @@ impl WprsCompositorState {
         V: AsRef<OsStr>,
     {
         let mut seat_state = SeatState::new();
-        let seat = seat_state.new_wl_seat(&dh, "wprs");
+        let mut seat = seat_state.new_wl_seat(&dh, "wprs");
+        seat.add_pointer();
+        if let Err(err) = seat.add_keyboard(Default::default(), 200, 200) {
+            warn!("failed to initialize compositor keyboard: {err:?}");
+        }
 
         let (xwayland, client) = XWayland::spawn(
             &dh,

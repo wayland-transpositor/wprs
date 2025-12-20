@@ -16,6 +16,7 @@ use crate::protocols::wprs::Event;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::Serializer;
 use crate::server::backends::wayland::smithay_handlers::ClientState;
+use crate::server::config::XwaylandMode;
 
 use super::WprsServerState;
 
@@ -24,6 +25,7 @@ pub struct WaylandSmithayBackendConfig {
     pub wayland_display: String,
     pub framerate: u32,
     pub enable_xwayland: bool,
+    pub xwayland_mode: XwaylandMode,
     pub xwayland_xdg_shell_path: String,
     pub xwayland_xdg_shell_wayland_debug: bool,
     pub xwayland_xdg_shell_args: Vec<String>,
@@ -83,6 +85,11 @@ fn start_xwayland_xdg_shell(
     xwayland_xdg_shell_wayland_debug: bool,
     xwayland_xdg_shell_args: &[String],
 ) {
+    info!(
+        "starting xwayland-xdg-shell: path={xwayland_xdg_shell_path:?} WAYLAND_DISPLAY={wayland_display:?} WAYLAND_DEBUG={wayland_debug} args={xwayland_xdg_shell_args:?}",
+        wayland_debug = if xwayland_xdg_shell_wayland_debug { 1 } else { 0 },
+    );
+
     let mut child = Command::new(xwayland_xdg_shell_path)
         .env("WAYLAND_DISPLAY", wayland_display)
         .env(
@@ -96,6 +103,8 @@ fn start_xwayland_xdg_shell(
         .args(xwayland_xdg_shell_args)
         .spawn()
         .expect("failed executing xwayland-xdg-shell");
+
+    info!("xwayland-xdg-shell spawned pid={pid}", pid = child.id());
 
     std::thread::spawn(move || {
         child.wait().expect("failed waiting xwayland-xdg-shell");
@@ -130,6 +139,7 @@ impl crate::server::runtime::backend::ServerBackend for WaylandSmithayBackend {
             event_loop.handle(),
             serializer,
             config.enable_xwayland,
+            config.xwayland_mode,
             frame_interval,
             config.kde_server_side_decorations,
         );
@@ -138,12 +148,26 @@ impl crate::server::runtime::backend::ServerBackend for WaylandSmithayBackend {
             .location(loc!())?;
 
         if config.enable_xwayland {
-            start_xwayland_xdg_shell(
-                &config.wayland_display,
-                &config.xwayland_xdg_shell_path,
-                config.xwayland_xdg_shell_wayland_debug,
-                &config.xwayland_xdg_shell_args,
-            );
+            match config.xwayland_mode {
+                XwaylandMode::SpawnProxy => {
+                    start_xwayland_xdg_shell(
+                        &config.wayland_display,
+                        &config.xwayland_xdg_shell_path,
+                        config.xwayland_xdg_shell_wayland_debug,
+                        &config.xwayland_xdg_shell_args,
+                    );
+                },
+                XwaylandMode::InlineProxy => {
+                    state
+                        .start_xwayland_inline_proxy(config.xwayland_xdg_shell_wayland_debug)
+                        .location(loc!())?;
+                },
+                XwaylandMode::External => {
+                    info!(
+                        "xwayland_mode=external: not spawning Xwayland helper; expecting external management"
+                    );
+                },
+            }
         }
 
         let _keyboard = state

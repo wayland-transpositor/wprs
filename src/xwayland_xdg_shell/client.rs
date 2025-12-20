@@ -573,12 +573,28 @@ impl KeyboardHandler for WprsState {
             /* KEY_LEFTSHIFT */ 42, /* KEY_RIGHTSHIFT */ 54,
         ]);
 
-        let keyboard = log_and_return!(
-            self.compositor_state
-                .seat
-                .get_keyboard()
-                .ok_or("seat has no keyboard")
-        );
+        let keyboard = match self.compositor_state.seat.get_keyboard() {
+            Some(keyboard) => keyboard,
+            None => {
+                if !self.warned_missing_keyboard {
+                    warn!(
+                        "xwayland-xdg-shell: compositor seat has no keyboard yet; initializing one"
+                    );
+                    self.warned_missing_keyboard = true;
+                }
+                match self
+                    .compositor_state
+                    .seat
+                    .add_keyboard(Default::default(), 200, 200)
+                {
+                    Ok(keyboard) => keyboard,
+                    Err(err) => {
+                        warn!("failed to initialize compositor keyboard: {err:?}");
+                        return;
+                    }
+                }
+            }
+        };
 
         // We simulate keycodes before focusing since that is what a normal wayland application would see.
         // Process modifier keys first so that they apply to other held keys.
@@ -639,13 +655,32 @@ impl KeyboardHandler for WprsState {
             return;
         };
         let x11_surface = log_and_return!(xwayland_surface.get_x11_surface()).clone();
-        x11_surface.set_activated(false).unwrap();
-        let keyboard = log_and_return!(
-            self.compositor_state
-                .seat
-                .get_keyboard()
-                .ok_or("seat has no keyboard")
-        );
+        if let Err(err) = x11_surface.set_activated(false) {
+            warn!("failed to deactivate X11 surface: {err:?}");
+        }
+
+        let keyboard = match self.compositor_state.seat.get_keyboard() {
+            Some(keyboard) => keyboard,
+            None => {
+                if !self.warned_missing_keyboard {
+                    warn!(
+                        "xwayland-xdg-shell: compositor seat has no keyboard yet; initializing one"
+                    );
+                    self.warned_missing_keyboard = true;
+                }
+                match self
+                    .compositor_state
+                    .seat
+                    .add_keyboard(Default::default(), 200, 200)
+                {
+                    Ok(keyboard) => keyboard,
+                    Err(err) => {
+                        warn!("failed to initialize compositor keyboard: {err:?}");
+                        return;
+                    }
+                }
+            }
+        };
 
         let serial = self.compositor_state.serial_map.insert(serial);
         keyboard.set_focus(self, None, serial);
@@ -839,7 +874,14 @@ impl PointerHandler for WprsState {
         events: &[PointerEvent],
     ) {
         let compositor_seat = self.compositor_state.seat.clone();
-        let compositor_pointer = compositor_seat.get_pointer().unwrap();
+        let compositor_pointer = match compositor_seat.get_pointer() {
+            Some(pointer) => pointer,
+            None => {
+                // This can happen early during startup if we haven't created the compositor
+                // pointer capability yet.
+                self.compositor_state.seat.add_pointer()
+            }
+        };
 
         for event in events {
             let Some(xwayland_surface) = xsurface_from_client_surface(
@@ -858,10 +900,15 @@ impl PointerHandler for WprsState {
                     self.client_state.last_enter_serial = serial;
                     // TODO: allow this to be a popup?
                     if let Some(Role::XdgToplevel(toplevel)) = &xwayland_surface.role {
-                        let parent_id = self
-                            .surface_bimap
-                            .get_by_right(&event.surface.id())
-                            .unwrap();
+                        let Some(parent_id) =
+                            self.surface_bimap.get_by_right(&event.surface.id())
+                        else {
+                            warn!(
+                                "received pointer enter for unmapped surface_id={:?}",
+                                event.surface.id()
+                            );
+                            continue;
+                        };
                         self.client_state.last_focused_window = Some(X11Parent {
                             surface_id: parent_id.clone(),
                             for_popup: Some(X11ParentForPopup {
@@ -880,12 +927,15 @@ impl PointerHandler for WprsState {
                             },
                         });
                     }
-                    self.compositor_state
-                        .xwm
-                        .as_mut()
-                        .unwrap()
-                        .raise_window(&x11_surface)
-                        .unwrap();
+                    if let Some(xwm) = self.compositor_state.xwm.as_mut() {
+                        if let Err(err) = xwm.raise_window(&x11_surface) {
+                            warn!("failed to raise X11 window: {err:?}");
+                        }
+                    } else {
+                        warn!(
+                            "received pointer enter before XWM is initialized; ignoring raise_window"
+                        );
+                    }
                     let serial = self.compositor_state.serial_map.insert(serial);
                     compositor_pointer.motion(
                         self,
@@ -960,18 +1010,29 @@ impl PointerHandler for WprsState {
                 } => x11_surface.axis(
                     &compositor_seat,
                     self,
-                    AxisFrame::new(time)
-                        .source(match source.unwrap() {
-                            WlPointerAxisSource::Wheel => AxisSource::Wheel,
-                            WlPointerAxisSource::Finger => AxisSource::Finger,
-                            WlPointerAxisSource::Continuous => AxisSource::Continuous,
-                            WlPointerAxisSource::WheelTilt => AxisSource::WheelTilt,
-                            _ => unreachable!("got unknown AxisSource {:?}", source),
-                        })
-                        .value(Axis::Horizontal, horizontal.absolute)
-                        .value(Axis::Vertical, vertical.absolute)
-                        .v120(Axis::Horizontal, horizontal.discrete * 120)
-                        .v120(Axis::Vertical, vertical.discrete * 120),
+                    {
+                        let frame = AxisFrame::new(time)
+                            .value(Axis::Horizontal, horizontal.absolute)
+                            .value(Axis::Vertical, vertical.absolute)
+                            .v120(Axis::Horizontal, horizontal.discrete * 120)
+                            .v120(Axis::Vertical, vertical.discrete * 120);
+
+                        match source {
+                            Some(WlPointerAxisSource::Wheel) => frame.source(AxisSource::Wheel),
+                            Some(WlPointerAxisSource::Finger) => frame.source(AxisSource::Finger),
+                            Some(WlPointerAxisSource::Continuous) => {
+                                frame.source(AxisSource::Continuous)
+                            }
+                            Some(WlPointerAxisSource::WheelTilt) => {
+                                frame.source(AxisSource::WheelTilt)
+                            }
+                            Some(other) => {
+                                warn!("got unknown AxisSource {other:?}; omitting axis source");
+                                frame
+                            }
+                            None => frame,
+                        }
+                    },
                 ),
             }
         }

@@ -132,6 +132,7 @@ mod tests {
     use crate::protocols::wprs::wayland::Transform;
     use crate::protocols::wprs::wayland::WlSurfaceId;
     use crate::protocols::wprs::wayland::{AxisScroll, AxisSource, KeyboardEvent, Mode};
+    use crate::protocols::wprs::wayland::PointerGestureEvent;
     use crate::protocols::wprs::xdg_shell::{ToplevelClose, ToplevelEvent};
 
     #[derive(Default)]
@@ -261,6 +262,17 @@ mod tests {
                     source: Some(AxisSource::Finger),
                 },
             }]),
+        )
+        .unwrap();
+
+        dispatch_event(
+            &mut backend,
+            Event::PointerGesture(PointerGestureEvent::PinchBegin {
+                surface_id: WlSurfaceId(2),
+                position: (1.0, 2.0).into(),
+                serial: 1,
+                fingers: 2,
+            }),
         )
         .unwrap();
 

@@ -58,6 +58,11 @@ use smithay::input::pointer::ButtonEvent;
 use smithay::input::pointer::GesturePinchBeginEvent;
 use smithay::input::pointer::GesturePinchEndEvent;
 use smithay::input::pointer::GesturePinchUpdateEvent;
+use smithay::input::pointer::GestureSwipeBeginEvent;
+use smithay::input::pointer::GestureSwipeEndEvent;
+use smithay::input::pointer::GestureSwipeUpdateEvent;
+use smithay::input::pointer::GestureHoldBeginEvent;
+use smithay::input::pointer::GestureHoldEndEvent;
 use smithay::input::pointer::Focus;
 use smithay::input::pointer::MotionEvent;
 use smithay::output::Output;
@@ -156,7 +161,12 @@ impl WprsServerState {
         let pointer = self.seat.get_pointer().location(loc!())?;
 
         let (surface_id, position) = match event {
-            PointerGestureEvent::PinchBegin { surface_id, position, .. }
+            PointerGestureEvent::SwipeBegin { surface_id, position, .. }
+            | PointerGestureEvent::SwipeUpdate { surface_id, position, .. }
+            | PointerGestureEvent::SwipeEnd { surface_id, position, .. }
+            | PointerGestureEvent::HoldBegin { surface_id, position, .. }
+            | PointerGestureEvent::HoldEnd { surface_id, position, .. }
+            | PointerGestureEvent::PinchBegin { surface_id, position, .. }
             | PointerGestureEvent::PinchUpdate { surface_id, position, .. }
             | PointerGestureEvent::PinchEnd { surface_id, position, .. } => (surface_id, position),
         };
@@ -194,6 +204,77 @@ impl WprsServerState {
         );
 
         match event {
+            PointerGestureEvent::SwipeBegin {
+                serial,
+                fingers,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_swipe_begin(
+                    self,
+                    &GestureSwipeBeginEvent {
+                        serial,
+                        time,
+                        fingers,
+                    },
+                );
+            },
+            PointerGestureEvent::SwipeUpdate { delta, .. } => {
+                pointer.gesture_swipe_update(
+                    self,
+                    &GestureSwipeUpdateEvent {
+                        time,
+                        delta: delta.into(),
+                    },
+                );
+            },
+            PointerGestureEvent::SwipeEnd {
+                serial,
+                cancelled,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_swipe_end(
+                    self,
+                    &GestureSwipeEndEvent {
+                        serial,
+                        time,
+                        cancelled,
+                    },
+                );
+            },
+
+            PointerGestureEvent::HoldBegin {
+                serial,
+                fingers,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_hold_begin(
+                    self,
+                    &GestureHoldBeginEvent {
+                        serial,
+                        time,
+                        fingers,
+                    },
+                );
+            },
+            PointerGestureEvent::HoldEnd {
+                serial,
+                cancelled,
+                ..
+            } => {
+                let serial = self.serial_map.insert(serial);
+                pointer.gesture_hold_end(
+                    self,
+                    &GestureHoldEndEvent {
+                        serial,
+                        time,
+                        cancelled,
+                    },
+                );
+            },
+
             PointerGestureEvent::PinchBegin {
                 serial,
                 fingers,

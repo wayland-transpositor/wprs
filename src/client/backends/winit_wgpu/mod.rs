@@ -52,6 +52,13 @@ use crate::protocols::wprs::xdg_shell::{
     DecorationMode, ToplevelClose, ToplevelConfigure, ToplevelEvent, WindowState,
 };
 
+#[derive(Debug, Clone, Copy, Default)]
+struct PinchGestureState {
+    active_pinch: bool,
+    active_rotation: bool,
+    scale: f64,
+}
+
 #[derive(Clone, Debug)]
 pub struct WinitWgpuOptions {
     pub keyboard_mode: KeyboardMode,
@@ -444,7 +451,7 @@ struct App {
     last_cursor_pos: HashMap<winit::window::WindowId, crate::protocols::wprs::geometry::Point<f64>>,
     pointer_inside: HashSet<winit::window::WindowId>,
 
-    pinch_scale: HashMap<WlSurfaceId, f64>,
+    pinch_state: HashMap<WlSurfaceId, PinchGestureState>,
 }
 
 impl App {
@@ -1083,25 +1090,34 @@ impl ApplicationHandler<UserEvent> for App {
             },
             WindowEvent::PinchGesture { delta, phase, .. } => {
                 let pos = self.cursor_pos_for(window_id);
-                let serial = self.next_serial();
+                let state = self.pinch_state.entry(surface_id).or_default();
+                let was_active = state.active_pinch || state.active_rotation;
+
                 match phase {
                     winit::event::TouchPhase::Started => {
-                        self.pinch_scale.insert(surface_id, 1.0);
-                        self.serializer
-                            .writer()
-                            .send(SendType::Object(proto::Event::PointerGesture(
-                                PointerGestureEvent::PinchBegin {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    fingers: 2,
-                                },
-                            )));
+                        state.active_pinch = true;
+                        if state.scale == 0.0 {
+                            state.scale = 1.0;
+                        }
+                        if !was_active {
+                            let serial = self.next_serial();
+                            self.serializer
+                                .writer()
+                                .send(SendType::Object(proto::Event::PointerGesture(
+                                    PointerGestureEvent::PinchBegin {
+                                        surface_id,
+                                        position: pos,
+                                        serial,
+                                        fingers: 2,
+                                    },
+                                )));
+                        }
                     }
                     winit::event::TouchPhase::Moved => {
-                        let entry = self.pinch_scale.entry(surface_id).or_insert(1.0);
-                        // `delta` is a relative magnification, keep an absolute scale for smithay.
-                        *entry = (*entry + delta).clamp(0.1, 10.0);
+                        if delta.is_finite() {
+                            // NSEvent magnification is additive; store an absolute scale for smithay.
+                            state.scale = (state.scale + delta).clamp(0.1, 10.0);
+                        }
                         self.serializer
                             .writer()
                             .send(SendType::Object(proto::Event::PointerGesture(
@@ -1109,36 +1125,90 @@ impl ApplicationHandler<UserEvent> for App {
                                     surface_id,
                                     position: pos,
                                     delta: (0.0, 0.0).into(),
-                                    scale: *entry,
+                                    scale: state.scale.max(0.1),
                                     rotation: 0.0,
                                 },
                             )));
                     }
-                    winit::event::TouchPhase::Ended => {
-                        self.pinch_scale.remove(&surface_id);
+                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
+                        state.active_pinch = false;
+                        let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
+                        let is_active = state.active_pinch || state.active_rotation;
+                        if !is_active {
+                            self.pinch_state.remove(&surface_id);
+                            let serial = self.next_serial();
+                            self.serializer
+                                .writer()
+                                .send(SendType::Object(proto::Event::PointerGesture(
+                                    PointerGestureEvent::PinchEnd {
+                                        surface_id,
+                                        position: pos,
+                                        serial,
+                                        cancelled,
+                                    },
+                                )));
+                        }
+                    }
+                }
+            }
+
+            WindowEvent::RotationGesture { delta, phase, .. } => {
+                let pos = self.cursor_pos_for(window_id);
+                let state = self.pinch_state.entry(surface_id).or_default();
+                let was_active = state.active_pinch || state.active_rotation;
+                match phase {
+                    winit::event::TouchPhase::Started => {
+                        state.active_rotation = true;
+                        if state.scale == 0.0 {
+                            state.scale = 1.0;
+                        }
+                        if !was_active {
+                            let serial = self.next_serial();
+                            self.serializer
+                                .writer()
+                                .send(SendType::Object(proto::Event::PointerGesture(
+                                    PointerGestureEvent::PinchBegin {
+                                        surface_id,
+                                        position: pos,
+                                        serial,
+                                        fingers: 2,
+                                    },
+                                )));
+                        }
+                    }
+                    winit::event::TouchPhase::Moved => {
+                        // winit uses CCW-positive, smithay uses clockwise-positive.
+                        let rotation = -(delta as f64);
                         self.serializer
                             .writer()
                             .send(SendType::Object(proto::Event::PointerGesture(
-                                PointerGestureEvent::PinchEnd {
+                                PointerGestureEvent::PinchUpdate {
                                     surface_id,
                                     position: pos,
-                                    serial,
-                                    cancelled: false,
+                                    delta: (0.0, 0.0).into(),
+                                    scale: state.scale.max(0.1),
+                                    rotation,
                                 },
                             )));
                     }
-                    winit::event::TouchPhase::Cancelled => {
-                        self.pinch_scale.remove(&surface_id);
-                        self.serializer
-                            .writer()
-                            .send(SendType::Object(proto::Event::PointerGesture(
-                                PointerGestureEvent::PinchEnd {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    cancelled: true,
-                                },
-                            )));
+                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
+                        state.active_rotation = false;
+                        let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
+                        let is_active = state.active_pinch || state.active_rotation;
+                        if !is_active {
+                            self.pinch_state.remove(&surface_id);
+                            let serial = self.next_serial();
+                            self.serializer
+                                .writer()
+                                .send(SendType::Object(proto::Event::PointerGesture(
+                                    PointerGestureEvent::PinchEnd {
+                                        surface_id,
+                                        position: pos,
+                                        serial,
+                                        cancelled,
+                                    },
+                                )));
+                        }
                     }
                 }
             }
@@ -1225,7 +1295,7 @@ pub fn run(
         pressed_keycodes: HashSet::new(),
         last_cursor_pos: HashMap::new(),
         pointer_inside: HashSet::new(),
-        pinch_scale: HashMap::new(),
+        pinch_state: HashMap::new(),
     };
 
     event_loop.run_app(&mut app)?;

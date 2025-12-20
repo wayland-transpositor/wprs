@@ -530,6 +530,35 @@ pub enum TouchPhase {
 
 #[derive(Debug, Copy, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum PointerGestureEvent {
+    SwipeBegin {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        fingers: u32,
+    },
+    SwipeUpdate {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        delta: Point<f64>,
+    },
+    SwipeEnd {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        cancelled: bool,
+    },
+    HoldBegin {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        fingers: u32,
+    },
+    HoldEnd {
+        surface_id: WlSurfaceId,
+        position: Point<f64>,
+        serial: u32,
+        cancelled: bool,
+    },
     PinchBegin {
         surface_id: WlSurfaceId,
         position: Point<f64>,

@@ -195,7 +195,12 @@ impl MacosFullscreenBackend {
 
     fn handle_pointer_gesture(&mut self, e: PointerGestureEvent) -> Result<()> {
         match e {
-            PointerGestureEvent::PinchBegin { .. } => Ok(()),
+            PointerGestureEvent::SwipeBegin { .. }
+            | PointerGestureEvent::SwipeUpdate { .. }
+            | PointerGestureEvent::SwipeEnd { .. }
+            | PointerGestureEvent::HoldBegin { .. }
+            | PointerGestureEvent::HoldEnd { .. }
+            | PointerGestureEvent::PinchBegin { .. } => Ok(()),
             PointerGestureEvent::PinchUpdate { scale, .. } => {
                 // Best-effort mapping: translate pinch-to-zoom into Ctrl+scroll.
                 // `scale` is absolute (1.0 at begin).

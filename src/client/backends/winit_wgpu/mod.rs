@@ -329,6 +329,9 @@ impl WindowRenderer {
     }
 
     fn render(&mut self, shared: &WgpuShared) -> Result<()> {
+        debug_assert_eq!(self.bind_group.is_some(), self.texture.is_some());
+        debug_assert_eq!(self.bind_group.is_some(), self.texture_size.is_some());
+
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(wgpu::SurfaceError::Outdated) | Err(wgpu::SurfaceError::Lost) => {
@@ -362,12 +365,15 @@ impl WindowRenderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            rp.set_pipeline(&self.pipeline);
-            if let Some(bg) = &self.bind_group {
-                rp.set_bind_group(0, bg, &[]);
+
+            // The pipeline expects a texture/sampler bind group at index 0. Avoid issuing draw
+            // calls before we've received the first remote frame (or if the texture was reset).
+            if let Some(bind_group) = &self.bind_group {
+                rp.set_pipeline(&self.pipeline);
+                rp.set_bind_group(0, bind_group, &[]);
+                rp.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+                rp.draw(0..6, 0..1);
             }
-            rp.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            rp.draw(0..6, 0..1);
         }
         shared.queue.submit([encoder.finish()]);
         frame.present();

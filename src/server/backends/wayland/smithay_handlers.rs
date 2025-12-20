@@ -15,6 +15,7 @@
 /// Handlers for events from Smithay.
 use std::mem;
 use std::os::fd::OwnedFd;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
@@ -96,6 +97,7 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 use smithay::wayland::shm::ShmHandler;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::viewporter::ViewportCachedState;
+use smithay::xwayland::XWaylandClientData;
 
 use crate::utils::channel::DiscardingSender;
 use crate::utils::compositor as compositor_utils;
@@ -567,7 +569,19 @@ impl CompositorHandler for WprsServerState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        &client.get_data::<ClientState>().unwrap().compositor_state
+        if let Some(state) = client.get_data::<ClientState>() {
+            return &state.compositor_state;
+        }
+        if let Some(state) = client.get_data::<XWaylandClientData>() {
+            return &state.compositor_state;
+        }
+
+        static DEFAULT: OnceLock<CompositorClientState> = OnceLock::new();
+        warn!(
+            "wayland client missing compositor client state; using default (client_id={:?})",
+            client.id()
+        );
+        DEFAULT.get_or_init(CompositorClientState::default)
     }
 
     #[instrument(skip(self), level = "debug")]
@@ -697,12 +711,15 @@ pub fn set_xdg_toplevel_attributes(
     surface_data: &SurfaceData,
     toplevel_state: &mut XdgToplevelState,
 ) -> Result<()> {
-    let toplevel_attributes = surface_data
-        .data_map
-        .get::<XdgToplevelSurfaceData>()
-        .location(loc!())?
+    // Not all toplevel-like surfaces are backed by Smithay's xdg-shell
+    // implementation (e.g. XWayland surfaces exposed via xwayland_shell).
+    // In those cases we keep the existing `toplevel_state` as-is.
+    let Some(toplevel_attributes) = surface_data.data_map.get::<XdgToplevelSurfaceData>() else {
+        return Ok(());
+    };
+    let toplevel_attributes = toplevel_attributes
         .lock()
-        .unwrap();
+        .map_err(|_| anyhow!("XdgToplevelSurfaceData lock poisoned"))?;
     // Be careful about not moving objects out of
     // toplevel_attributes here.
     toplevel_state.parent = toplevel_attributes.parent.as_ref().map(WlSurfaceId::new);

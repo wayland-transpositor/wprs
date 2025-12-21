@@ -75,11 +75,11 @@ use super::WprsServerState;
 use super::smithay_handlers::DndGrab;
 use crate::config;
 use crate::prelude::*;
+use crate::protocols::wprs::Capabilities;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::RecvType;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
-use crate::protocols::wprs::core;
 use crate::protocols::wprs::wayland::DataDestinationEvent;
 use crate::protocols::wprs::wayland::DataEvent;
 use crate::protocols::wprs::wayland::DataRequest;
@@ -95,6 +95,8 @@ use crate::protocols::wprs::wayland::PointerEventKind;
 use crate::protocols::wprs::wayland::RepeatInfo;
 use crate::protocols::wprs::wayland::SurfaceEvent;
 use crate::protocols::wprs::wayland::SurfaceEventPayload;
+use crate::protocols::wprs::wayland::SurfaceRequest;
+use crate::protocols::wprs::wayland::SurfaceRequestPayload;
 use crate::protocols::wprs::wayland::WlSurfaceId;
 use crate::protocols::wprs::xdg_shell::PopupConfigure;
 use crate::protocols::wprs::xdg_shell::PopupEvent;
@@ -639,8 +641,14 @@ impl WprsServerState {
         // TODO: sync client outputs
         self.serializer.set_other_end_connected(true);
 
+        self.serializer
+            .writer()
+            .send(SendType::Object(Request::Capabilities(Capabilities {
+                xwayland: self.xwayland_enabled,
+            })));
+
         let mut surfaces = Vec::new();
-        self.for_each_surface(|_, surface_data| {
+        self.for_each_surface(|surface, surface_data| {
             let surface_state = surface_data
                 .data_map
                 .get::<LockedSurfaceState>()
@@ -649,13 +657,27 @@ impl WprsServerState {
                 .lock()
                 .unwrap()
                 .clone();
-            surfaces.push(surface_state);
+            surfaces.push((surface.clone(), surface_state));
         });
 
-        for msg in
-            core::handshake::initial_messages(self.xwayland_enabled, surfaces).location(loc!())?
-        {
-            self.serializer.writer().send(msg);
+        for (surface, surface_state) in surfaces {
+            let mut surface_state_to_send = surface_state.clone_without_buffer();
+            let raw_buffer_to_send = surface_state_to_send
+                .update_with_external_buffer(&surface_state.buffer)
+                .location(loc!())?;
+
+            self.serializer
+                .writer()
+                .send(SendType::RawBuffer(raw_buffer_to_send));
+            self.serializer
+                .writer()
+                .send(SendType::Object(Request::Surface(
+                    SurfaceRequest::new(
+                        &surface,
+                        SurfaceRequestPayload::Commit(surface_state_to_send),
+                    )
+                    .location(loc!())?,
+                )));
         }
 
         Ok(())
@@ -1005,40 +1027,16 @@ impl WprsServerState {
     pub fn handle_event(&mut self, event: RecvType<Event>) {
         match event {
             RecvType::Object(Event::WprsClientConnect) => self.handle_connect(),
-            RecvType::Object(other) => core::dispatch_event(self, other),
+            RecvType::Object(Event::Toplevel(event)) => self.handle_toplevel(event),
+            RecvType::Object(Event::Popup(event)) => self.handle_popup(event),
+            RecvType::Object(Event::KeyboardEvent(event)) => self.handle_keyboard_event(event),
+            RecvType::Object(Event::PointerFrame(events)) => self.handle_pointer_frame(events),
+            RecvType::Object(Event::Output(event)) => self.handle_output(event),
+            RecvType::Object(Event::Data(event)) => self.handle_data_event(event),
+            RecvType::Object(Event::Surface(event)) => self.handle_surface_event(event),
             RecvType::RawBuffer(_) => unreachable!(),
         }
         .log_and_ignore(loc!());
         // TODO: maybe send errors back to the client.
-    }
-}
-
-impl core::Backend for WprsServerState {
-    fn on_toplevel_event(&mut self, event: ToplevelEvent) -> Result<()> {
-        self.handle_toplevel(event)
-    }
-
-    fn on_popup_event(&mut self, event: PopupEvent) -> Result<()> {
-        self.handle_popup(event)
-    }
-
-    fn on_keyboard_event(&mut self, event: KeyboardEvent) -> Result<()> {
-        self.handle_keyboard_event(event)
-    }
-
-    fn on_pointer_frame(&mut self, events: Vec<PointerEvent>) -> Result<()> {
-        self.handle_pointer_frame(events)
-    }
-
-    fn on_output_event(&mut self, event: OutputEvent) -> Result<()> {
-        self.handle_output(event)
-    }
-
-    fn on_data_event(&mut self, event: DataEvent) -> Result<()> {
-        self.handle_data_event(event)
-    }
-
-    fn on_surface_event(&mut self, event: SurfaceEvent) -> Result<()> {
-        self.handle_surface_event(event)
     }
 }

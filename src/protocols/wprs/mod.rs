@@ -214,8 +214,6 @@ pub mod tuple;
 pub mod wayland;
 pub mod xdg_shell;
 
-pub mod core;
-
 use framing::Framed;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]

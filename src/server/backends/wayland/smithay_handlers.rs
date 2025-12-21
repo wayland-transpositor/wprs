@@ -103,7 +103,6 @@ use crate::prelude::*;
 use crate::protocols::wprs::ClientId;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
-use crate::protocols::wprs::core;
 use crate::protocols::wprs::tuple::Tuple2;
 use crate::protocols::wprs::wayland::BufferAssignment;
 use crate::protocols::wprs::wayland::ClientSurface;
@@ -117,6 +116,8 @@ use crate::protocols::wprs::wayland::Role;
 use crate::protocols::wprs::wayland::SourceMetadata;
 use crate::protocols::wprs::wayland::SubSurfaceState;
 use crate::protocols::wprs::wayland::SubsurfacePosition;
+use crate::protocols::wprs::wayland::SurfaceRequest;
+use crate::protocols::wprs::wayland::SurfaceRequestPayload;
 use crate::protocols::wprs::wayland::SurfaceState;
 use crate::protocols::wprs::wayland::Transform;
 use crate::protocols::wprs::wayland::WlSurfaceId;
@@ -396,9 +397,13 @@ impl XdgShellHandler for WprsServerState {
             }
 
             let surface_state_to_send = surface_state.clone_without_buffer();
-            for msg in log_and_return!(core::handshake::surface_messages(surface_state_to_send)) {
-                self.serializer.writer().send(msg);
-            }
+            self.serializer
+                .writer()
+                .send(SendType::Object(Request::Surface(SurfaceRequest {
+                    client: surface_state_to_send.client,
+                    surface: surface_state_to_send.id,
+                    payload: SurfaceRequestPayload::Commit(surface_state_to_send),
+                })));
         });
     }
 
@@ -890,9 +895,14 @@ pub fn commit_impl(
         .collect();
     surface_state_to_send.damage = Some(damage);
 
-    for msg in core::handshake::surface_messages(surface_state_to_send).location(loc!())? {
-        state.serializer.writer().send(msg);
-    }
+    state
+        .serializer
+        .writer()
+        .send(SendType::Object(Request::Surface(SurfaceRequest {
+            client: surface_state_to_send.client,
+            surface: surface_state_to_send.id,
+            payload: SurfaceRequestPayload::Commit(surface_state_to_send),
+        })));
     Ok(true)
 }
 

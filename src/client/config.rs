@@ -38,31 +38,6 @@ impl std::str::FromStr for ClientBackend {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum KeyboardMode {
-    Keymap,
-    Evdev,
-}
-
-impl Default for KeyboardMode {
-    fn default() -> Self {
-        Self::Keymap
-    }
-}
-
-impl std::str::FromStr for KeyboardMode {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "keymap" => Ok(Self::Keymap),
-            "evdev" => Ok(Self::Evdev),
-            other => bail!("invalid keyboard mode {other:?} (expected: keymap|evdev)"),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct WprscConfig {
     /// Path to the local UNIX socket used for direct connections.
@@ -85,10 +60,6 @@ pub struct WprscConfig {
     /// Client backend selection.
     pub backend: ClientBackend,
 
-    /// Keyboard handling mode.
-    pub keyboard_mode: KeyboardMode,
-    /// Optional XKB keymap file.
-    pub xkb_keymap_file: Option<PathBuf>,
 }
 
 impl Default for WprscConfig {
@@ -105,8 +76,6 @@ impl Default for WprscConfig {
 
             backend: ClientBackend::default(),
 
-            keyboard_mode: KeyboardMode::default(),
-            xkb_keymap_file: None,
         }
     }
 }
@@ -134,10 +103,6 @@ pub struct WprscArgs {
     pub title_prefix: Option<String>,
 
     pub backend: Option<ClientBackend>,
-
-    pub keyboard_mode: Option<KeyboardMode>,
-
-    pub xkb_keymap_file: Option<PathBuf>,
 }
 
 fn wprsc_args() -> OptionParser<WprscArgs> {
@@ -165,13 +130,6 @@ fn wprsc_args() -> OptionParser<WprscArgs> {
     let backend = long("backend")
         .argument::<ClientBackend>("BACKEND")
         .optional();
-    let keyboard_mode = long("keyboard-mode")
-        .argument::<KeyboardMode>("MODE")
-        .optional();
-    let xkb_keymap_file = long("xkb-keymap-file")
-        .argument::<PathBuf>("PATH")
-        .optional();
-
     construct!(WprscArgs {
         print_default_config_and_exit,
         config_file,
@@ -184,8 +142,6 @@ fn wprsc_args() -> OptionParser<WprscArgs> {
         log_priv_data,
         title_prefix,
         backend,
-        keyboard_mode,
-        xkb_keymap_file,
     })
     .to_options()
     .version(env!("CARGO_PKG_VERSION"))
@@ -238,12 +194,6 @@ impl WprscArgs {
         }
         if let Some(backend) = self.backend {
             cfg.backend = backend;
-        }
-        if let Some(mode) = self.keyboard_mode {
-            cfg.keyboard_mode = mode;
-        }
-        if let Some(path) = self.xkb_keymap_file {
-            cfg.xkb_keymap_file = Some(path);
         }
         Ok(cfg)
     }

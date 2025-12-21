@@ -60,8 +60,6 @@ fn main() -> Result<()> {
         ClientBackendConfig {
             title_prefix: config.title_prefix.clone(),
             control_socket: config.control_socket.clone(),
-            keyboard_mode: config.keyboard_mode,
-            xkb_keymap_file: config.xkb_keymap_file.clone(),
         },
     )
     .location(loc!())?;

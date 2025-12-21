@@ -13,18 +13,16 @@
 // limitations under the License.
 
 use std::fs;
-use std::time::Duration;
-
 use wprs::config;
 use wprs::prelude::*;
 use wprs::protocols::wprs::Event as ProtoEvent;
 use wprs::protocols::wprs::Request as ProtoRequest;
 use wprs::protocols::wprs::Serializer;
+use wprs::server::backends;
+use wprs::server::backends::ServerBackend;
 use wprs::server::config::WprsdArgs;
 use wprs::server::config::WprsdBackend;
 use wprs::server::config::WprsdConfig;
-use wprs::server::runtime::backend::ServerBackend;
-use wprs::server::runtime::backend::TickMode;
 use wprs::utils;
 
 fn infer_backend(config: &WprsdConfig) -> WprsdBackend {
@@ -63,18 +61,13 @@ fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
 
     let backend_kind = infer_backend(config);
     let backend = build_backend(&backend_kind, config).location(loc!())?;
-
-    let tick_interval = match backend.tick_mode() {
-        TickMode::Polling => Some(Duration::from_secs_f64(
-            1.0 / (config.framerate.max(1) as f64),
-        )),
-        TickMode::EventDriven => None,
-    };
-
-    backend.run(serializer, tick_interval).location(loc!())
+    backend.run(serializer).location(loc!())
 }
 
-fn build_backend(backend: &WprsdBackend, config: &WprsdConfig) -> Result<Box<dyn ServerBackend>> {
+fn build_backend(
+    backend: &WprsdBackend,
+    config: &WprsdConfig,
+) -> Result<Box<dyn ServerBackend>> {
     match backend {
         WprsdBackend::Wayland => {
             #[cfg(feature = "server")]

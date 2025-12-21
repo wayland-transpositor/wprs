@@ -9,8 +9,6 @@ use crate::protocols::wprs::Serializer;
 pub struct ClientBackendConfig {
     pub title_prefix: String,
     pub control_socket: PathBuf,
-    pub keyboard_mode: config::KeyboardMode,
-    pub xkb_keymap_file: Option<PathBuf>,
 }
 
 pub trait ClientBackend {

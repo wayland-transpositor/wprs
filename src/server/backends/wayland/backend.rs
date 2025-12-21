@@ -15,6 +15,7 @@ use crate::prelude::*;
 use crate::protocols::wprs::Event;
 use crate::protocols::wprs::Request;
 use crate::protocols::wprs::Serializer;
+use crate::server::backends::ServerBackend;
 use crate::server::backends::wayland::smithay_handlers::ClientState;
 
 use super::WprsServerState;
@@ -102,16 +103,8 @@ fn start_xwayland_xdg_shell(
     });
 }
 
-impl crate::server::runtime::backend::ServerBackend for WaylandSmithayBackend {
-    fn tick_mode(&self) -> crate::server::runtime::backend::TickMode {
-        crate::server::runtime::backend::TickMode::EventDriven
-    }
-
-    fn run(
-        self: Box<Self>,
-        mut serializer: Serializer<Request, Event>,
-        _tick_interval: Option<Duration>,
-    ) -> Result<()> {
+impl ServerBackend for WaylandSmithayBackend {
+    fn run(self: Box<Self>, mut serializer: Serializer<Request, Event>) -> Result<()> {
         let config = self.config;
 
         let reader = serializer

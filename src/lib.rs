@@ -20,8 +20,6 @@ pub mod prelude;
 pub mod protocols;
 pub mod server;
 pub mod utils;
-#[cfg(all(feature = "server", feature = "wayland-client"))]
-pub mod xwayland_xdg_shell;
 
 #[cfg(all(feature = "server", any(target_os = "macos", target_os = "ios")))]
 compile_error!(

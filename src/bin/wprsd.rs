@@ -75,14 +75,10 @@ fn build_backend(
                 Ok(Box::new(
                     backends::wayland::backend::WaylandSmithayBackend::new(
                         backends::wayland::backend::WaylandSmithayBackendConfig {
-                            wayland_display: config.wayland_display.clone(),
+                            wayland_display: config.wayland.display.clone(),
                             framerate: config.framerate,
-                            enable_xwayland: config.enable_xwayland,
-                            xwayland_xdg_shell_path: config.xwayland_xdg_shell_path.clone(),
-                            xwayland_xdg_shell_wayland_debug: config
-                                .xwayland_xdg_shell_wayland_debug,
-                            xwayland_xdg_shell_args: config.xwayland_xdg_shell_args.clone(),
-                            kde_server_side_decorations: config.kde_server_side_decorations,
+                            xwayland: config.wayland.xwayland.clone(),
+                            kde_server_side_decorations: config.wayland.kde_server_side_decorations,
                         },
                     ),
                 ))

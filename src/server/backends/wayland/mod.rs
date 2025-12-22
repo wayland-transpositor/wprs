@@ -58,6 +58,7 @@ use crate::utils::SerialMap;
 pub mod backend;
 pub mod client_handlers;
 pub mod smithay_handlers;
+pub mod xwayland_handlers;
 
 pub(crate) struct LockedSurfaceState(pub(crate) Mutex<SurfaceState>);
 
@@ -101,6 +102,12 @@ pub struct WprsServerState {
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
     pub viewporter_state: ViewporterState,
+
+    #[cfg(target_os = "linux")]
+    pub xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState,
+    #[cfg(target_os = "linux")]
+    pub xwm: Option<smithay::xwayland::X11Wm>,
+    pub xwayland_surfaces: HashSet<ObjectId>,
 
     pub seat: Seat<Self>,
 
@@ -159,6 +166,12 @@ impl WprsServerState {
             data_device_state: DataDeviceState::new::<Self>(&dh),
             primary_selection_state: PrimarySelectionState::new::<Self>(&dh),
             viewporter_state: ViewporterState::new::<Self>(&dh),
+
+            #[cfg(target_os = "linux")]
+            xwayland_shell_state: smithay::wayland::xwayland_shell::XWaylandShellState::new::<Self>(&dh),
+            #[cfg(target_os = "linux")]
+            xwm: None,
+            xwayland_surfaces: HashSet::new(),
             seat,
             serializer,
             // TODO: try tuning this based on the number of cpus the machine has.

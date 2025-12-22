@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,6 +16,7 @@ use crate::protocols::wprs::Request;
 use crate::protocols::wprs::Serializer;
 use crate::server::backends::ServerBackend;
 use crate::server::backends::wayland::smithay_handlers::ClientState;
+use crate::server::config::XwaylandConfig;
 
 use super::WprsServerState;
 
@@ -24,10 +24,7 @@ use super::WprsServerState;
 pub struct WaylandSmithayBackendConfig {
     pub wayland_display: String,
     pub framerate: u32,
-    pub enable_xwayland: bool,
-    pub xwayland_xdg_shell_path: String,
-    pub xwayland_xdg_shell_wayland_debug: bool,
-    pub xwayland_xdg_shell_args: Vec<String>,
+    pub xwayland: Option<XwaylandConfig>,
     pub kde_server_side_decorations: bool,
 }
 
@@ -78,31 +75,6 @@ fn init_wayland_listener(
     Ok(())
 }
 
-fn start_xwayland_xdg_shell(
-    wayland_display: &str,
-    xwayland_xdg_shell_path: &str,
-    xwayland_xdg_shell_wayland_debug: bool,
-    xwayland_xdg_shell_args: &[String],
-) {
-    let mut child = Command::new(xwayland_xdg_shell_path)
-        .env("WAYLAND_DISPLAY", wayland_display)
-        .env(
-            "WAYLAND_DEBUG",
-            if xwayland_xdg_shell_wayland_debug {
-                "1"
-            } else {
-                "0"
-            },
-        )
-        .args(xwayland_xdg_shell_args)
-        .spawn()
-        .expect("failed executing xwayland-xdg-shell");
-
-    std::thread::spawn(move || {
-        child.wait().expect("failed waiting xwayland-xdg-shell");
-    });
-}
-
 impl ServerBackend for WaylandSmithayBackend {
     fn run(self: Box<Self>, mut serializer: Serializer<Request, Event>) -> Result<()> {
         let config = self.config;
@@ -122,7 +94,7 @@ impl ServerBackend for WaylandSmithayBackend {
             &dh,
             event_loop.handle(),
             serializer,
-            config.enable_xwayland,
+            config.xwayland.is_some(),
             frame_interval,
             config.kde_server_side_decorations,
         );
@@ -130,13 +102,17 @@ impl ServerBackend for WaylandSmithayBackend {
         init_wayland_listener(&config.wayland_display, display, &mut state, &event_loop)
             .location(loc!())?;
 
-        if config.enable_xwayland {
-            start_xwayland_xdg_shell(
-                &config.wayland_display,
-                &config.xwayland_xdg_shell_path,
-                config.xwayland_xdg_shell_wayland_debug,
-                &config.xwayland_xdg_shell_args,
-            );
+        if let Some(xwayland_cfg) = config.xwayland {
+            #[cfg(target_os = "linux")]
+            state
+                .start_xwayland(xwayland_cfg.wayland_debug, xwayland_cfg.display)
+                .location(loc!())?;
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = xwayland_cfg;
+                bail!("xwayland is only supported on Linux targets");
+            }
         }
 
         let _keyboard = state

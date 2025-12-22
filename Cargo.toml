@@ -88,10 +88,6 @@ tracy-allocator = ["tracy"]
 name = "wprsd"
 
 [[bin]]
-name = "xwayland-xdg-shell"
-required-features = ["server", "wayland-client"]
-
-[[bin]]
 name = "wprsc"
 
 [dev-dependencies]

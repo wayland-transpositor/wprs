@@ -12,14 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod arc_slice;
+pub mod buffer_pointer;
 pub mod channel;
+pub mod fallible_entry;
+pub mod filtering;
 pub mod error;
+pub mod sharding_compression;
+pub mod vec4u8;
 
 #[cfg(feature = "wayland-client")]
 pub mod client;
 
 #[cfg(feature = "server")]
 pub mod compositor;
+
+#[cfg(feature = "tracy-allocator")]
+pub mod tracy_allocator;
 
 mod core;
 

@@ -86,15 +86,15 @@ use super::geometry::Size;
 use super::tuple::Tuple2;
 use super::xdg_shell;
 #[cfg(feature = "server")]
-use crate::buffer_pointer::BufferPointer;
+use crate::utils::buffer_pointer::BufferPointer;
 use crate::config;
 #[cfg(feature = "server")]
-use crate::filtering;
+use crate::utils::filtering;
 use crate::prelude::*;
-use crate::sharding_compression::CompressedShards;
+use crate::utils::sharding_compression::CompressedShards;
 #[cfg(feature = "server")]
-use crate::sharding_compression::ShardingCompressor;
-use crate::vec4u8::Vec4u8s;
+use crate::utils::sharding_compression::ShardingCompressor;
+use crate::utils::vec4u8::Vec4u8s;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct WlSurfaceId(pub u64);

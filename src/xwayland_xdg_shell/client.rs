@@ -120,7 +120,7 @@ use smithay_client_toolkit::shm::ShmHandler;
 use smithay_client_toolkit::subcompositor::SubcompositorState;
 use tracing::Span;
 
-use crate::buffer_pointer::BufferPointer;
+use crate::utils::buffer_pointer::BufferPointer;
 use crate::config;
 use crate::prelude::*;
 use crate::protocols::wprs::geometry::Point;

@@ -12,20 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod arc_slice;
-pub mod buffer_pointer;
 pub mod client;
 pub mod config;
 pub mod constants;
 pub mod control_server;
-pub mod fallible_entry;
-pub mod filtering;
 pub mod prelude;
 pub mod protocols;
 pub mod server;
-pub mod sharding_compression;
 pub mod utils;
-pub mod vec4u8;
 #[cfg(all(feature = "server", feature = "wayland-client"))]
 pub mod xwayland_xdg_shell;
 
@@ -41,6 +35,3 @@ compile_error!(
 compile_error!(
     "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms."
 );
-
-#[cfg(feature = "tracy-allocator")]
-pub mod tracy_allocator;

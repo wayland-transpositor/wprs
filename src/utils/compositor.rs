@@ -28,7 +28,7 @@ use smithay::wayland::shm;
 use smithay::wayland::shm::BufferAccessError;
 use smithay::wayland::shm::BufferData;
 
-use crate::buffer_pointer::BufferPointer;
+use crate::utils::buffer_pointer::BufferPointer;
 use crate::prelude::*;
 use crate::protocols::wprs::wayland::OutputInfo;
 

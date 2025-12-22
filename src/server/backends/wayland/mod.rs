@@ -52,7 +52,7 @@ use crate::protocols::wprs::wayland::SurfaceRequest;
 use crate::protocols::wprs::wayland::SurfaceRequestPayload;
 use crate::protocols::wprs::wayland::SurfaceState;
 use crate::protocols::wprs::wayland::WlSurfaceId;
-use crate::sharding_compression::ShardingCompressor;
+use crate::utils::sharding_compression::ShardingCompressor;
 use crate::utils::SerialMap;
 
 pub mod backend;

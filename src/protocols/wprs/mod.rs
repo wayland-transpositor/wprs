@@ -68,11 +68,11 @@ use smithay::reexports::wayland_server::backend;
 use sysctl::Ctl;
 use sysctl::Sysctl;
 
-use crate::arc_slice::ArcSlice;
+use crate::utils::arc_slice::ArcSlice;
 use crate::prelude::*;
-use crate::sharding_compression::CompressedShards;
-use crate::sharding_compression::ShardingCompressor;
-use crate::sharding_compression::ShardingDecompressor;
+use crate::utils::sharding_compression::CompressedShards;
+use crate::utils::sharding_compression::ShardingCompressor;
+use crate::utils::sharding_compression::ShardingDecompressor;
 use crate::utils;
 use crate::utils::channel::DiscardingSender;
 use crate::utils::channel::InfallibleSender;

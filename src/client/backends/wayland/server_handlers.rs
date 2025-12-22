@@ -29,7 +29,7 @@ use super::subsurface;
 use super::subsurface::RemoteSubSurface;
 use crate::client::backends::wayland::xdg_shell::RemoteXdgPopup;
 use crate::client::backends::wayland::xdg_shell::RemoteXdgToplevel;
-use crate::fallible_entry::FallibleEntryExt;
+use crate::utils::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;
 use crate::protocols::wprs::ClientId;

@@ -76,7 +76,7 @@ use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surfac
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 
-use crate::fallible_entry::FallibleEntryExt;
+use crate::utils::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::geometry::Point;
 use crate::protocols::wprs::wayland::OutputInfo;

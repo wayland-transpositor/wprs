@@ -27,7 +27,7 @@ use super::RemoteSurface;
 use super::Role;
 use super::WprsClientState;
 use super::smithay_handlers::SubSurfaceData;
-use crate::fallible_entry::FallibleEntryExt;
+use crate::utils::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
 use crate::protocols::wprs::ClientId;
 use crate::protocols::wprs::wayland::SubSurfaceState;

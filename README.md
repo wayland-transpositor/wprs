@@ -18,7 +18,7 @@ Currently building wprs without AVX2 will lead to build failures.
 cargo build --profile=release-lto  # or release, but debug is unusably slow
 ```
 
-The following dependencies are required for `wprsc`, `wprsd`, `xwayland-xdg-shell`:
+The following dependencies are required for `wprsc` and `wprsd`:
 
 * libxkbcommon (-dev on debian)
 * libwayland (-dev on debian)
@@ -239,26 +239,9 @@ protocol.
 
 ### XWayland
 
-XWayland support is implemented as a separate binary, `xwayland-xdg-shell`. The
-binary implements a wayland compositor (but only for the protocol features used
-by xwayland) and client, just like wprsd and wprsc, but in a single binary (so
-skipping the serialization/deserialization). This is the same model as
-[xwayland-proxy-virtwl](https://github.com/talex5/wayland-proxy-virtwl#xwayland-support),
-which is itself inspired by
-[sommelier](https://chromium.googlesource.com/chromiumos/platform2/+/main/vm_tools/sommelier/).
-xwayland-xdg-shell was primarily written (instead of just using
-xwayland-proxy-virtwl) so as to share a common design/codebase with wprs and to
-make use of common wayland development in the form of Smithay and its wayland
-crates. Additionally, xwayland-xdg-shell is more narrowly focused and its sole
-purpose is xwayland support, not virtio-gpu or virtwl.
+XWayland support is provided only as a built-in integration in `wprsd`.
 
-Like xwayland-proxy-virtwl, xwayland-xdg-proxy can be used to implement external
-xwayland support for any wayland compositor instead of re-implementing it inside
-the compositor. Aside from eliminating the need to implement xwayland support in
-every compositor, this approach has been reported to result in better xwayland
-scaling than native xwayland support in some compositor, and it allows xwayland
-applications to be treated more like regular wayland applications instead of
-getting special access.
+Enable it by configuring `wayland = { xwayland = {} }` in `wprsd.ron`.
 
 ### Security
 

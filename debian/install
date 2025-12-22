@@ -1,6 +1,5 @@
 wprs usr/bin
 target/release-lto/wprsc usr/bin
 target/release-lto/wprsd usr/bin
-target/release-lto/xwayland-xdg-shell usr/bin
 wprsd.service usr/lib/systemd/user
 debian/50-wprsd.preset usr/lib/systemd/user-preset

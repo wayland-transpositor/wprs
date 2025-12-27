@@ -21,8 +21,8 @@ inherits = "release-lto"
 [dependencies]
 anyhow = "1.0.99"
 bimap = "0.6.3"
+bpaf = "0.9.20"
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
-bpaf = "0.9"
 calloop = { version = "0.14.3", features = ["signals"] }
 crossbeam-channel = "0.5.15"
 divbuf = "0.4.1"

@@ -24,7 +24,7 @@ pub mod vec4u8;
 #[cfg(feature = "wayland-client")]
 pub mod client;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 pub mod compositor;
 
 #[cfg(feature = "tracy-allocator")]

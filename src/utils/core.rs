@@ -15,7 +15,7 @@
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::arch::x86_64::{__m128i, __m256i, _mm_storeu_si128, _mm256_storeu_si256};
 use std::backtrace::Backtrace;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -29,12 +29,12 @@ use std::thread::ScopedJoinHandle;
 
 use nix::sys::stat;
 use nix::sys::stat::Mode;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::utils::SERIAL_COUNTER;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::utils::Serial;
 use tracing::Level;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use tracing::instrument;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
@@ -98,14 +98,14 @@ pub fn join_unwrap<T>(handle: ScopedJoinHandle<T>) -> T {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 #[derive(Debug)]
 pub struct SerialMap {
     map: HashMap<u32, u32>,
     last_serial: u32,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl SerialMap {
     pub fn new() -> Self {
         Self {
@@ -137,7 +137,7 @@ impl SerialMap {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl Default for SerialMap {
     fn default() -> Self {
         Self::new()

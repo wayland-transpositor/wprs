@@ -1,4 +1,4 @@
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 pub mod wayland;
 
 use crate::prelude::*;

@@ -1,5 +1,5 @@
 pub mod backends;
 pub mod config;
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 pub use backends::wayland::*;

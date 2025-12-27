@@ -71,7 +71,7 @@ fn build_backend(
 ) -> Result<Box<dyn ServerBackend>> {
     match backend {
         WprsdBackend::Wayland => {
-            #[cfg(feature = "server")]
+            #[cfg(feature = "wayland-compositor")]
             {
                 Ok(Box::new(
                     backends::wayland::backend::WaylandSmithayBackend::new(
@@ -88,10 +88,12 @@ fn build_backend(
                     ),
                 ))
             }
-            #[cfg(not(feature = "server"))]
+            #[cfg(not(feature = "wayland-compositor"))]
             {
                 let _ = config;
-                bail!("wayland backend requires building wprsd with `--features server`")
+                bail!(
+                    "wayland backend requires building wprsd with `--features wayland-compositor`"
+                )
             }
         },
         other => {

@@ -70,8 +70,8 @@ default = ["wayland-client"]
 # By default, avoid pulling in platform-specific Wayland compositor/client code.
 # Enable the components you need explicitly.
 
-# Build and enable the Wayland server/compositor (`wprsd`, and server-side helpers).
-server = ["dep:smithay"]
+# Build and enable the Wayland compositor (`wprsd`, and server-side helpers).
+wayland-compositor = ["dep:smithay"]
 
 # Build and enable the Wayland client backend for `wprsc` (SCTK-based).
 wayland-client = ["dep:smithay", "dep:smithay-client-toolkit"]
@@ -89,7 +89,7 @@ name = "wprsd"
 
 [[bin]]
 name = "xwayland-xdg-shell"
-required-features = ["server", "wayland-client"]
+required-features = ["wayland-compositor", "wayland-client"]
 
 [[bin]]
 name = "wprsc"

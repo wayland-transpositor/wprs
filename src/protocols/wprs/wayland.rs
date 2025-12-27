@@ -17,37 +17,37 @@ use std::fmt::Debug;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-#[cfg(any(feature = "server", feature = "wayland-client"))]
+#[cfg(any(feature = "wayland-compositor", feature = "wayland-client"))]
 use anyhow::Error;
 use enum_as_inner::EnumAsInner;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::backend::input::AxisSource as SmithayAxisSource;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::output::Subpixel as SmithaySubpixel;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::reexports::wayland_server::Resource;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::reexports::wayland_server::backend;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::reexports::wayland_server::protocol::wl_output::Transform as SmithayWlTransform;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::reexports::wayland_server::protocol::wl_shm::Format as SmithayBufferFormat;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::utils::Transform as SmithayTransform;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::wayland::compositor::RectangleKind as SmithayRectangleKind;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::wayland::compositor::RegionAttributes;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::wayland::selection::data_device::SourceMetadata as SmithaySourceMetadata;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::wayland::shm::BufferData as SmithayBufferData;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use smithay::wayland::viewporter::ViewportCachedState;
 
 #[cfg(feature = "wayland-client")]
@@ -85,14 +85,14 @@ use super::geometry::Rectangle;
 use super::geometry::Size;
 use super::tuple::Tuple2;
 use super::xdg_shell;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use crate::utils::buffer_pointer::BufferPointer;
 use crate::config;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use crate::utils::filtering;
 use crate::prelude::*;
 use crate::utils::sharding_compression::CompressedShards;
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 use crate::utils::sharding_compression::ShardingCompressor;
 use crate::utils::vec4u8::Vec4u8s;
 
@@ -100,13 +100,13 @@ use crate::utils::vec4u8::Vec4u8s;
 pub struct WlSurfaceId(pub u64);
 
 impl WlSurfaceId {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(wl_surface: &WlSurface) -> Self {
         Self(super::hash(&wl_surface.id()))
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<&backend::ObjectId> for WlSurfaceId {
     fn from(object_id: &backend::ObjectId) -> Self {
         Self(super::hash(object_id))
@@ -121,7 +121,7 @@ pub struct ClientSurface {
 }
 
 impl ClientSurface {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(wl_surface: &WlSurface) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&wl_surface.client().location(loc!())?),
@@ -153,7 +153,7 @@ pub struct BufferMetadata {
     pub format: BufferFormat,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl TryFrom<SmithayBufferFormat> for BufferFormat {
     type Error = Error;
     fn try_from(format: SmithayBufferFormat) -> Result<Self> {
@@ -189,7 +189,7 @@ impl From<BufferFormat> for SctkBufferFormat {
 
 impl BufferMetadata {
     // TODO: replace with impl From
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn from_buffer_data(spec: &SmithayBufferData) -> Result<Self> {
         Ok(Self {
             width: spec.width,
@@ -251,7 +251,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(
         metadata: &SmithayBufferData,
         data: BufferPointer<u8>,
@@ -276,7 +276,7 @@ impl Buffer {
     }
 
     #[allow(clippy::missing_panics_doc)]
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn update(
         &mut self,
         metadata: &SmithayBufferData,
@@ -446,7 +446,7 @@ impl From<SctkAxisSource> for AxisSource {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<AxisSource> for SmithayAxisSource {
     fn from(axis_source: AxisSource) -> Self {
         match axis_source {
@@ -539,7 +539,7 @@ pub struct SubSurfaceState {
 }
 
 impl SubSurfaceState {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(parent: &WlSurface) -> Self {
         Self {
             parent: WlSurfaceId::new(parent),
@@ -563,7 +563,7 @@ pub enum RectangleKind {
     Subtract,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<&SmithayRectangleKind> for RectangleKind {
     fn from(kind: &SmithayRectangleKind) -> Self {
         match kind {
@@ -578,7 +578,7 @@ pub struct Region {
     rects: Vec<Tuple2<RectangleKind, Rectangle<i32>>>,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<&RegionAttributes> for Region {
     fn from(region: &RegionAttributes) -> Self {
         Self {
@@ -668,7 +668,7 @@ impl From<Transform> for SctkTransform {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<SmithayTransform> for Transform {
     fn from(transform: SmithayTransform) -> Self {
         match transform {
@@ -684,7 +684,7 @@ impl From<SmithayTransform> for Transform {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<SmithayWlTransform> for Transform {
     fn from(transform: SmithayWlTransform) -> Self {
         match transform {
@@ -704,7 +704,7 @@ impl From<SmithayWlTransform> for Transform {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<Transform> for SmithayTransform {
     fn from(transform: Transform) -> Self {
         match transform {
@@ -751,7 +751,7 @@ pub struct SurfaceState {
 }
 
 impl SurfaceState {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(surface: &WlSurface, buffer: Option<BufferAssignment>) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&surface.client().location(loc!())?),
@@ -773,7 +773,7 @@ impl SurfaceState {
     }
 
     #[instrument(skip(data, compressor), level = "debug")]
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn set_buffer(
         &mut self,
         metadata: &SmithayBufferData,
@@ -794,7 +794,7 @@ impl SurfaceState {
         Ok(())
     }
 
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn update_with_external_buffer(
         &mut self,
         buffer: &Option<BufferAssignment>,
@@ -880,7 +880,7 @@ impl From<SctkSubpixel> for Subpixel {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<Subpixel> for SmithaySubpixel {
     fn from(subpixel: Subpixel) -> Self {
         match subpixel {
@@ -968,7 +968,7 @@ pub struct SurfaceRequest {
 }
 
 impl SurfaceRequest {
-    #[cfg(feature = "server")]
+    #[cfg(feature = "wayland-compositor")]
     pub fn new(surface: &WlSurface, payload: SurfaceRequestPayload) -> Result<Self> {
         Ok(Self {
             client: ClientId::new(&surface.client().location(loc!())?),
@@ -1001,7 +1001,7 @@ impl SourceMetadata {
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<SmithaySourceMetadata> for SourceMetadata {
     fn from(source_metadata: SmithaySourceMetadata) -> Self {
         Self {
@@ -1170,7 +1170,7 @@ pub struct ViewportState {
     pub dst: Option<Size<i32>>,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "wayland-compositor")]
 impl From<&ViewportCachedState> for ViewportState {
     fn from(viewport_state: &ViewportCachedState) -> Self {
         Self {

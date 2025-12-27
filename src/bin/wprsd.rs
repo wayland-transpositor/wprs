@@ -28,26 +28,6 @@ fn infer_backend(config: &WprsdConfig) -> WprsdBackend {
     config.backend.unwrap_or(WprsdBackend::Wayland)
 }
 
-fn main() -> Result<()> {
-    let args = WprsdArgs::parse();
-    let config = args.load_config().location(loc!())?;
-
-    config::set_log_priv_data(config.log_priv_data);
-    utils::configure_tracing(
-        config.stderr_log_level.0,
-        config.log_file.clone(),
-        config.file_log_level.0,
-    )
-    .location(loc!())?;
-    utils::exit_on_thread_panic();
-
-    if config.endpoint.is_none() {
-        fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
-    }
-
-    run_selected_backend(&config).location(loc!())
-}
-
 fn make_server_serializer(
     config: &WprsdConfig,
 ) -> Result<Serializer<protocol::Request, protocol::Event>> {
@@ -101,4 +81,24 @@ fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
     let backend_kind = infer_backend(config);
     let backend = build_backend(&backend_kind, config).location(loc!())?;
     backend.run(serializer).location(loc!())
+}
+
+fn main() -> Result<()> {
+    let args = WprsdArgs::parse();
+    let config = args.load_config().location(loc!())?;
+
+    config::set_log_priv_data(config.log_priv_data);
+    utils::configure_tracing(
+        config.stderr_log_level.0,
+        config.log_file.clone(),
+        config.file_log_level.0,
+    )
+    .location(loc!())?;
+    utils::exit_on_thread_panic();
+
+    if config.endpoint.is_none() {
+        fs::create_dir_all(config.socket.parent().location(loc!())?).location(loc!())?;
+    }
+
+    run_selected_backend(&config).location(loc!())
 }

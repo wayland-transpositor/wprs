@@ -52,6 +52,8 @@ use smithay_client_toolkit::shell::xdg::popup::PopupConfigure as SctkPopupConfig
 use smithay_client_toolkit::shell::xdg::window::DecorationMode as SctkDecorationMode;
 #[cfg(feature = "wayland-client")]
 use smithay_client_toolkit::shell::xdg::window::WindowConfigure;
+#[cfg(feature = "wayland-compositor")]
+use wayland_csd_frame::WindowState as CsdWindowState;
 
 use super::ClientId;
 use super::geometry::Point;
@@ -301,39 +303,29 @@ impl From<WindowState> for ToplevelStateSet {
     fn from(window_state: WindowState) -> Self {
         let mut states = Self::default();
 
-        // Keep these bit positions in sync with wayland-csd-frame's WindowState.
-        const MAXIMIZED: u16 = 0b0000_0000_0000_0001;
-        const FULLSCREEN: u16 = 0b0000_0000_0000_0010;
-        const RESIZING: u16 = 0b0000_0000_0000_0100;
-        const ACTIVATED: u16 = 0b0000_0000_0000_1000;
-        const TILED_LEFT: u16 = 0b0000_0000_0001_0000;
-        const TILED_RIGHT: u16 = 0b0000_0000_0010_0000;
-        const TILED_TOP: u16 = 0b0000_0000_0100_0000;
-        const TILED_BOTTOM: u16 = 0b0000_0000_1000_0000;
-
-        let bits = window_state.0;
-        if bits & MAXIMIZED != 0 {
+        let window_states = CsdWindowState::from_bits(window_state.0).unwrap();
+        if window_states.contains(CsdWindowState::MAXIMIZED) {
             states.set(State::Maximized);
         };
-        if bits & FULLSCREEN != 0 {
+        if window_states.contains(CsdWindowState::FULLSCREEN) {
             states.set(State::Fullscreen);
         };
-        if bits & RESIZING != 0 {
+        if window_states.contains(CsdWindowState::RESIZING) {
             states.set(State::Resizing);
         };
-        if bits & ACTIVATED != 0 {
+        if window_states.contains(CsdWindowState::ACTIVATED) {
             states.set(State::Activated);
         };
-        if bits & TILED_LEFT != 0 {
+        if window_states.contains(CsdWindowState::TILED_LEFT) {
             states.set(State::TiledLeft);
         };
-        if bits & TILED_RIGHT != 0 {
+        if window_states.contains(CsdWindowState::TILED_RIGHT) {
             states.set(State::TiledRight);
         };
-        if bits & TILED_TOP != 0 {
+        if window_states.contains(CsdWindowState::TILED_TOP) {
             states.set(State::TiledTop);
         };
-        if bits & TILED_BOTTOM != 0 {
+        if window_states.contains(CsdWindowState::TILED_BOTTOM) {
             states.set(State::TiledBottom);
         };
         states

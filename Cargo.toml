@@ -56,6 +56,7 @@ tracy-client = { version = "0.18.2", optional = true, features = [
     "only-localhost",
     "ondemand",
 ] }
+wayland-csd-frame = { version = "0.3.0" }
 whoami = "1.6.1"
 x11rb = { version = "0.13.2", features = ["shm"] }
 zstd = { version = "0.13.3" }

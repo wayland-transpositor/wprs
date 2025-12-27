@@ -2249,6 +2249,7 @@ dependencies = [
  "tracing-tracy",
  "tracy-client",
  "trybuild",
+ "wayland-csd-frame",
  "whoami",
  "x11rb",
  "zstd",

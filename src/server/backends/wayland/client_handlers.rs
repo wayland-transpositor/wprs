@@ -70,9 +70,6 @@ use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
 
-use super::LockedSurfaceState;
-use super::WprsServerState;
-use super::smithay_handlers::DndGrab;
 use crate::config;
 use crate::prelude::*;
 use crate::protocols::wprs::Capabilities;
@@ -102,6 +99,9 @@ use crate::protocols::wprs::xdg_shell::PopupConfigure;
 use crate::protocols::wprs::xdg_shell::PopupEvent;
 use crate::protocols::wprs::xdg_shell::ToplevelConfigure;
 use crate::protocols::wprs::xdg_shell::ToplevelEvent;
+use crate::server::backends::wayland::LockedSurfaceState;
+use crate::server::backends::wayland::WprsServerState;
+use crate::server::backends::wayland::smithay_handlers::DndGrab;
 use crate::utils::compositor as compositor_utils;
 
 enum UnknownSurfaceErr {

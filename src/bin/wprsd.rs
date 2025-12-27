@@ -57,14 +57,6 @@ fn make_server_serializer(
     }
 }
 
-fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
-    let serializer = make_server_serializer(config).location(loc!())?;
-
-    let backend_kind = infer_backend(config);
-    let backend = build_backend(&backend_kind, config).location(loc!())?;
-    backend.run(serializer).location(loc!())
-}
-
 fn build_backend(
     backend: &WprsdBackend,
     config: &WprsdConfig,
@@ -101,4 +93,12 @@ fn build_backend(
             bail!("unsupported wprsd backend in this build: {other:?}")
         },
     }
+}
+
+fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
+    let serializer = make_server_serializer(config).location(loc!())?;
+
+    let backend_kind = infer_backend(config);
+    let backend = build_backend(&backend_kind, config).location(loc!())?;
+    backend.run(serializer).location(loc!())
 }

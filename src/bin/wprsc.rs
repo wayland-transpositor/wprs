@@ -19,7 +19,7 @@ use wprs::client::build_client_backend;
 use wprs::client::config::WprscArgs;
 use wprs::config;
 use wprs::prelude::*;
-use wprs::protocols::wprs as proto;
+use wprs::protocols::wprs as protocol;
 use wprs::protocols::wprs::Serializer;
 use wprs::utils;
 
@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     .location(loc!())?;
     utils::exit_on_thread_panic();
 
-    let serializer: Serializer<proto::Event, proto::Request> = match &config.endpoint {
+    let serializer: Serializer<protocol::Event, protocol::Request> = match &config.endpoint {
         Some(endpoint) => Serializer::new_client_endpoint(endpoint.clone())
             .with_context(loc!(), || {
                 format!("Serializer unable to connect to endpoint {endpoint:?}.")
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     };
 
     let writer = serializer.writer();
-    writer.send(proto::SendType::Object(proto::Event::WprsClientConnect));
+    writer.send(protocol::SendType::Object(protocol::Event::WprsClientConnect));
 
     let backend = build_client_backend(
         config.backend,

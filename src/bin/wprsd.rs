@@ -15,8 +15,7 @@
 use std::fs;
 use wprs::config;
 use wprs::prelude::*;
-use wprs::protocols::wprs::Event as ProtoEvent;
-use wprs::protocols::wprs::Request as ProtoRequest;
+use wprs::protocols::wprs as protocol;
 use wprs::protocols::wprs::Serializer;
 use wprs::server::backends;
 use wprs::server::backends::ServerBackend;
@@ -49,7 +48,9 @@ fn main() -> Result<()> {
     run_selected_backend(&config).location(loc!())
 }
 
-fn make_server_serializer(config: &WprsdConfig) -> Result<Serializer<ProtoRequest, ProtoEvent>> {
+fn make_server_serializer(
+    config: &WprsdConfig,
+) -> Result<Serializer<protocol::Request, protocol::Event>> {
     match &config.endpoint {
         Some(endpoint) => Serializer::new_server_endpoint(endpoint.clone()).location(loc!()),
         None => Serializer::new_server(&config.socket).location(loc!()),

@@ -24,6 +24,7 @@ bimap = "0.6.3"
 bpaf = "0.9.20"
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 calloop = { version = "0.14.3", features = ["signals"] }
+cfg-if = "1.0.3"
 crossbeam-channel = "0.5.15"
 divbuf = "0.4.1"
 enum-as-inner = "0.6.1"

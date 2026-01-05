@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 // Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,22 +46,38 @@ use cfg_if::cfg_if;
 // simply put them in the next switch
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
-        use std::arch::x86_64::_mm_castps_si128;
-        use std::arch::x86_64::_mm_castsi128_ps;
-        use std::arch::x86_64::_mm_shuffle_ps;
+        use std::arch::x86_64::_mm_add_epi8;
         use std::arch::x86_64::_mm_loadu_si128;
         use std::arch::x86_64::_mm_storeu_si128;
-        use std::arch::x86_64::_mm_sub_epi8;
-        use std::arch::x86_64::_mm_add_epi8;
-        use std::arch::x86_64::_mm_slli_si128;
         use std::arch::x86_64::_mm_set1_epi8;
         use std::arch::x86_64::_mm_setzero_si128;
-        use std::arch::x86_64::_mm_set_epi8;
+
+        // These are needed for emulation of AVX2 so we don't need them if AVX2 is available
+        cfg_if! {
+            if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))] {
+                // These are needed for emulation of AVX so we don't need them if AVX is available
+                cfg_if! {
+                    if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx")))] {
+                        use std::arch::x86_64::_mm_castps_si128;
+                        use std::arch::x86_64::_mm_shuffle_ps;
+                    }
+                }
+                use std::arch::x86_64::_mm_castsi128_ps;
+                use std::arch::x86_64::_mm_sub_epi8;
+                use std::arch::x86_64::_mm_slli_si128;
+                use std::arch::x86_64::_mm_set_epi8;
+            }
+        }
 
         cfg_if! {
             if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
                 use std::arch::x86_64::_mm_extract_epi8;
-                use std::arch::x86_64::_mm_blend_epi32;
+                // These are needed for emulation of AVX2 so we don't need them if AVX2 / AVX is available
+                cfg_if! {
+                    if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), not(target_feature = "avx")))] {
+                        use std::arch::x86_64::_mm_blend_epi32;
+                    }
+                }
             } else {
                 use std::arch::x86_64::_mm_extract_epi16;
                 use std::arch::x86_64::_mm_set_epi32;
@@ -74,7 +88,8 @@ cfg_if! {
         }
 
         cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3"))] {
+            // These are needed for emulation of AVX2 so we don't need them if AVX2 is available
+            if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3", not(target_feature = "avx2")))] {
                 use std::arch::x86_64::_mm_shuffle_epi8;
             }
         }
@@ -98,13 +113,13 @@ cfg_if! {
         use std::arch::x86_64::_mm256_castsi256_si128;
         use std::arch::x86_64::_mm256_set_m128i;
         use std::arch::x86_64::_mm256_castsi128_si256;
-        use std::arch::x86_64::_mm256_insertf128_ps;
 
         cfg_if! {
             if #[cfg(all(target_arch = "x86_64", target_feature = "avx", not(target_feature = "avx2")))] {
                 // AVX only not AVX2: Sandy Bridge and Ivy Bridge
                 use std::arch::x86_64::_mm256_extractf128_si256;
                 use std::arch::x86_64::_mm256_blend_ps;
+                use std::arch::x86_64::_mm256_insertf128_ps;
             } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
                 // AVX2 in addition of AVX
                 use std::arch::x86_64::_mm256_sub_epi8;
@@ -349,9 +364,14 @@ cfg_if! {
                     _mm_extract_epi8(a, INDEX)
                 }
             } else {
+                // I am tagging this as unsafe because the sse4.1 variant is somehow tagged as unsafe
+                // while the SSE2 fallback is not. I do not know why. So we get warnings of
+                // unnecessary unsafe blocks in the callers.
+                // TODO: revisit inside unsafe blocks or the external tagging of SSE4.1
+                // functions fallbacks as unsafe
                 #[target_feature(enable = "sse2")]
                 #[inline]
-                fn wprs_mm_extract_epi8<const INDEX: i32>(a: wprs__m128i) -> i32 {
+                unsafe fn wprs_mm_extract_epi8<const INDEX: i32>(a: wprs__m128i) -> i32 {
                     // TODO: revisit this when generic_const_exprs graduates from nightly
                     // _mm_extract_epi16 is available in SSE2
                     let word = match INDEX / 2 {
@@ -922,9 +942,14 @@ cfg_if! {
                     unsafe {_mm_blend_epi32(a, b, MASK)}
                 }
             } else {
+                // I am tagging this as unsafe because the sse4.1 variant is somehow tagged as unsafe
+                // while the SSE2 fallback is not. I do not know why. So we get warnings of
+                // unnecessary unsafe blocks in the callers.
+                // TODO: revisit inside unsafe blocks or the external tagging of SSE4.1
+                // functions fallbacks as unsafe
                 #[target_feature(enable = "sse2")]
                 #[inline]
-                fn wprs_mm_blend_epi32<const MASK: i32>(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
+                unsafe fn wprs_mm_blend_epi32<const MASK: i32>(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
                     // Fallback for SSE2, SSE3, SSSE3 (Generic bitwise blend)
                     // This is a bitwise selection: (b & mask) | (a & ~mask)
                     // We create a 128-bit mask based on the 4-bit M constant
@@ -944,6 +969,7 @@ cfg_if! {
         fn wprs_mm256_blend_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
             // We only care about the lower 4 bits (0-15)
             // TODO: revisit this when generic_const_exprs graduates from nightly
+            unsafe {
             let low = match MASK & 0xF {
                 0  => wprs_mm_blend_epi32::< 0>(a.low, b.low),
                 1  => wprs_mm_blend_epi32::< 1>(a.low, b.low),
@@ -989,6 +1015,7 @@ cfg_if! {
                 low: low,
                 high: high,
             }
+            }
         }
 
         #[target_feature(enable = "sse2")]
@@ -998,6 +1025,7 @@ cfg_if! {
             // Indices 0-15 are in the 'low' 128-bit lane.
             // Indices 16-31 are in the 'high' 128-bit lane.
             // TODO: revisit this when generic_const_exprs graduates from nightly
+            unsafe {
             match INDEX {
                 // Lower Lane (0-15)
                 0  => wprs_mm_extract_epi8::< 0>(a.low),
@@ -1034,6 +1062,7 @@ cfg_if! {
                 30 => wprs_mm_extract_epi8::<14>(a.high),
                 31 => wprs_mm_extract_epi8::<15>(a.high),
                 _ => panic!("Index out of bounds for 256-bit extract"),
+            }
             }
         }
 

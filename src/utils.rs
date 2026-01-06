@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::arch::x86_64::__m128i;
-use std::arch::x86_64::__m256i;
-use std::arch::x86_64::_mm_storeu_si128;
-use std::arch::x86_64::_mm256_storeu_si256;
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::fs;
@@ -37,6 +33,11 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 
 use crate::prelude::*;
+
+use crate::simd::__m128i;
+use crate::simd::__m256i;
+use crate::simd::_mm_storeu_si128;
+use crate::simd::_mm256_storeu_si256;
 
 pub fn configure_tracing<P: AsRef<Path>>(
     stderr_log_level: Level,
@@ -134,11 +135,7 @@ impl Default for SerialMap {
     }
 }
 
-/// # Safety
-///   sse2 is needed
 #[allow(dead_code)]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "sse2")]
 pub fn print_vec_char_128_dec(x: __m128i) {
     let mut v = [0u8; 16];
     // SAFETY: dst is 16 * 8 = bytes
@@ -166,11 +163,7 @@ pub fn print_vec_char_128_dec(x: __m128i) {
     );
 }
 
-/// # Safety
-///   avx2 is needed
 #[allow(dead_code)]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[target_feature(enable = "avx2")]
 pub fn print_vec_char_256_hex(x: __m256i) {
     let mut v = [0u8; 32];
     // SAFETY: dst is 32 * 8 = bytes

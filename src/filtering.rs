@@ -32,1001 +32,88 @@ use crate::sharding_compression::ShardingCompressor;
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
 
-use cfg_if::cfg_if;
-
-// The feature set is cumalative in x86_64. You cannot have avx2 without avx or sse4.1, ssse3, sse2
-// target-cpu=x86-64-v2 has up to sse4.2
-// target-cpu=x86-64-v3 has also avx, avx2
-// Sandy Bridge and Ivy Bridge is a special case that has avx but not avx2 so technically is v2
-// with extra stuff (avx) but does not reach v3 due to avx2
-// Compiling with native should unlock the usage of individual flags
-
-// First the data - 128bit (SSE2)
-// These need to be also defined for the avx case so we cannot
-// simply put them in the next switch
-cfg_if! {
-    if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
-        use std::arch::x86_64::_mm_add_epi8;
-        use std::arch::x86_64::_mm_loadu_si128;
-        use std::arch::x86_64::_mm_storeu_si128;
-        use std::arch::x86_64::_mm_set1_epi8;
-        use std::arch::x86_64::_mm_setzero_si128;
-
-        // These are needed for emulation of AVX2 so we don't need them if AVX2 is available
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))] {
-                // These are needed for emulation of AVX so we don't need them if AVX is available
-                cfg_if! {
-                    if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx")))] {
-                        use std::arch::x86_64::_mm_castps_si128;
-                        use std::arch::x86_64::_mm_shuffle_ps;
-                    }
-                }
-                use std::arch::x86_64::_mm_castsi128_ps;
-                use std::arch::x86_64::_mm_sub_epi8;
-                use std::arch::x86_64::_mm_slli_si128;
-                use std::arch::x86_64::_mm_set_epi8;
-            }
-        }
-
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
-                use std::arch::x86_64::_mm_extract_epi8;
-                // These are needed for emulation of AVX2 so we don't need them if AVX2 / AVX is available
-                cfg_if! {
-                    if #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), not(target_feature = "avx")))] {
-                        use std::arch::x86_64::_mm_blend_epi32;
-                    }
-                }
-            } else {
-                use std::arch::x86_64::_mm_extract_epi16;
-                use std::arch::x86_64::_mm_set_epi32;
-                use std::arch::x86_64::_mm_or_si128;
-                use std::arch::x86_64::_mm_and_si128;
-                use std::arch::x86_64::_mm_andnot_si128;
-            }
-        }
-
-        cfg_if! {
-            // These are needed for emulation of AVX2 so we don't need them if AVX2 is available
-            if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3", not(target_feature = "avx2")))] {
-                use std::arch::x86_64::_mm_shuffle_epi8;
-            }
-        }
-
-        use std::arch::x86_64::__m128i;
-
-        #[allow(non_camel_case_types)]
-        pub type wprs__m128i = __m128i;
-    }
-}
-
-// Now the rest of data - 256bit (AVX), Generic
-cfg_if! {
-    if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
-        // sse2 and 128bits intrinsics are also available
-        use std::arch::x86_64::_mm256_castps_si256;
-        use std::arch::x86_64::_mm256_castsi256_ps;
-        use std::arch::x86_64::_mm256_shuffle_ps;
-        use std::arch::x86_64::_mm256_loadu_si256;
-        use std::arch::x86_64::_mm256_storeu_si256;
-        use std::arch::x86_64::_mm256_castsi256_si128;
-        use std::arch::x86_64::_mm256_set_m128i;
-        use std::arch::x86_64::_mm256_castsi128_si256;
-
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "avx", not(target_feature = "avx2")))] {
-                // AVX only not AVX2: Sandy Bridge and Ivy Bridge
-                use std::arch::x86_64::_mm256_extractf128_si256;
-                use std::arch::x86_64::_mm256_blend_ps;
-                use std::arch::x86_64::_mm256_insertf128_ps;
-            } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
-                // AVX2 in addition of AVX
-                use std::arch::x86_64::_mm256_sub_epi8;
-                use std::arch::x86_64::_mm256_add_epi8;
-                use std::arch::x86_64::_mm256_slli_si256;
-                use std::arch::x86_64::_mm256_extracti128_si256;
-                use std::arch::x86_64::_mm256_blend_epi32;
-                use std::arch::x86_64::_mm256_extract_epi8;
-                use std::arch::x86_64::_mm256_inserti128_si256;
-                use std::arch::x86_64::_mm256_set_epi8;
-                use std::arch::x86_64::_mm256_shuffle_epi8;
-            }
-        }
-
-        use std::arch::x86_64::__m256i;
-
-        #[allow(non_camel_case_types)]
-        pub type wprs__m256i = __m256i;
-    } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
-        // SSE2 but not AVX
-        #[allow(non_camel_case_types)]
-        #[repr(C, align(32))]
-        #[derive(Copy, Clone)]
-        pub struct wprs__m256i {
-            pub low: wprs__m128i,
-            pub high: wprs__m128i,
-        }
-    } else {
-        compile_error!("x86_64 SIMD support is required.");
-    }
-}
-
-// We use this block when we have a triple implementation: AVX, SSE2 and Generic
-cfg_if! {
-    if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_shufps_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            _mm256_castps_si256(_mm256_shuffle_ps(
-                _mm256_castsi256_ps(a),
-                _mm256_castsi256_ps(b),
-                MASK,
-            ))
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_loadu_si256_mem(src: &[u8; 32]) -> wprs__m256i {
-            // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
-            // 256 bits from it.
-            unsafe { _mm256_loadu_si256(src.as_ptr().cast::<wprs__m256i>()) }
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_storeu_si256_mem(dst: &mut [u8; 32], val: wprs__m256i) {
-            // SAFETY: dst is 32 u8s, which is 256 bits, so it is safe to write 256 bits
-            // to it.
-            unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<wprs__m256i>(), val) }
-        }
-
-        // This is the same with the plain SSE2 but we want the VEX encoded variant
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm_loadu_si128_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> wprs__m128i {
-            // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
-            // safe to read 128 bits from it.
-            unsafe { _mm_loadu_si128(src.ptr().cast::<wprs__m128i>()) }
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_storeu_si256_vec4u8(dst: &mut [Vec4u8; 8], val: wprs__m256i) {
-            // SAFETY: dst is 8 Vec4u8s, which is 32 u8s, which is 256 bits, so it is
-            // safe to write 256 bits to it.
-            unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<wprs__m256i>(), val) }
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm_set1_epi8(a: i8) -> wprs__m128i {
-            // This is the same with the plain SSE2 but we want the VEX encoded variant
-            _mm_set1_epi8(a)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm_extract_epi8<const INDEX: i32>(a: wprs__m128i) -> i32 {
-            // This is the same with the plain SSE4.1 but we want the VEX encoded variant
-            _mm_extract_epi8(a, INDEX)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_set_m128i(hi: wprs__m128i, lo: wprs__m128i) -> wprs__m256i {
-            _mm256_set_m128i(hi, lo)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm_setzero_si128() -> wprs__m128i {
-            _mm_setzero_si128()
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_castsi128_si256(a: wprs__m128i) -> wprs__m256i {
-            _mm256_castsi128_si256(a)
-        }
-
-        // This is the same with the plain SSE2 but we want the VEX encoded variant
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm_add_epi8(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
-            _mm_add_epi8(a, b)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_castsi256_si128(a: wprs__m256i) -> wprs__m128i {
-            _mm256_castsi256_si128(a)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        pub fn wprs_mm_storeu_si128(mem_addr: *mut wprs__m128i, a: wprs__m128i) {
-            unsafe {
-                _mm_storeu_si128(mem_addr, a)
-            }
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        pub fn wprs_mm256_storeu_si256(mem_addr: *mut wprs__m256i, a: wprs__m256i) {
-            unsafe {
-                _mm256_storeu_si256(mem_addr, a)
-            }
-        }
-    } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_shufps_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // 1. Process the Low 128 bits
-            let low = _mm_castps_si128(_mm_shuffle_ps(
-                _mm_castsi128_ps(a.low),
-                _mm_castsi128_ps(b.low),
-                MASK,
-            ));
-
-            // 2. Process the High 128 bits (exactly the same logic)
-            let high = _mm_castps_si128(_mm_shuffle_ps(
-                _mm_castsi128_ps(a.high),
-                _mm_castsi128_ps(b.high),
-                MASK,
-            ));
-
-            wprs__m256i {low, high}
-        }
-
-        /// Emulates a 256-bit aligned load using SSE2 instructions.
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_loadu_si256_mem(src: &[u8; 32]) -> wprs__m256i {
-            unsafe {
-                let ptr = src.as_ptr();
-
-                // 1. Load the first 128 bits (indices 0, 1, 2, 3)
-                // Cast the i32 pointer to an __m128i pointer for the intrinsic
-                let low = _mm_loadu_si128(ptr.cast::<__m128i>());
-
-                // 2. Load the second 128 bits (indices 4, 5, 6, 7)
-                // We offset the pointer by 4 (since it's a *const i32, this is 16 bytes)
-                let high = _mm_loadu_si128(ptr.add(16).cast::<__m128i>());
-
-                wprs__m256i {low, high}
-            }
-        }
-
-        /// Emulates a 256-bit aligned store using SSE2 instructions.
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_storeu_si256_mem(dst: &mut [u8; 32], val: wprs__m256i) {
-            // SAFETY: dst is 32 u8s (256 bits).
-            // We store two 128-bit chunks sequentially.
-            unsafe {
-                let base_ptr = dst.as_mut_ptr();
-                // 1. Store the low 128 bits into indices [0..16]
-                _mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
-
-                // 2. Store the high 128 bits into indices [16..32]
-                // We offset the pointer by 16 bytes.
-                _mm_storeu_si128(base_ptr.add(16).cast::<__m128i>(), val.high);
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm_loadu_si128_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> wprs__m128i {
-            // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
-            // safe to read 128 bits from it.
-            unsafe { _mm_loadu_si128(src.ptr().cast::<wprs__m128i>()) }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_storeu_si256_vec4u8(dst: &mut [Vec4u8; 8], val: wprs__m256i) {
-            // SAFETY: dst is 8 Vec4u8s, which is 32 u8s, which is 256 bits, so it is
-            // safe to write 256 bits to it.
-            // val consists of two 128-bit registers = 256 bytes.
-            unsafe {
-                // Get a raw pointer to the start of the 32-byte buffer
-                let base_ptr = dst.as_mut_ptr() as *mut Vec4u8;
-
-                // Store the low 128 bits into the first 16 bytes (indices 0-15)
-                _mm_storeu_si128(base_ptr.cast::<wprs__m128i>(), val.low);
-
-                // Store the high 128 bits into the next 16 bytes (indices 16-31)
-                // .add(16) moves the pointer forward by 16 bytes
-                _mm_storeu_si128(base_ptr.add(4).cast::<wprs__m128i>(), val.high);
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm_set1_epi8(a: i8) -> wprs__m128i {
-            _mm_set1_epi8(a)
-        }
-
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
-                #[target_feature(enable = "sse4.1")]
-                #[inline]
-                fn wprs_mm_extract_epi8<const INDEX: i32>(a: wprs__m128i) -> i32 {
-                    _mm_extract_epi8(a, INDEX)
-                }
-            } else {
-                // I am tagging this as unsafe because the sse4.1 variant is somehow tagged as unsafe
-                // while the SSE2 fallback is not. I do not know why. So we get warnings of
-                // unnecessary unsafe blocks in the callers.
-                // TODO: revisit inside unsafe blocks or the external tagging of SSE4.1
-                // functions fallbacks as unsafe
-                #[target_feature(enable = "sse2")]
-                #[inline]
-                unsafe fn wprs_mm_extract_epi8<const INDEX: i32>(a: wprs__m128i) -> i32 {
-                    // TODO: revisit this when generic_const_exprs graduates from nightly
-                    // _mm_extract_epi16 is available in SSE2
-                    let word = match INDEX / 2 {
-                        0 => _mm_extract_epi16(a, 0),
-                        1 => _mm_extract_epi16(a, 1),
-                        2 => _mm_extract_epi16(a, 2),
-                        3 => _mm_extract_epi16(a, 3),
-                        4 => _mm_extract_epi16(a, 4),
-                        5 => _mm_extract_epi16(a, 5),
-                        6 => _mm_extract_epi16(a, 6),
-                        7 => _mm_extract_epi16(a, 7),
-                        _ => unreachable!(),
-                    };
-
-                    let is_high_byte = (INDEX % 2) != 0;
-                    if is_high_byte {
-                        (word >> 8) & 0xFF
-                    } else {
-                        word & 0xFF
-                    }
-                }
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_set_m128i(hi: wprs__m128i, lo: wprs__m128i) -> wprs__m256i {
-            // In SSE2, we simply wrap the two 128-bit values
-            // into our custom 256-bit emulation struct.
-            wprs__m256i {low: lo, high:hi}
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm_setzero_si128() -> wprs__m128i {
-            _mm_setzero_si128()
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_castsi128_si256(a: wprs__m128i) -> wprs__m256i {
-            // In SSE2, we wrap the 128-bit value into our 256-bit struct.
-            // We set the high bits to zero to represent the 'undefined' state safely.
-            wprs__m256i {
-                low: a,
-                high: _mm_setzero_si128(),
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm_add_epi8(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
-            _mm_add_epi8(a, b)
-        }
-
-        #[inline]
-        #[target_feature(enable = "sse2")]
-        fn wprs_mm256_castsi256_si128(a: wprs__m256i) -> wprs__m128i {
-            // In a native __m256i, the cast returns the lower 128 bits.
-            a.low
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        pub fn wprs_mm_storeu_si128(mem_addr: *mut wprs__m128i, a: wprs__m128i) {
-            unsafe {
-                _mm_storeu_si128(mem_addr, a)
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        pub fn wprs_mm256_storeu_si256(mem_addr: *mut wprs__m256i, a: wprs__m256i) {
-            // 1. Cast the pointer to a byte-addressable pointer (u8)
-            let base_ptr = mem_addr as *mut u8;
-
-            unsafe {
-                // 2. Store the low 128 bits at the base address
-                _mm_storeu_si128(base_ptr as *mut __m128i, a.low);
-
-                // 3. Store the high 128 bits 16 bytes (128 bits) offset from base
-                _mm_storeu_si128(base_ptr.add(16) as *mut __m128i, a.high);
-            }
-        }
-    } else {
-        compile_error!("x86_64 SIMD support is required.");
-    }
-}
-
-// We use this block when we have a quadraple implementation: AVX2, AVX, SSE2 and Generic
-// Sandy Bridge and Ivy Bridge have no AVX2
-cfg_if! {
-    if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_sub_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            _mm256_sub_epi8(a, b)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_add_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            _mm256_add_epi8(a, b)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_slli_si256<const SHIFT: i32>(a: wprs__m256i) -> wprs__m256i {
-            _mm256_slli_si256(a, SHIFT)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_extracti128_si256<const HIGH: i32>(a: wprs__m256i) -> wprs__m128i {
-            _mm256_extracti128_si256(a, HIGH)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_blend_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            _mm256_blend_epi32(a, b, MASK)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_extract_epi8<const INDEX: i32>(a: wprs__m256i) -> i32 {
-            _mm256_extract_epi8(a, INDEX)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_inserti128_si256<const LANE: i32>(a: wprs__m256i, b: wprs__m128i) -> wprs__m256i {
-            _mm256_inserti128_si256(a, b, LANE)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_set_epi8(
-            e31: i8, e30: i8, e29: i8, e28: i8, e27: i8, e26: i8, e25: i8, e24: i8,
-            e23: i8, e22: i8, e21: i8, e20: i8, e19: i8, e18: i8, e17: i8, e16: i8,
-            e15: i8, e14: i8, e13: i8, e12: i8, e11: i8, e10: i8, e9: i8, e8: i8,
-            e7: i8, e6: i8, e5: i8, e4: i8, e3: i8, e2: i8, e1: i8, e0: i8) -> wprs__m256i {
-            _mm256_set_epi8(
-                e31, e30, e29, e28, e27, e26, e25, e24,
-                e23, e22, e21, e20, e19, e18, e17, e16,
-                e15, e14, e13, e12, e11, e10, e9, e8,
-                e7, e6, e5, e4, e3, e2, e1, e0)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        fn wprs_mm256_shuffle_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            _mm256_shuffle_epi8(a, b)
-        }
-    } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_sub_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // 1. Extract the low 128-bit halves from the 256-bit registers.
-            // _mm256_castsi256_si128 is a zero-cost instruction that just treats
-            // the YMM register as an XMM register.
-            let a_lo = _mm256_castsi256_si128(a);
-            let b_lo = _mm256_castsi256_si128(b);
-
-            // 2. Extract the high 128-bit halves.
-            // _mm256_extractf128_si256 is an AVX instruction that pulls the
-            // upper 128 bits into an XMM register.
-            let a_hi = _mm256_extractf128_si256(a, 1);
-            let b_hi = _mm256_extractf128_si256(b, 1);
-
-            // 3. Perform 8-bit integer subtraction on the halves.
-            // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
-            let res_lo = _mm_sub_epi8(a_lo, b_lo);
-            let res_hi = _mm_sub_epi8(a_hi, b_hi);
-
-            // 4. Recombine the two 128-bit results back into a single 256-bit register.
-            wprs_mm256_set_m128i(res_hi, res_lo)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_add_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // 1. Extract the low 128-bit halves from the 256-bit registers.
-            // _mm256_castsi256_si128 is a zero-cost instruction that just treats
-            // the YMM register as an XMM register.
-            let a_lo = _mm256_castsi256_si128(a);
-            let b_lo = _mm256_castsi256_si128(b);
-
-            // 2. Extract the high 128-bit halves.
-            // _mm256_extractf128_si256 is an AVX instruction that pulls the
-            // upper 128 bits into an XMM register.
-            let a_hi = _mm256_extractf128_si256(a, 1);
-            let b_hi = _mm256_extractf128_si256(b, 1);
-
-            // 3. Perform 8-bit integer subtraction on the halves.
-            // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
-            let res_lo = _mm_add_epi8(a_lo, b_lo);
-            let res_hi = _mm_add_epi8(a_hi, b_hi);
-
-            // 4. Recombine the two 128-bit results back into a single 256-bit register.
-            wprs_mm256_set_m128i(res_hi, res_lo)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_slli_si256<const SHIFT: i32>(a: wprs__m256i) -> wprs__m256i {
-            // 1. Split: Extract the 128-bit halves
-            // Cast is zero-cost; it just treats the YMM as an XMM (low half)
-            let lo = _mm256_castsi256_si128(a);
-            // Extract the high 128 bits
-            let hi = _mm256_extractf128_si256(a, 1);
-
-            // 2. Shift: Apply 128-bit byte shift to each half
-            // These will be compiled as VEX-encoded VPSLLDQ XMM instructions
-            let res_lo = _mm_slli_si128(lo, SHIFT);
-            let res_hi = _mm_slli_si128(hi, SHIFT);
-
-            // 3. Merge: Combine back into a 256-bit register
-            _mm256_set_m128i(res_hi, res_lo)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_extracti128_si256<const HIGH: i32>(a: wprs__m256i) -> wprs__m128i {
-            _mm256_extractf128_si256(a, HIGH)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_blend_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // 1. Cast integer vectors to floating-point vectors (bit-preserving)
-            let a_f = _mm256_castsi256_ps(a);
-            let b_f = _mm256_castsi256_ps(b);
-
-            // 2. Perform the blend using the AVX1 floating-point intrinsic.
-            // We use a match to pipe the const generic MASK into the literal slot.
-            let res_f = _mm256_blend_ps(a_f, b_f, MASK);
-
-            // 3. Cast back to integer vector (bit-preserving)
-            _mm256_castps_si256(res_f)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_extract_epi8<const INDEX: i32>(a: wprs__m256i) -> i32 {
-            let v = if INDEX < 16 {
-                // Extract from low 128-bit lane (XMM)
-                _mm256_castsi256_si128(a)
-            } else {
-                // Extract high 128-bit lane, then extract byte
-                _mm256_extractf128_si256::<1>(a)
-            };
-
-            // This is the same with the plain SSE4.1 but we want the VEX encoded variant
-            // This should work with the two lines below
-            // _mm_extract_epi8(low, INDEX)
-            // _mm_extract_epi8(high, INDEX - 16)
-            // TODO: revisit this when generic_const_exprs graduates from nightly
-            match INDEX {
-                // Lower Lane (0-15)
-                0  => _mm_extract_epi8(v, 0),
-                1  => _mm_extract_epi8(v, 1),
-                2  => _mm_extract_epi8(v, 2),
-                3  => _mm_extract_epi8(v, 3),
-                4  => _mm_extract_epi8(v, 4),
-                5  => _mm_extract_epi8(v, 5),
-                6  => _mm_extract_epi8(v, 6),
-                7  => _mm_extract_epi8(v, 7),
-                8  => _mm_extract_epi8(v, 8),
-                9  => _mm_extract_epi8(v, 9),
-                10 => _mm_extract_epi8(v, 10),
-                11 => _mm_extract_epi8(v, 11),
-                12 => _mm_extract_epi8(v, 12),
-                13 => _mm_extract_epi8(v, 13),
-                14 => _mm_extract_epi8(v, 14),
-                15 => _mm_extract_epi8(v, 15),
-                // Upper Lane (16-31)
-                16 => _mm_extract_epi8(v, 0),
-                17 => _mm_extract_epi8(v, 1),
-                18 => _mm_extract_epi8(v, 2),
-                19 => _mm_extract_epi8(v, 3),
-                20 => _mm_extract_epi8(v, 4),
-                21 => _mm_extract_epi8(v, 5),
-                22 => _mm_extract_epi8(v, 6),
-                23 => _mm_extract_epi8(v, 7),
-                24 => _mm_extract_epi8(v, 8),
-                25 => _mm_extract_epi8(v, 9),
-                26 => _mm_extract_epi8(v, 10),
-                27 => _mm_extract_epi8(v, 11),
-                28 => _mm_extract_epi8(v, 12),
-                29 => _mm_extract_epi8(v, 13),
-                30 => _mm_extract_epi8(v, 14),
-                31 => _mm_extract_epi8(v, 15),
-                _ => panic!("Index out of bounds for 256-bit extract"),
-            }
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_inserti128_si256<const LANE: i32>(a: wprs__m256i, b: wprs__m128i) -> wprs__m256i {
-            // Cast to __m256 (float), insert, cast back
-            let a_f = _mm256_castsi256_ps(a);
-            let b_f = _mm_castsi128_ps(b);
-            let res_f = _mm256_insertf128_ps(a_f, b_f, LANE);
-            _mm256_castps_si256(res_f)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_set_epi8(
-            e31: i8, e30: i8, e29: i8, e28: i8, e27: i8, e26: i8, e25: i8, e24: i8,
-            e23: i8, e22: i8, e21: i8, e20: i8, e19: i8, e18: i8, e17: i8, e16: i8,
-            e15: i8, e14: i8, e13: i8, e12: i8, e11: i8, e10: i8, e9: i8, e8: i8,
-            e7: i8, e6: i8, e5: i8, e4: i8, e3: i8, e2: i8, e1: i8, e0: i8) -> wprs__m256i {
-
-            let low = _mm_set_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0);
-            let high = _mm_set_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16);
-
-            let res = _mm256_castsi128_si256(low);
-            wprs_mm256_inserti128_si256::<1>(res, high)
-        }
-
-        #[target_feature(enable = "avx")]
-        #[inline]
-        fn wprs_mm256_shuffle_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // 1. Extract halves of data and mask
-            let a_low = _mm256_castsi256_si128(a);
-            let a_high = _mm256_extractf128_si256::<1>(a);
-            let b_low = _mm256_castsi256_si128(b);
-            let b_high = _mm256_extractf128_si256::<1>(b);
-
-            // 2. Perform SSSE3 shuffle on each 128-bit lane
-            let res_low = _mm_shuffle_epi8(a_low, b_low);
-            let res_high = _mm_shuffle_epi8(a_high, b_high);
-
-            // 3. Combine back into 256-bit
-            let res = _mm256_castsi128_si256(res_low);
-            wprs_mm256_inserti128_si256::<1>(res, res_high)
-        }
-    } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_sub_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // We use _mm_sub_epi8 (SSE2) twice.
-            wprs__m256i {
-                low: _mm_sub_epi8(a.low, b.low),
-                high: _mm_sub_epi8(a.high, b.high)
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_add_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // We use _mm_add_epi8 (SSE2) twice.
-            wprs__m256i {
-                low: _mm_add_epi8(a.low, b.low),
-                high: _mm_add_epi8(a.high, b.high)
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_slli_si256<const SHIFT: i32>(a: wprs__m256i) -> wprs__m256i {
-            // SAFETY: _mm_slli_si128 is an SSE2 intrinsic.
-            // It shifts the 128-bit register left by SHIFT bytes.
-            // Bits do not carry across the 128-bit boundary, perfectly
-            // matching the behavior of the AVX2 256-bit version.
-            wprs__m256i {
-                low: _mm_slli_si128(a.low, SHIFT),
-                high: _mm_slli_si128(a.high, SHIFT)
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_extracti128_si256<const HIGH: i32>(a: wprs__m256i) -> wprs__m128i {
-            // Because HIGH must be a compile-time constant,
-            // the compiler will optimize this branch away entirely.
-            if HIGH == 0 {
-                a.low
-            } else {
-                a.high
-            }
-        }
-
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
-                #[target_feature(enable = "sse4.1")]
-                #[inline]
-                fn wprs_mm_blend_epi32<const MASK: i32>(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
-                    // If target has SSE4.1, use the specialized blend instruction
-                    unsafe {_mm_blend_epi32(a, b, MASK)}
-                }
-            } else {
-                // I am tagging this as unsafe because the sse4.1 variant is somehow tagged as unsafe
-                // while the SSE2 fallback is not. I do not know why. So we get warnings of
-                // unnecessary unsafe blocks in the callers.
-                // TODO: revisit inside unsafe blocks or the external tagging of SSE4.1
-                // functions fallbacks as unsafe
-                #[target_feature(enable = "sse2")]
-                #[inline]
-                unsafe fn wprs_mm_blend_epi32<const MASK: i32>(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
-                    // Fallback for SSE2, SSE3, SSSE3 (Generic bitwise blend)
-                    // This is a bitwise selection: (b & mask) | (a & ~mask)
-                    // We create a 128-bit mask based on the 4-bit M constant
-                    let mask = _mm_set_epi32(
-                        if (MASK & 8) != 0 { -1 } else { 0 },
-                        if (MASK & 4) != 0 { -1 } else { 0 },
-                        if (MASK & 2) != 0 { -1 } else { 0 },
-                        if (MASK & 1) != 0 { -1 } else { 0 },
-                    );
-                    _mm_or_si128(_mm_and_si128(mask, b), _mm_andnot_si128(mask, a))
-                }
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_blend_epi32<const MASK: i32>(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-            // We only care about the lower 4 bits (0-15)
-            // TODO: revisit this when generic_const_exprs graduates from nightly
-            unsafe {
-            let low = match MASK & 0xF {
-                0  => wprs_mm_blend_epi32::< 0>(a.low, b.low),
-                1  => wprs_mm_blend_epi32::< 1>(a.low, b.low),
-                2  => wprs_mm_blend_epi32::< 2>(a.low, b.low),
-                3  => wprs_mm_blend_epi32::< 3>(a.low, b.low),
-                4  => wprs_mm_blend_epi32::< 4>(a.low, b.low),
-                5  => wprs_mm_blend_epi32::< 5>(a.low, b.low),
-                6  => wprs_mm_blend_epi32::< 6>(a.low, b.low),
-                7  => wprs_mm_blend_epi32::< 7>(a.low, b.low),
-                8  => wprs_mm_blend_epi32::< 8>(a.low, b.low),
-                9  => wprs_mm_blend_epi32::< 9>(a.low, b.low),
-                10 => wprs_mm_blend_epi32::<10>(a.low, b.low),
-                11 => wprs_mm_blend_epi32::<11>(a.low, b.low),
-                12 => wprs_mm_blend_epi32::<12>(a.low, b.low),
-                13 => wprs_mm_blend_epi32::<13>(a.low, b.low),
-                14 => wprs_mm_blend_epi32::<14>(a.low, b.low),
-                15 => wprs_mm_blend_epi32::<15>(a.low, b.low),
-                _ => unreachable!(),
-            };
-
-            // We only care about the lower 4 bits (0-15)
-            let high = match (MASK >> 4) & 0xF {
-                0  => wprs_mm_blend_epi32::< 0>(a.high, b.high),
-                1  => wprs_mm_blend_epi32::< 1>(a.high, b.high),
-                2  => wprs_mm_blend_epi32::< 2>(a.high, b.high),
-                3  => wprs_mm_blend_epi32::< 3>(a.high, b.high),
-                4  => wprs_mm_blend_epi32::< 4>(a.high, b.high),
-                5  => wprs_mm_blend_epi32::< 5>(a.high, b.high),
-                6  => wprs_mm_blend_epi32::< 6>(a.high, b.high),
-                7  => wprs_mm_blend_epi32::< 7>(a.high, b.high),
-                8  => wprs_mm_blend_epi32::< 8>(a.high, b.high),
-                9  => wprs_mm_blend_epi32::< 9>(a.high, b.high),
-                10 => wprs_mm_blend_epi32::<10>(a.high, b.high),
-                11 => wprs_mm_blend_epi32::<11>(a.high, b.high),
-                12 => wprs_mm_blend_epi32::<12>(a.high, b.high),
-                13 => wprs_mm_blend_epi32::<13>(a.high, b.high),
-                14 => wprs_mm_blend_epi32::<14>(a.high, b.high),
-                15 => wprs_mm_blend_epi32::<15>(a.high, b.high),
-                _ => unreachable!(),
-            };
-
-            wprs__m256i {
-                low: low,
-                high: high,
-            }
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_extract_epi8<const INDEX: i32>(a: wprs__m256i) -> i32 {
-            // There are 32 bytes in a 256-bit register (0-31).
-            // Indices 0-15 are in the 'low' 128-bit lane.
-            // Indices 16-31 are in the 'high' 128-bit lane.
-            // TODO: revisit this when generic_const_exprs graduates from nightly
-            unsafe {
-            match INDEX {
-                // Lower Lane (0-15)
-                0  => wprs_mm_extract_epi8::< 0>(a.low),
-                1  => wprs_mm_extract_epi8::< 1>(a.low),
-                2  => wprs_mm_extract_epi8::< 2>(a.low),
-                3  => wprs_mm_extract_epi8::< 3>(a.low),
-                4  => wprs_mm_extract_epi8::< 4>(a.low),
-                5  => wprs_mm_extract_epi8::< 5>(a.low),
-                6  => wprs_mm_extract_epi8::< 6>(a.low),
-                7  => wprs_mm_extract_epi8::< 7>(a.low),
-                8  => wprs_mm_extract_epi8::< 8>(a.low),
-                9  => wprs_mm_extract_epi8::< 9>(a.low),
-                10 => wprs_mm_extract_epi8::<10>(a.low),
-                11 => wprs_mm_extract_epi8::<11>(a.low),
-                12 => wprs_mm_extract_epi8::<12>(a.low),
-                13 => wprs_mm_extract_epi8::<13>(a.low),
-                14 => wprs_mm_extract_epi8::<14>(a.low),
-                15 => wprs_mm_extract_epi8::<15>(a.low),
-                // Upper Lane (16-31)
-                16 => wprs_mm_extract_epi8::< 0>(a.high),
-                17 => wprs_mm_extract_epi8::< 1>(a.high),
-                18 => wprs_mm_extract_epi8::< 2>(a.high),
-                19 => wprs_mm_extract_epi8::< 3>(a.high),
-                20 => wprs_mm_extract_epi8::< 4>(a.high),
-                21 => wprs_mm_extract_epi8::< 5>(a.high),
-                22 => wprs_mm_extract_epi8::< 6>(a.high),
-                23 => wprs_mm_extract_epi8::< 7>(a.high),
-                24 => wprs_mm_extract_epi8::< 8>(a.high),
-                25 => wprs_mm_extract_epi8::< 9>(a.high),
-                26 => wprs_mm_extract_epi8::<10>(a.high),
-                27 => wprs_mm_extract_epi8::<11>(a.high),
-                28 => wprs_mm_extract_epi8::<12>(a.high),
-                29 => wprs_mm_extract_epi8::<13>(a.high),
-                30 => wprs_mm_extract_epi8::<14>(a.high),
-                31 => wprs_mm_extract_epi8::<15>(a.high),
-                _ => panic!("Index out of bounds for 256-bit extract"),
-            }
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_inserti128_si256<const LANE: i32>(a: wprs__m256i, b: wprs__m128i) -> wprs__m256i {
-            // In SIMD, Lane 0 is the lower 128 bits, Lane 1 is the upper 128 bits.
-            if LANE == 0 {
-                wprs__m256i {
-                    low: b,        // Replace low with new 128-bit value
-                    high: a.high,  // Keep existing high
-                }
-            } else {
-                wprs__m256i {
-                    low: a.low,    // Keep existing low
-                    high: b,       // Replace high with new 128-bit value
-                }
-            }
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        fn wprs_mm256_set_epi8(
-            e31: i8, e30: i8, e29: i8, e28: i8, e27: i8, e26: i8, e25: i8, e24: i8,
-            e23: i8, e22: i8, e21: i8, e20: i8, e19: i8, e18: i8, e17: i8, e16: i8,
-            e15: i8, e14: i8, e13: i8, e12: i8, e11: i8, e10: i8, e9: i8, e8: i8,
-            e7: i8, e6: i8, e5: i8, e4: i8, e3: i8, e2: i8, e1: i8, e0: i8,) -> wprs__m256i {
-            // Construct the low 128-bit part (e0 through e15)
-            let low = _mm_set_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0);
-            // Construct the high 128-bit part (e16 through e31)
-            let high = _mm_set_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16);
-
-            wprs__m256i { low, high }
-        }
-
-        cfg_if! {
-            if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3"))] {
-                #[target_feature(enable = "ssse3")]
-                #[inline]
-                fn wprs_mm256_shuffle_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-                    // SSSE3 _mm_shuffle_epi8 operates on 128-bit registers.
-                    // We shuffle the 'low' part of 'a' using the 'low' part of 'b'.
-                    let low = _mm_shuffle_epi8(a.low, b.low);
-
-                    // We shuffle the 'high' part of 'a' using the 'high' part of 'b'.
-                    let high = _mm_shuffle_epi8(a.high, b.high);
-
-                    wprs__m256i { low, high }
-                }
-            } else {
-                /// Emulates SSSE3 _mm_shuffle_epi8 using only SSE2 instructions
-                #[inline]
-                #[target_feature(enable = "sse2")]
-                fn wprs_mm_shuffle_epi8(a: wprs__m128i, b: wprs__m128i) -> wprs__m128i {
-                    // 1. Cast to arrays to access individual bytes (SSE2 doesn't have a direct
-                    // variable byte-shuffler like PSHUFB).
-                    let src: [u8; 16] = unsafe {std::mem::transmute(a)};
-                    let mask: [u8; 16] = unsafe {std::mem::transmute(b)};
-                    let mut res = [0u8; 16];
-
-                    for i in 0..16 {
-                        // SSSE3/AVX2 Logic:
-                        // If bit 7 of the mask byte is set, the result is 0.
-                        // Otherwise, use the lower 4 bits as an index into the source lane.
-                        if (mask[i] & 0x80) == 0 {
-                            let index = (mask[i] & 0x0F) as usize;
-                            res[i] = src[index];
-                        } else {
-                            res[i] = 0;
-                        }
-                    }
-
-                    unsafe {std::mem::transmute(res)}
-                }
-
-                #[target_feature(enable = "sse2")]
-                #[inline]
-                fn wprs_mm256_shuffle_epi8(a: wprs__m256i, b: wprs__m256i) -> wprs__m256i {
-                    // We must shuffle 'low' and 'high' independently to match AVX2 behavior.
-                    wprs__m256i {
-                        low: wprs_mm_shuffle_epi8(a.low, b.low),
-                        high: wprs_mm_shuffle_epi8(a.high, b.high),
-                    }
-                }
-            }
-        }
-    } else {
-        compile_error!("x86_64 SIMD support is required.");
-    }
+use crate::simd::__m128i;
+use crate::simd::__m256i;
+
+use crate::simd::_mm256_add_epi8;
+use crate::simd::_mm256_blend_epi32;
+use crate::simd::_mm256_castsi128_si256;
+use crate::simd::_mm256_castsi256_si128;
+use crate::simd::_mm256_extract_epi8;
+use crate::simd::_mm256_extracti128_si256;
+use crate::simd::_mm256_inserti128_si256;
+use crate::simd::_mm256_loadu_si256_mem;
+use crate::simd::_mm256_set_epi8;
+use crate::simd::_mm256_set_m128i;
+use crate::simd::_mm256_shuffle_epi8;
+use crate::simd::_mm256_shufps_epi32;
+use crate::simd::_mm256_slli_si256;
+use crate::simd::_mm256_storeu_si256_mem;
+use crate::simd::_mm256_storeu_si256_vec4u8;
+use crate::simd::_mm256_sub_epi8;
+use crate::simd::_mm_add_epi8;
+use crate::simd::_mm_extract_epi8;
+use crate::simd::_mm_loadu_si128_vec4u8;
+use crate::simd::_mm_set1_epi8;
+use crate::simd::_mm_setzero_si128;
+
+#[inline]
+fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
+    unsafe { (_mm256_sub_epi8(b, g), _mm256_sub_epi8(r, g)) }
 }
 
 #[inline]
-fn subtract_green(b: wprs__m256i, g: wprs__m256i, r: wprs__m256i) -> (wprs__m256i, wprs__m256i) {
-    unsafe { (wprs_mm256_sub_epi8(b, g), wprs_mm256_sub_epi8(r, g)) }
+fn add_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
+    unsafe { (_mm256_add_epi8(b, g), _mm256_add_epi8(r, g)) }
 }
 
 #[inline]
-fn add_green(b: wprs__m256i, g: wprs__m256i, r: wprs__m256i) -> (wprs__m256i, wprs__m256i) {
-    unsafe { (wprs_mm256_add_epi8(b, g), wprs_mm256_add_epi8(r, g)) }
-}
-
-#[inline]
-fn prefix_sum_32(mut block: wprs__m256i) -> wprs__m256i {
+fn prefix_sum_32(mut block: __m256i) -> __m256i {
     unsafe {
-        block = wprs_mm256_add_epi8(block, wprs_mm256_slli_si256::<1>(block));
-        block = wprs_mm256_add_epi8(block, wprs_mm256_slli_si256::<2>(block));
-        block = wprs_mm256_add_epi8(block, wprs_mm256_slli_si256::<4>(block));
-        block = wprs_mm256_add_epi8(block, wprs_mm256_slli_si256::<8>(block));
+        block = _mm256_add_epi8(block, _mm256_slli_si256::<1>(block));
+        block = _mm256_add_epi8(block, _mm256_slli_si256::<2>(block));
+        block = _mm256_add_epi8(block, _mm256_slli_si256::<4>(block));
+        block = _mm256_add_epi8(block, _mm256_slli_si256::<8>(block));
     }
     block
 }
 
 #[inline]
 fn accumulate_sum_16(
-    mut block: wprs__m128i,
-    prev_block: wprs__m128i,
-) -> (wprs__m128i, wprs__m128i) {
+    mut block: __m128i,
+    prev_block: __m128i,
+) -> (__m128i, __m128i) {
     unsafe {
-        let cur_sum = wprs_mm_set1_epi8(wprs_mm_extract_epi8::<15>(block) as i8);
-        block = wprs_mm_add_epi8(prev_block, block);
-        (block, wprs_mm_add_epi8(prev_block, cur_sum))
+        let cur_sum = _mm_set1_epi8(_mm_extract_epi8::<15>(block) as i8);
+        block = _mm_add_epi8(prev_block, block);
+        (block, _mm_add_epi8(prev_block, cur_sum))
     }
 }
 
 #[inline]
-fn accumulate_sum_32(block: wprs__m256i, prev_block: wprs__m128i) -> (wprs__m256i, wprs__m128i) {
+fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
     unsafe {
         let (block0, prev_block) =
-            accumulate_sum_16(wprs_mm256_extracti128_si256::<0>(block), prev_block);
+            accumulate_sum_16(_mm256_extracti128_si256::<0>(block), prev_block);
         let (block1, prev_block) =
-            accumulate_sum_16(wprs_mm256_extracti128_si256::<1>(block), prev_block);
-        (wprs_mm256_set_m128i(block1, block0), prev_block)
+            accumulate_sum_16(_mm256_extracti128_si256::<1>(block), prev_block);
+        (_mm256_set_m128i(block1, block0), prev_block)
     }
 }
 
 #[inline]
-fn prefix_sum(block: wprs__m256i, prev_block: wprs__m128i) -> (wprs__m256i, wprs__m128i) {
+fn prefix_sum(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
     accumulate_sum_32(prefix_sum_32(block), prev_block)
 }
 
 #[inline]
-fn running_difference_32(mut block: wprs__m256i, prev: u8) -> (wprs__m256i, u8) {
+fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
     unsafe {
-        let prev = wprs_mm256_set_epi8(
+        let prev = _mm256_set_epi8(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, prev as i8,
         );
-        let block15_16 = wprs_mm256_set_epi8(
+        let block15_16 = _mm256_set_epi8(
             0,
             0,
             0,
@@ -1042,7 +129,7 @@ fn running_difference_32(mut block: wprs__m256i, prev: u8) -> (wprs__m256i, u8) 
             0,
             0,
             0,
-            wprs_mm256_extract_epi8::<15>(block) as i8,
+            _mm256_extract_epi8::<15>(block) as i8,
             0,
             0,
             0,
@@ -1060,11 +147,11 @@ fn running_difference_32(mut block: wprs__m256i, prev: u8) -> (wprs__m256i, u8) 
             0,
             0,
         );
-        let next = wprs_mm256_extract_epi8::<31>(block) as u8;
+        let next = _mm256_extract_epi8::<31>(block) as u8;
 
-        block = wprs_mm256_sub_epi8(block, wprs_mm256_slli_si256::<1>(block));
-        block = wprs_mm256_sub_epi8(block, block15_16);
-        block = wprs_mm256_sub_epi8(block, prev);
+        block = _mm256_sub_epi8(block, _mm256_slli_si256::<1>(block));
+        block = _mm256_sub_epi8(block, block15_16);
+        block = _mm256_sub_epi8(block, prev);
 
         (block, next)
     }
@@ -1083,19 +170,19 @@ fn aos_to_soa_u8_32x4(
     prev3: u8,
 ) -> (u8, u8, u8, u8) {
     unsafe {
-        let p0: wprs__m256i = wprs_mm256_set_epi8(
+        let p0 = _mm256_set_epi8(
             15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13,
             9, 5, 1, 12, 8, 4, 0,
         );
-        let p1: wprs__m256i = wprs_mm256_set_epi8(
+        let p1 = _mm256_set_epi8(
             14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8,
             4, 0, 15, 11, 7, 3,
         );
-        let p2: wprs__m256i = wprs_mm256_set_epi8(
+        let p2 = _mm256_set_epi8(
             13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11,
             7, 3, 14, 10, 6, 2,
         );
-        let p3: wprs__m256i = wprs_mm256_set_epi8(
+        let p3 = _mm256_set_epi8(
             12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14,
             10, 6, 2, 13, 9, 5, 1,
         );
@@ -1104,13 +191,13 @@ fn aos_to_soa_u8_32x4(
 
         // let input: *const u8 = input.ptr().cast();
         // print!("i0  ");
-        // crate::utils::print_vec_char_256_hex(wprs_mm256_loadu_si256_mem(&*input.offset(0).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(0).cast::<[u8; 32]>()));
         // print!("i1  ");
-        // crate::utils::print_vec_char_256_hex(wprs_mm256_loadu_si256_mem(&*input.offset(32).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(32).cast::<[u8; 32]>()));
         // print!("i2  ");
-        // crate::utils::print_vec_char_256_hex(wprs_mm256_loadu_si256_mem(&*input.offset(64).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(64).cast::<[u8; 32]>()));
         // print!("i3  ");
-        // crate::utils::print_vec_char_256_hex(wprs_mm256_loadu_si256_mem(&*input.offset(96).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(96).cast::<[u8; 32]>()));
         // print!("\n");
 
         // i0  1f 1e 1d 1c | 1b 1a 19 18 | 17 16 15 14 | 13 12 11 10 || 0f 0e 0d 0c | 0b 0a 09 08 | 07 06 05 04 | 03 02 01 00
@@ -1118,15 +205,15 @@ fn aos_to_soa_u8_32x4(
         // i2  5f 5e 5d 5c | 5b 5a 59 58 | 57 56 55 54 | 53 52 51 50 || 4f 4e 4d 4c | 4b 4a 49 48 | 47 46 45 44 | 43 42 41 40
         // i3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60
 
-        let mut t0: wprs__m256i = wprs_mm256_castsi128_si256(wprs_mm_loadu_si128_vec4u8(&i0));
-        let mut t1: wprs__m256i = wprs_mm256_castsi128_si256(wprs_mm_loadu_si128_vec4u8(&i1));
-        let mut t2: wprs__m256i = wprs_mm256_castsi128_si256(wprs_mm_loadu_si128_vec4u8(&i2));
-        let mut t3: wprs__m256i = wprs_mm256_castsi128_si256(wprs_mm_loadu_si128_vec4u8(&i3));
+        let mut t0 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i0));
+        let mut t1 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i1));
+        let mut t2 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i2));
+        let mut t3 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i3));
 
-        t0 = wprs_mm256_inserti128_si256::<1>(t0, wprs_mm_loadu_si128_vec4u8(&i4));
-        t1 = wprs_mm256_inserti128_si256::<1>(t1, wprs_mm_loadu_si128_vec4u8(&i5));
-        t2 = wprs_mm256_inserti128_si256::<1>(t2, wprs_mm_loadu_si128_vec4u8(&i6));
-        t3 = wprs_mm256_inserti128_si256::<1>(t3, wprs_mm_loadu_si128_vec4u8(&i7));
+        t0 = _mm256_inserti128_si256::<1>(t0, _mm_loadu_si128_vec4u8(&i4));
+        t1 = _mm256_inserti128_si256::<1>(t1, _mm_loadu_si128_vec4u8(&i5));
+        t2 = _mm256_inserti128_si256::<1>(t2, _mm_loadu_si128_vec4u8(&i6));
+        t3 = _mm256_inserti128_si256::<1>(t3, _mm_loadu_si128_vec4u8(&i7));
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -1143,10 +230,10 @@ fn aos_to_soa_u8_32x4(
         // t2  6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60 || 2f 2e 2d 2c | 2b 2a 29 28 | 27 26 25 24 | 23 22 21 20
         // t3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 3f 3e 3d 3c | 3b 3a 39 38 | 37 36 35 34 | 33 32 31 30
 
-        t0 = wprs_mm256_shuffle_epi8(t0, p0);
-        t1 = wprs_mm256_shuffle_epi8(t1, p1);
-        t2 = wprs_mm256_shuffle_epi8(t2, p2);
-        t3 = wprs_mm256_shuffle_epi8(t3, p3);
+        t0 = _mm256_shuffle_epi8(t0, p0);
+        t1 = _mm256_shuffle_epi8(t1, p1);
+        t2 = _mm256_shuffle_epi8(t2, p2);
+        t3 = _mm256_shuffle_epi8(t3, p3);
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -1163,10 +250,10 @@ fn aos_to_soa_u8_32x4(
         // t2  6d 69 65 61 | 6c 68 64 60 | 6f 6b 67 63 | 6e 6a 66 62 || 2d 29 25 21 | 2c 28 24 20 | 2f 2b 27 23 | 2e 2a 26 22
         // t3  7c 78 74 70 | 7f 7b 77 73 | 7e 7a 76 72 | 7d 79 75 71 || 3c 38 34 30 | 3f 3b 37 33 | 3e 3a 36 32 | 3d 39 35 31
 
-        let u0: wprs__m256i = wprs_mm256_blend_epi32::<0b10101010>(t0, t1);
-        let u1: wprs__m256i = wprs_mm256_blend_epi32::<0b10101010>(t2, t3);
-        let u2: wprs__m256i = wprs_mm256_blend_epi32::<0b01010101>(t0, t1);
-        let u3: wprs__m256i = wprs_mm256_blend_epi32::<0b01010101>(t2, t3);
+        let u0 = _mm256_blend_epi32::<0b10101010>(t0, t1);
+        let u1 = _mm256_blend_epi32::<0b10101010>(t2, t3);
+        let u2 = _mm256_blend_epi32::<0b01010101>(t0, t1);
+        let u3 = _mm256_blend_epi32::<0b01010101>(t2, t3);
 
         // print!("u0  ");
         // crate::utils::print_vec_char_256_hex(u0);
@@ -1183,10 +270,10 @@ fn aos_to_soa_u8_32x4(
         // u2  4f 4b 47 43 | 5d 59 55 51 | 4d 49 45 41 | 5f 5b 57 53 || 0f 0b 07 03 | 1d 19 15 11 | 0d 09 05 01 | 1f 1b 17 13
         // u3  6d 69 65 61 | 7f 7b 77 73 | 6f 6b 67 63 | 7d 79 75 71 || 2d 29 25 21 | 3f 3b 37 33 | 2f 2b 27 23 | 3d 39 35 31
 
-        t0 = wprs_mm256_blend_epi32::<0b11001100>(u0, u1);
-        t1 = wprs_mm256_shufps_epi32::<0b00111001>(u2, u3);
-        t2 = wprs_mm256_shufps_epi32::<0b01001110>(u0, u1);
-        t3 = wprs_mm256_shufps_epi32::<0b10010011>(u2, u3);
+        t0 = _mm256_blend_epi32::<0b11001100>(u0, u1);
+        t1 = _mm256_shufps_epi32::<0b00111001>(u2, u3);
+        t2 = _mm256_shufps_epi32::<0b01001110>(u0, u1);
+        t3 = _mm256_shufps_epi32::<0b10010011>(u2, u3);
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -1212,10 +299,10 @@ fn aos_to_soa_u8_32x4(
         (t2, next2) = running_difference_32(t2, prev2);
         (t3, next3) = running_difference_32(t3, prev3);
 
-        wprs_mm256_storeu_si256_mem(out0, t0);
-        wprs_mm256_storeu_si256_mem(out1, t1);
-        wprs_mm256_storeu_si256_mem(out2, t2);
-        wprs_mm256_storeu_si256_mem(out3, t3);
+        _mm256_storeu_si256_mem(out0, t0);
+        _mm256_storeu_si256_mem(out1, t1);
+        _mm256_storeu_si256_mem(out2, t2);
+        _mm256_storeu_si256_mem(out3, t3);
 
         (next0, next1, next2, next3)
     }
@@ -1228,33 +315,33 @@ fn soa_to_aos_u8_32x4(
     input2: &[u8; 32],
     input3: &[u8; 32],
     out: &mut [Vec4u8; 32],
-    mut prev0: wprs__m128i,
-    mut prev1: wprs__m128i,
-    mut prev2: wprs__m128i,
-    mut prev3: wprs__m128i,
-) -> (wprs__m128i, wprs__m128i, wprs__m128i, wprs__m128i) {
+    mut prev0: __m128i,
+    mut prev1: __m128i,
+    mut prev2: __m128i,
+    mut prev3: __m128i,
+) -> (__m128i, __m128i, __m128i, __m128i) {
     unsafe {
-        let p0 = wprs_mm256_set_epi8(
+        let p0 = _mm256_set_epi8(
             7, 11, 15, 3, 6, 10, 14, 2, 5, 9, 13, 1, 4, 8, 12, 0, 7, 11, 15, 3, 6, 10, 14, 2, 5, 9,
             13, 1, 4, 8, 12, 0,
         );
-        let p1 = wprs_mm256_set_epi8(
+        let p1 = _mm256_set_epi8(
             3, 15, 11, 7, 2, 14, 10, 6, 1, 13, 9, 5, 0, 12, 8, 4, 3, 15, 11, 7, 2, 14, 10, 6, 1,
             13, 9, 5, 0, 12, 8, 4,
         );
-        let p2 = wprs_mm256_set_epi8(
+        let p2 = _mm256_set_epi8(
             15, 3, 7, 11, 14, 2, 6, 10, 13, 1, 5, 9, 12, 0, 4, 8, 15, 3, 7, 11, 14, 2, 6, 10, 13,
             1, 5, 9, 12, 0, 4, 8,
         );
-        let p3 = wprs_mm256_set_epi8(
+        let p3 = _mm256_set_epi8(
             11, 7, 3, 15, 10, 6, 2, 14, 9, 5, 1, 13, 8, 4, 0, 12, 11, 7, 3, 15, 10, 6, 2, 14, 9, 5,
             1, 13, 8, 4, 0, 12,
         );
 
-        let mut t0 = wprs_mm256_loadu_si256_mem(input0);
-        let mut t1 = wprs_mm256_loadu_si256_mem(input1);
-        let mut t2 = wprs_mm256_loadu_si256_mem(input2);
-        let mut t3 = wprs_mm256_loadu_si256_mem(input3);
+        let mut t0 = _mm256_loadu_si256_mem(input0);
+        let mut t1 = _mm256_loadu_si256_mem(input1);
+        let mut t2 = _mm256_loadu_si256_mem(input2);
+        let mut t3 = _mm256_loadu_si256_mem(input3);
 
         (t0, prev0) = prefix_sum(t0, prev0);
         (t1, prev1) = prefix_sum(t1, prev1);
@@ -1278,10 +365,10 @@ fn soa_to_aos_u8_32x4(
         // t2  7e 7a 76 72 | 6e 6a 66 62 | 5e 5a 56 52 | 4e 4a 46 42 || 3e 3a 36 32 | 2e 2a 26 22 | 1e 1a 16 12 | 0e 0a 06 02
         // t3  7f 7b 77 73 | 6f 6b 67 63 | 5f 5b 57 53 | 4f 4b 47 43 || 3f 3b 37 33 | 2f 2b 27 23 | 1f 1b 17 13 | 0f 0b 07 03
 
-        let u0 = wprs_mm256_shufps_epi32::<0b01000100>(t0, t2);
-        let u1 = wprs_mm256_shufps_epi32::<0b11101110>(t2, t0);
-        let u2 = wprs_mm256_shufps_epi32::<0b00010001>(t3, t1);
-        let u3 = wprs_mm256_shufps_epi32::<0b10111011>(t1, t3);
+        let u0 = _mm256_shufps_epi32::<0b01000100>(t0, t2);
+        let u1 = _mm256_shufps_epi32::<0b11101110>(t2, t0);
+        let u2 = _mm256_shufps_epi32::<0b00010001>(t3, t1);
+        let u3 = _mm256_shufps_epi32::<0b10111011>(t1, t3);
 
         // print!("u0  ");
         // crate::utils::print_vec_char_256_hex(u0);
@@ -1298,10 +385,10 @@ fn soa_to_aos_u8_32x4(
         // u2  4d 49 45 41 | 5d 59 55 51 | 4f 4b 47 43 | 5f 5b 57 53 || 0d 09 05 01 | 1d 19 15 11 | 0f 0b 07 03 | 1f 1b 17 13
         // u3  6f 6b 67 63 | 7f 7b 77 73 | 6d 69 65 61 | 7d 79 75 71 || 2f 2b 27 23 | 3f 3b 37 33 | 2d 29 25 21 | 3d 39 35 31
 
-        t0 = wprs_mm256_blend_epi32::<0b01010101>(u2, u0);
-        t1 = wprs_mm256_blend_epi32::<0b10101010>(u2, u0);
-        t2 = wprs_mm256_blend_epi32::<0b01010101>(u3, u1);
-        t3 = wprs_mm256_blend_epi32::<0b10101010>(u3, u1);
+        t0 = _mm256_blend_epi32::<0b01010101>(u2, u0);
+        t1 = _mm256_blend_epi32::<0b10101010>(u2, u0);
+        t2 = _mm256_blend_epi32::<0b01010101>(u3, u1);
+        t3 = _mm256_blend_epi32::<0b10101010>(u3, u1);
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -1318,10 +405,10 @@ fn soa_to_aos_u8_32x4(
         // t2  6f 6b 67 63 | 6c 68 64 60 | 6d 69 65 61 | 6e 6a 66 62 || 2f 2b 27 23 | 2c 28 24 20 | 2d 29 25 21 | 2e 2a 26 22
         // t3  7c 78 74 70 | 7f 7b 77 73 | 7e 7a 76 72 | 7d 79 75 71 || 3c 38 34 30 | 3f 3b 37 33 | 3e 3a 36 32 | 3d 39 35 31
 
-        t0 = wprs_mm256_shuffle_epi8(t0, p0);
-        t1 = wprs_mm256_shuffle_epi8(t1, p1);
-        t2 = wprs_mm256_shuffle_epi8(t2, p2);
-        t3 = wprs_mm256_shuffle_epi8(t3, p3);
+        t0 = _mm256_shuffle_epi8(t0, p0);
+        t1 = _mm256_shuffle_epi8(t1, p1);
+        t2 = _mm256_shuffle_epi8(t2, p2);
+        t3 = _mm256_shuffle_epi8(t3, p3);
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -1338,33 +425,33 @@ fn soa_to_aos_u8_32x4(
         // t2  6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60 || 2f 2e 2d 2c | 2b 2a 29 28 | 27 26 25 24 | 23 22 21 20
         // t3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 3f 3e 3d 3c | 3b 3a 39 38 | 37 36 35 34 | 33 32 31 30
 
-        wprs_mm256_storeu_si256_vec4u8(
+        _mm256_storeu_si256_vec4u8(
             out.index_mut(0..8).try_into().unwrap(),
-            wprs_mm256_set_m128i(
-                wprs_mm256_castsi256_si128(t1),
-                wprs_mm256_castsi256_si128(t0),
+            _mm256_set_m128i(
+                _mm256_castsi256_si128(t1),
+                _mm256_castsi256_si128(t0),
             ),
         );
-        wprs_mm256_storeu_si256_vec4u8(
+        _mm256_storeu_si256_vec4u8(
             out.index_mut(8..16).try_into().unwrap(),
-            wprs_mm256_set_m128i(
-                wprs_mm256_castsi256_si128(t3),
-                wprs_mm256_castsi256_si128(t2),
+            _mm256_set_m128i(
+                _mm256_castsi256_si128(t3),
+                _mm256_castsi256_si128(t2),
             ),
         );
 
-        wprs_mm256_storeu_si256_vec4u8(
+        _mm256_storeu_si256_vec4u8(
             out.index_mut(16..24).try_into().unwrap(),
-            wprs_mm256_set_m128i(
-                wprs_mm256_extracti128_si256::<1>(t1),
-                wprs_mm256_extracti128_si256::<1>(t0),
+            _mm256_set_m128i(
+                _mm256_extracti128_si256::<1>(t1),
+                _mm256_extracti128_si256::<1>(t0),
             ),
         );
-        wprs_mm256_storeu_si256_vec4u8(
+        _mm256_storeu_si256_vec4u8(
             out.index_mut(24..32).try_into().unwrap(),
-            wprs_mm256_set_m128i(
-                wprs_mm256_extracti128_si256::<1>(t3),
-                wprs_mm256_extracti128_si256::<1>(t2),
+            _mm256_set_m128i(
+                _mm256_extracti128_si256::<1>(t3),
+                _mm256_extracti128_si256::<1>(t2),
             ),
         );
 
@@ -1479,7 +566,7 @@ fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     let thread_chunk_size = blocks_per_thread * 32;
 
     unsafe {
-        let z: wprs__m128i = wprs_mm_setzero_si128();
+        let z = _mm_setzero_si128();
         let (mut prev0, mut prev1, mut prev2, mut prev3) = (z, z, z, z);
 
         debug_span!("soa_to_aos_u8_32x4_loop").in_scope(|| {
@@ -1563,11 +650,11 @@ mod tests {
         ];
         let mut output = [0; 32];
         unsafe {
-            wprs_mm256_storeu_si256_mem(
+            _mm256_storeu_si256_mem(
                 (&mut output[..]).try_into().unwrap(),
                 prefix_sum(
-                    wprs_mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
-                    wprs_mm_setzero_si128(),
+                    _mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
+                    _mm_setzero_si128(),
                 )
                 .0,
             );
@@ -1588,10 +675,10 @@ mod tests {
         ];
         let mut output = [0; 32];
         unsafe {
-            wprs_mm256_storeu_si256_mem(
+            _mm256_storeu_si256_mem(
                 (&mut output[..]).try_into().unwrap(),
                 running_difference_32(
-                    wprs_mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
+                    _mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
                     0,
                 )
                 .0,

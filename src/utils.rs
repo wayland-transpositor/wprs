@@ -33,7 +33,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 
 use crate::prelude::*;
-
 use crate::simd::__m128i;
 use crate::simd::__m256i;
 use crate::simd::_mm_storeu_si128;

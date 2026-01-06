@@ -14,12 +14,12 @@
 
 // Author: Vassilis Virvilis
 
+pub use std::arch::x86_64::__m128i;
+
 use cfg_if::cfg_if;
 
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::vec4u8::Vec4u8;
-
-pub use std::arch::x86_64::__m128i;
 
 #[allow(non_camel_case_types)]
 #[repr(C, align(32))]
@@ -29,9 +29,9 @@ pub struct __m256i {
     pub high: __m128i,
 }
 
+pub use std::arch::x86_64::_mm_add_epi8;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
-pub use std::arch::x86_64::_mm_add_epi8;
 pub use std::arch::x86_64::_mm_storeu_si128;
 
 #[target_feature(enable = "sse2")]
@@ -39,7 +39,7 @@ pub use std::arch::x86_64::_mm_storeu_si128;
 pub fn _mm256_set_m128i(hi: __m128i, lo: __m128i) -> __m256i {
     // In SSE2, we simply wrap the two 128-bit values
     // into our custom 256-bit emulation struct.
-    __m256i {low: lo, high:hi}
+    __m256i { low: lo, high: hi }
 }
 
 #[target_feature(enable = "sse2")]
@@ -82,7 +82,7 @@ cfg_if! {
         pub fn _mm_extract_epi8<const INDEX: i32>(a: __m128i) -> i32 {
             std::arch::x86_64::_mm_extract_epi8(a, INDEX)
         }
-        
+
         #[target_feature(enable = "sse4.1")]
         #[inline]
         pub fn _mm_blend_epi32<const MASK: i32>(a: __m128i, b: __m128i) -> __m128i {
@@ -119,7 +119,7 @@ cfg_if! {
                 word & 0xFF
             }
         }
-        
+
         // I am tagging this as unsafe because the sse4.1 variant is somehow tagged as unsafe
         // while the SSE2 fallback is not. I do not know why. So we get warnings of
         // unnecessary unsafe blocks in the callers.
@@ -150,7 +150,7 @@ pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
     println!("SSE2 baby...");
     __m256i {
         low: std::arch::x86_64::_mm_sub_epi8(a.low, b.low),
-        high: std::arch::x86_64::_mm_sub_epi8(a.high, b.high)
+        high: std::arch::x86_64::_mm_sub_epi8(a.high, b.high),
     }
 }
 
@@ -160,7 +160,7 @@ pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
     // We use _mm_add_epi8 (SSE2) twice.
     __m256i {
         low: std::arch::x86_64::_mm_add_epi8(a.low, b.low),
-        high: std::arch::x86_64::_mm_add_epi8(a.high, b.high)
+        high: std::arch::x86_64::_mm_add_epi8(a.high, b.high),
     }
 }
 
@@ -173,7 +173,7 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
     // matching the behavior of the AVX2 256-bit version.
     __m256i {
         low: std::arch::x86_64::_mm_slli_si128(a.low, SHIFT),
-        high: std::arch::x86_64::_mm_slli_si128(a.high, SHIFT)
+        high: std::arch::x86_64::_mm_slli_si128(a.high, SHIFT),
     }
 }
 
@@ -182,11 +182,7 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
 pub fn _mm256_extracti128_si256<const HIGH: i32>(a: __m256i) -> __m128i {
     // Because HIGH must be a compile-time constant,
     // the compiler will optimize this branch away entirely.
-    if HIGH == 0 {
-        a.low
-    } else {
-        a.high
-    }
+    if HIGH == 0 { a.low } else { a.high }
 }
 
 #[target_feature(enable = "sse2")]
@@ -195,51 +191,48 @@ pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     // We only care about the lower 4 bits (0-15)
     // TODO: revisit this when generic_const_exprs graduates from nightly
     unsafe {
-    let low = match MASK & 0xF {
-        0  => _mm_blend_epi32::< 0>(a.low, b.low),
-        1  => _mm_blend_epi32::< 1>(a.low, b.low),
-        2  => _mm_blend_epi32::< 2>(a.low, b.low),
-        3  => _mm_blend_epi32::< 3>(a.low, b.low),
-        4  => _mm_blend_epi32::< 4>(a.low, b.low),
-        5  => _mm_blend_epi32::< 5>(a.low, b.low),
-        6  => _mm_blend_epi32::< 6>(a.low, b.low),
-        7  => _mm_blend_epi32::< 7>(a.low, b.low),
-        8  => _mm_blend_epi32::< 8>(a.low, b.low),
-        9  => _mm_blend_epi32::< 9>(a.low, b.low),
-        10 => _mm_blend_epi32::<10>(a.low, b.low),
-        11 => _mm_blend_epi32::<11>(a.low, b.low),
-        12 => _mm_blend_epi32::<12>(a.low, b.low),
-        13 => _mm_blend_epi32::<13>(a.low, b.low),
-        14 => _mm_blend_epi32::<14>(a.low, b.low),
-        15 => _mm_blend_epi32::<15>(a.low, b.low),
-        _ => unreachable!(),
-    };
+        let low = match MASK & 0xF {
+            0 => _mm_blend_epi32::<0>(a.low, b.low),
+            1 => _mm_blend_epi32::<1>(a.low, b.low),
+            2 => _mm_blend_epi32::<2>(a.low, b.low),
+            3 => _mm_blend_epi32::<3>(a.low, b.low),
+            4 => _mm_blend_epi32::<4>(a.low, b.low),
+            5 => _mm_blend_epi32::<5>(a.low, b.low),
+            6 => _mm_blend_epi32::<6>(a.low, b.low),
+            7 => _mm_blend_epi32::<7>(a.low, b.low),
+            8 => _mm_blend_epi32::<8>(a.low, b.low),
+            9 => _mm_blend_epi32::<9>(a.low, b.low),
+            10 => _mm_blend_epi32::<10>(a.low, b.low),
+            11 => _mm_blend_epi32::<11>(a.low, b.low),
+            12 => _mm_blend_epi32::<12>(a.low, b.low),
+            13 => _mm_blend_epi32::<13>(a.low, b.low),
+            14 => _mm_blend_epi32::<14>(a.low, b.low),
+            15 => _mm_blend_epi32::<15>(a.low, b.low),
+            _ => unreachable!(),
+        };
 
-    // We only care about the lower 4 bits (0-15)
-    let high = match (MASK >> 4) & 0xF {
-        0  => _mm_blend_epi32::< 0>(a.high, b.high),
-        1  => _mm_blend_epi32::< 1>(a.high, b.high),
-        2  => _mm_blend_epi32::< 2>(a.high, b.high),
-        3  => _mm_blend_epi32::< 3>(a.high, b.high),
-        4  => _mm_blend_epi32::< 4>(a.high, b.high),
-        5  => _mm_blend_epi32::< 5>(a.high, b.high),
-        6  => _mm_blend_epi32::< 6>(a.high, b.high),
-        7  => _mm_blend_epi32::< 7>(a.high, b.high),
-        8  => _mm_blend_epi32::< 8>(a.high, b.high),
-        9  => _mm_blend_epi32::< 9>(a.high, b.high),
-        10 => _mm_blend_epi32::<10>(a.high, b.high),
-        11 => _mm_blend_epi32::<11>(a.high, b.high),
-        12 => _mm_blend_epi32::<12>(a.high, b.high),
-        13 => _mm_blend_epi32::<13>(a.high, b.high),
-        14 => _mm_blend_epi32::<14>(a.high, b.high),
-        15 => _mm_blend_epi32::<15>(a.high, b.high),
-        _ => unreachable!(),
-    };
+        // We only care about the lower 4 bits (0-15)
+        let high = match (MASK >> 4) & 0xF {
+            0 => _mm_blend_epi32::<0>(a.high, b.high),
+            1 => _mm_blend_epi32::<1>(a.high, b.high),
+            2 => _mm_blend_epi32::<2>(a.high, b.high),
+            3 => _mm_blend_epi32::<3>(a.high, b.high),
+            4 => _mm_blend_epi32::<4>(a.high, b.high),
+            5 => _mm_blend_epi32::<5>(a.high, b.high),
+            6 => _mm_blend_epi32::<6>(a.high, b.high),
+            7 => _mm_blend_epi32::<7>(a.high, b.high),
+            8 => _mm_blend_epi32::<8>(a.high, b.high),
+            9 => _mm_blend_epi32::<9>(a.high, b.high),
+            10 => _mm_blend_epi32::<10>(a.high, b.high),
+            11 => _mm_blend_epi32::<11>(a.high, b.high),
+            12 => _mm_blend_epi32::<12>(a.high, b.high),
+            13 => _mm_blend_epi32::<13>(a.high, b.high),
+            14 => _mm_blend_epi32::<14>(a.high, b.high),
+            15 => _mm_blend_epi32::<15>(a.high, b.high),
+            _ => unreachable!(),
+        };
 
-    __m256i {
-        low: low,
-        high: high,
-    }
+        __m256i { low, high }
     }
 }
 
@@ -251,43 +244,43 @@ pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
     // Indices 16-31 are in the 'high' 128-bit lane.
     // TODO: revisit this when generic_const_exprs graduates from nightly
     unsafe {
-    match INDEX {
-        // Lower Lane (0-15)
-        0  => _mm_extract_epi8::< 0>(a.low),
-        1  => _mm_extract_epi8::< 1>(a.low),
-        2  => _mm_extract_epi8::< 2>(a.low),
-        3  => _mm_extract_epi8::< 3>(a.low),
-        4  => _mm_extract_epi8::< 4>(a.low),
-        5  => _mm_extract_epi8::< 5>(a.low),
-        6  => _mm_extract_epi8::< 6>(a.low),
-        7  => _mm_extract_epi8::< 7>(a.low),
-        8  => _mm_extract_epi8::< 8>(a.low),
-        9  => _mm_extract_epi8::< 9>(a.low),
-        10 => _mm_extract_epi8::<10>(a.low),
-        11 => _mm_extract_epi8::<11>(a.low),
-        12 => _mm_extract_epi8::<12>(a.low),
-        13 => _mm_extract_epi8::<13>(a.low),
-        14 => _mm_extract_epi8::<14>(a.low),
-        15 => _mm_extract_epi8::<15>(a.low),
-        // Upper Lane (16-31)
-        16 => _mm_extract_epi8::< 0>(a.high),
-        17 => _mm_extract_epi8::< 1>(a.high),
-        18 => _mm_extract_epi8::< 2>(a.high),
-        19 => _mm_extract_epi8::< 3>(a.high),
-        20 => _mm_extract_epi8::< 4>(a.high),
-        21 => _mm_extract_epi8::< 5>(a.high),
-        22 => _mm_extract_epi8::< 6>(a.high),
-        23 => _mm_extract_epi8::< 7>(a.high),
-        24 => _mm_extract_epi8::< 8>(a.high),
-        25 => _mm_extract_epi8::< 9>(a.high),
-        26 => _mm_extract_epi8::<10>(a.high),
-        27 => _mm_extract_epi8::<11>(a.high),
-        28 => _mm_extract_epi8::<12>(a.high),
-        29 => _mm_extract_epi8::<13>(a.high),
-        30 => _mm_extract_epi8::<14>(a.high),
-        31 => _mm_extract_epi8::<15>(a.high),
-        _ => panic!("Index out of bounds for 256-bit extract"),
-    }
+        match INDEX {
+            // Lower Lane (0-15)
+            0 => _mm_extract_epi8::<0>(a.low),
+            1 => _mm_extract_epi8::<1>(a.low),
+            2 => _mm_extract_epi8::<2>(a.low),
+            3 => _mm_extract_epi8::<3>(a.low),
+            4 => _mm_extract_epi8::<4>(a.low),
+            5 => _mm_extract_epi8::<5>(a.low),
+            6 => _mm_extract_epi8::<6>(a.low),
+            7 => _mm_extract_epi8::<7>(a.low),
+            8 => _mm_extract_epi8::<8>(a.low),
+            9 => _mm_extract_epi8::<9>(a.low),
+            10 => _mm_extract_epi8::<10>(a.low),
+            11 => _mm_extract_epi8::<11>(a.low),
+            12 => _mm_extract_epi8::<12>(a.low),
+            13 => _mm_extract_epi8::<13>(a.low),
+            14 => _mm_extract_epi8::<14>(a.low),
+            15 => _mm_extract_epi8::<15>(a.low),
+            // Upper Lane (16-31)
+            16 => _mm_extract_epi8::<0>(a.high),
+            17 => _mm_extract_epi8::<1>(a.high),
+            18 => _mm_extract_epi8::<2>(a.high),
+            19 => _mm_extract_epi8::<3>(a.high),
+            20 => _mm_extract_epi8::<4>(a.high),
+            21 => _mm_extract_epi8::<5>(a.high),
+            22 => _mm_extract_epi8::<6>(a.high),
+            23 => _mm_extract_epi8::<7>(a.high),
+            24 => _mm_extract_epi8::<8>(a.high),
+            25 => _mm_extract_epi8::<9>(a.high),
+            26 => _mm_extract_epi8::<10>(a.high),
+            27 => _mm_extract_epi8::<11>(a.high),
+            28 => _mm_extract_epi8::<12>(a.high),
+            29 => _mm_extract_epi8::<13>(a.high),
+            30 => _mm_extract_epi8::<14>(a.high),
+            31 => _mm_extract_epi8::<15>(a.high),
+            _ => panic!("Index out of bounds for 256-bit extract"),
+        }
     }
 }
 
@@ -297,13 +290,13 @@ pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m25
     // In SIMD, Lane 0 is the lower 128 bits, Lane 1 is the upper 128 bits.
     if LANE == 0 {
         __m256i {
-            low: b,        // Replace low with new 128-bit value
-            high: a.high,  // Keep existing high
+            low: b,       // Replace low with new 128-bit value
+            high: a.high, // Keep existing high
         }
     } else {
         __m256i {
-            low: a.low,    // Keep existing low
-            high: b,       // Replace high with new 128-bit value
+            low: a.low, // Keep existing low
+            high: b,    // Replace high with new 128-bit value
         }
     }
 }
@@ -311,14 +304,47 @@ pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m25
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_set_epi8(
-    e31: i8, e30: i8, e29: i8, e28: i8, e27: i8, e26: i8, e25: i8, e24: i8,
-    e23: i8, e22: i8, e21: i8, e20: i8, e19: i8, e18: i8, e17: i8, e16: i8,
-    e15: i8, e14: i8, e13: i8, e12: i8, e11: i8, e10: i8, e9: i8, e8: i8,
-    e7: i8, e6: i8, e5: i8, e4: i8, e3: i8, e2: i8, e1: i8, e0: i8,) -> __m256i {
+    e31: i8,
+    e30: i8,
+    e29: i8,
+    e28: i8,
+    e27: i8,
+    e26: i8,
+    e25: i8,
+    e24: i8,
+    e23: i8,
+    e22: i8,
+    e21: i8,
+    e20: i8,
+    e19: i8,
+    e18: i8,
+    e17: i8,
+    e16: i8,
+    e15: i8,
+    e14: i8,
+    e13: i8,
+    e12: i8,
+    e11: i8,
+    e10: i8,
+    e9: i8,
+    e8: i8,
+    e7: i8,
+    e6: i8,
+    e5: i8,
+    e4: i8,
+    e3: i8,
+    e2: i8,
+    e1: i8,
+    e0: i8,
+) -> __m256i {
     // Construct the low 128-bit part (e0 through e15)
-    let low = std::arch::x86_64::_mm_set_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0);
+    let low = std::arch::x86_64::_mm_set_epi8(
+        e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0,
+    );
     // Construct the high 128-bit part (e16 through e31)
-    let high = std::arch::x86_64::_mm_set_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16);
+    let high = std::arch::x86_64::_mm_set_epi8(
+        e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16,
+    );
 
     __m256i { low, high }
 }
@@ -400,7 +426,7 @@ pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
         MASK,
     ));
 
-    __m256i {low, high}
+    __m256i { low, high }
 }
 
 /// Emulates a 256-bit aligned load using SSE2 instructions.
@@ -418,7 +444,7 @@ pub fn _mm256_loadu_si256_mem(src: &[u8; 32]) -> __m256i {
         // We offset the pointer by 4 (since it's a *const i32, this is 16 bytes)
         let high = std::arch::x86_64::_mm_loadu_si128(ptr.add(16).cast::<__m128i>());
 
-        __m256i {low, high}
+        __m256i { low, high }
     }
 }
 

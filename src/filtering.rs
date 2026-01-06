@@ -29,12 +29,13 @@ use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::prelude::*;
 use crate::sharding_compression::CompressedShards;
 use crate::sharding_compression::ShardingCompressor;
-use crate::vec4u8::Vec4u8;
-use crate::vec4u8::Vec4u8s;
-
 use crate::simd::__m128i;
 use crate::simd::__m256i;
-
+use crate::simd::_mm_add_epi8;
+use crate::simd::_mm_extract_epi8;
+use crate::simd::_mm_loadu_si128_vec4u8;
+use crate::simd::_mm_set1_epi8;
+use crate::simd::_mm_setzero_si128;
 use crate::simd::_mm256_add_epi8;
 use crate::simd::_mm256_blend_epi32;
 use crate::simd::_mm256_castsi128_si256;
@@ -51,11 +52,8 @@ use crate::simd::_mm256_slli_si256;
 use crate::simd::_mm256_storeu_si256_mem;
 use crate::simd::_mm256_storeu_si256_vec4u8;
 use crate::simd::_mm256_sub_epi8;
-use crate::simd::_mm_add_epi8;
-use crate::simd::_mm_extract_epi8;
-use crate::simd::_mm_loadu_si128_vec4u8;
-use crate::simd::_mm_set1_epi8;
-use crate::simd::_mm_setzero_si128;
+use crate::vec4u8::Vec4u8;
+use crate::vec4u8::Vec4u8s;
 
 #[inline]
 fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
@@ -79,10 +77,7 @@ fn prefix_sum_32(mut block: __m256i) -> __m256i {
 }
 
 #[inline]
-fn accumulate_sum_16(
-    mut block: __m128i,
-    prev_block: __m128i,
-) -> (__m128i, __m128i) {
+fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m128i) {
     unsafe {
         let cur_sum = _mm_set1_epi8(_mm_extract_epi8::<15>(block) as i8);
         block = _mm_add_epi8(prev_block, block);
@@ -427,17 +422,11 @@ fn soa_to_aos_u8_32x4(
 
         _mm256_storeu_si256_vec4u8(
             out.index_mut(0..8).try_into().unwrap(),
-            _mm256_set_m128i(
-                _mm256_castsi256_si128(t1),
-                _mm256_castsi256_si128(t0),
-            ),
+            _mm256_set_m128i(_mm256_castsi256_si128(t1), _mm256_castsi256_si128(t0)),
         );
         _mm256_storeu_si256_vec4u8(
             out.index_mut(8..16).try_into().unwrap(),
-            _mm256_set_m128i(
-                _mm256_castsi256_si128(t3),
-                _mm256_castsi256_si128(t2),
-            ),
+            _mm256_set_m128i(_mm256_castsi256_si128(t3), _mm256_castsi256_si128(t2)),
         );
 
         _mm256_storeu_si256_vec4u8(
@@ -677,11 +666,8 @@ mod tests {
         unsafe {
             _mm256_storeu_si256_mem(
                 (&mut output[..]).try_into().unwrap(),
-                running_difference_32(
-                    _mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
-                    0,
-                )
-                .0,
+                running_difference_32(_mm256_loadu_si256_mem((&input[..]).try_into().unwrap()), 0)
+                    .0,
             );
         }
         let expected = [

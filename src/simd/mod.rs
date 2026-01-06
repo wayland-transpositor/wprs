@@ -12,26 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod arc_slice;
-pub mod args;
-pub mod buffer_pointer;
-pub mod channel_utils;
-pub mod client;
-pub mod client_utils;
-pub mod compositor_utils;
-pub mod constants;
-pub mod control_server;
-pub mod error_utils;
-pub mod fallible_entry;
-pub mod filtering;
-pub mod prelude;
-pub mod serialization;
-pub mod server;
-pub mod sharding_compression;
-pub mod simd;
-pub mod utils;
-pub mod vec4u8;
-pub mod xwayland_xdg_shell;
+// Author: Vassilis Virvilis
 
-#[cfg(feature = "tracy-allocator")]
-pub mod tracy_allocator;
+use cfg_if::cfg_if;
+
+cfg_if! {
+    if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
+        pub mod avx;
+        pub use crate::simd::avx::*;
+    } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
+        pub mod sse2;
+        pub use crate::simd::sse2::*;
+    } else {
+        compile_error!("x86_64 SIMD support is required.");
+    }
+}

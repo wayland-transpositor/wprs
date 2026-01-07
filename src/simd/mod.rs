@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Vassilis Virvilis
-
 use cfg_if::cfg_if;
 
 cfg_if! {

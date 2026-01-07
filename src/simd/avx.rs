@@ -19,7 +19,7 @@ pub use std::arch::x86_64::__m256i;
 pub use std::arch::x86_64::_mm_add_epi8;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
-// These are originally avx or SSE intrinsics that are required
+pub use std::arch::x86_64::_mm_storeu_si128;
 pub use std::arch::x86_64::_mm256_castsi128_si256;
 pub use std::arch::x86_64::_mm256_castsi256_si128;
 pub use std::arch::x86_64::_mm256_set_m128i;

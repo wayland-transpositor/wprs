@@ -393,11 +393,9 @@ cfg_if! {
         #[inline]
         pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
             // We must shuffle 'low' and 'high' independently to match AVX2 behavior.
-            unsafe {
-                __m256i {
-                    low: _mm_shuffle_epi8(a.low, b.low),
-                    high: _mm_shuffle_epi8(a.high, b.high),
-                }
+            __m256i {
+                low: _mm_shuffle_epi8(a.low, b.low),
+                high: _mm_shuffle_epi8(a.high, b.high),
             }
         }
     }

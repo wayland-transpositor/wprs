@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Author: Vassilis Virvilis
-
 pub use std::arch::x86_64::__m128i;
 pub use std::arch::x86_64::__m256i;
 pub use std::arch::x86_64::_mm_add_epi8;

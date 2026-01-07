@@ -395,8 +395,8 @@ cfg_if! {
             // We must shuffle 'low' and 'high' independently to match AVX2 behavior.
             unsafe {
                 __m256i {
-                    low: std::arch::x86_64::_mm_shuffle_epi8(a.low, b.low),
-                    high: std::arch::x86_64::_mm_shuffle_epi8(a.high, b.high),
+                    low: _mm_shuffle_epi8(a.low, b.low),
+                    high: _mm_shuffle_epi8(a.high, b.high),
                 }
             }
         }

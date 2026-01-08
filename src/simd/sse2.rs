@@ -145,7 +145,6 @@ cfg_if! {
 #[inline]
 pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
     // We use _mm_sub_epi8 (SSE2) twice.
-    println!("SSE2 baby...");
     __m256i {
         low: std::arch::x86_64::_mm_sub_epi8(a.low, b.low),
         high: std::arch::x86_64::_mm_sub_epi8(a.high, b.high),

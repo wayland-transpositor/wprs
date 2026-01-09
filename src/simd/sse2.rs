@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use std::arch::x86_64::__m128i;
-
 use cfg_if::cfg_if;
-
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::vec4u8::Vec4u8;
+
+pub use std::arch::x86_64::__m128i;
+pub use std::arch::x86_64::_mm_add_epi8;
+pub use std::arch::x86_64::_mm_set1_epi8;
+pub use std::arch::x86_64::_mm_setzero_si128;
+pub use std::arch::x86_64::_mm_storeu_si128;
 
 #[allow(non_camel_case_types)]
 #[repr(C, align(32))]
@@ -26,11 +29,6 @@ pub struct __m256i {
     pub low: __m128i,
     pub high: __m128i,
 }
-
-pub use std::arch::x86_64::_mm_add_epi8;
-pub use std::arch::x86_64::_mm_set1_epi8;
-pub use std::arch::x86_64::_mm_setzero_si128;
-pub use std::arch::x86_64::_mm_storeu_si128;
 
 #[target_feature(enable = "sse2")]
 #[inline]
@@ -121,79 +119,14 @@ macro_rules! _mm256_extract_epi8 {
     }};
 }
 
-macro_rules! _mm256_blend_epi32 {
-    ($a:expr, $b:expr, $MASK:expr) => {{
-        // We only care about the lower 4 bits (0-15)
-        // TODO: revisit this when generic_const_exprs graduates from nightly
-        let low = match $MASK & 0xF {
-            0 => _mm_blend_epi32::<0>($a.low, $b.low),
-            1 => _mm_blend_epi32::<1>($a.low, $b.low),
-            2 => _mm_blend_epi32::<2>($a.low, $b.low),
-            3 => _mm_blend_epi32::<3>($a.low, $b.low),
-            4 => _mm_blend_epi32::<4>($a.low, $b.low),
-            5 => _mm_blend_epi32::<5>($a.low, $b.low),
-            6 => _mm_blend_epi32::<6>($a.low, $b.low),
-            7 => _mm_blend_epi32::<7>($a.low, $b.low),
-            8 => _mm_blend_epi32::<8>($a.low, $b.low),
-            9 => _mm_blend_epi32::<9>($a.low, $b.low),
-            10 => _mm_blend_epi32::<10>($a.low, $b.low),
-            11 => _mm_blend_epi32::<11>($a.low, $b.low),
-            12 => _mm_blend_epi32::<12>($a.low, $b.low),
-            13 => _mm_blend_epi32::<13>($a.low, $b.low),
-            14 => _mm_blend_epi32::<14>($a.low, $b.low),
-            15 => _mm_blend_epi32::<15>($a.low, $b.low),
-            _ => unreachable!(),
-        };
-        // We only care about the lower 4 bits (0-15)
-        let high = match ($MASK >> 4) & 0xF {
-            0 => _mm_blend_epi32::<0>($a.high, $b.high),
-            1 => _mm_blend_epi32::<1>($a.high, $b.high),
-            2 => _mm_blend_epi32::<2>($a.high, $b.high),
-            3 => _mm_blend_epi32::<3>($a.high, $b.high),
-            4 => _mm_blend_epi32::<4>($a.high, $b.high),
-            5 => _mm_blend_epi32::<5>($a.high, $b.high),
-            6 => _mm_blend_epi32::<6>($a.high, $b.high),
-            7 => _mm_blend_epi32::<7>($a.high, $b.high),
-            8 => _mm_blend_epi32::<8>($a.high, $b.high),
-            9 => _mm_blend_epi32::<9>($a.high, $b.high),
-            10 => _mm_blend_epi32::<10>($a.high, $b.high),
-            11 => _mm_blend_epi32::<11>($a.high, $b.high),
-            12 => _mm_blend_epi32::<12>($a.high, $b.high),
-            13 => _mm_blend_epi32::<13>($a.high, $b.high),
-            14 => _mm_blend_epi32::<14>($a.high, $b.high),
-            15 => _mm_blend_epi32::<15>($a.high, $b.high),
-            _ => unreachable!(),
-        };
-
-        __m256i { low, high }
-    }};
-}
-
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
-        #[target_feature(enable = "sse4.1")]
-        #[inline]
-        pub fn _mm_extract_epi8<const INDEX: i32>(a: __m128i) -> i32 {
-            std::arch::x86_64::_mm_extract_epi8(a, INDEX)
-        }
-
-        #[target_feature(enable = "sse4.1")]
-        #[inline]
-        fn _mm_blend_epi32<const MASK: i32>(a: __m128i, b: __m128i) -> __m128i {
-            // If target has SSE4.1, use the specialized blend instruction
-            unsafe {std::arch::x86_64::_mm_blend_epi32(a, b, MASK)}
-        }
+        pub use std::arch::x86_64::_mm_extract_epi8;
 
         #[target_feature(enable = "sse4.1")]
         #[inline]
         pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
             _mm256_extract_epi8!(a, INDEX)
-        }
-
-        #[target_feature(enable = "sse4.1")]
-        #[inline]
-        pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-            _mm256_blend_epi32!(a, b, MASK)
         }
     } else {
         #[target_feature(enable = "sse2")]
@@ -223,31 +156,76 @@ cfg_if! {
 
         #[target_feature(enable = "sse2")]
         #[inline]
-        fn _mm_blend_epi32<const MASK: i32>(a: __m128i, b: __m128i) -> __m128i {
-            // Fallback for SSE2, SSE3, SSSE3 (Generic bitwise blend)
-            // This is a bitwise selection: (b & mask) | (a & ~mask)
-            // We create a 128-bit mask based on the 4-bit M constant
-            let mask = std::arch::x86_64::_mm_set_epi32(
-                if (MASK & 8) != 0 { -1 } else { 0 },
-                if (MASK & 4) != 0 { -1 } else { 0 },
-                if (MASK & 2) != 0 { -1 } else { 0 },
-                if (MASK & 1) != 0 { -1 } else { 0 },
-            );
-            std::arch::x86_64::_mm_or_si128(std::arch::x86_64::_mm_and_si128(mask, b), std::arch::x86_64::_mm_andnot_si128(mask, a))
-        }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
         pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
             _mm256_extract_epi8!(a, INDEX)
         }
-
-        #[target_feature(enable = "sse2")]
-        #[inline]
-        pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-            _mm256_blend_epi32!(a, b, MASK)
-        }
     }
+}
+
+#[target_feature(enable = "sse2")]
+#[inline]
+fn _mm_blend_epi32<const MASK: i32>(a: __m128i, b: __m128i) -> __m128i {
+    // Fallback for SSE2, SSE3, SSSE3 (Generic bitwise blend)
+    // This is a bitwise selection: (b & mask) | (a & ~mask)
+    // We create a 128-bit mask based on the 4-bit M constant
+    let mask = std::arch::x86_64::_mm_set_epi32(
+        if (MASK & 8) != 0 { -1 } else { 0 },
+        if (MASK & 4) != 0 { -1 } else { 0 },
+        if (MASK & 2) != 0 { -1 } else { 0 },
+        if (MASK & 1) != 0 { -1 } else { 0 },
+    );
+    std::arch::x86_64::_mm_or_si128(
+        std::arch::x86_64::_mm_and_si128(mask, b),
+        std::arch::x86_64::_mm_andnot_si128(mask, a),
+    )
+}
+
+#[target_feature(enable = "sse2")]
+#[inline]
+pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
+    // We only care about the lower 4 bits (0-15)
+    // TODO: revisit this when generic_const_exprs graduates from nightly
+    let low = match MASK & 0xF {
+        0 => _mm_blend_epi32::<0>(a.low, b.low),
+        1 => _mm_blend_epi32::<1>(a.low, b.low),
+        2 => _mm_blend_epi32::<2>(a.low, b.low),
+        3 => _mm_blend_epi32::<3>(a.low, b.low),
+        4 => _mm_blend_epi32::<4>(a.low, b.low),
+        5 => _mm_blend_epi32::<5>(a.low, b.low),
+        6 => _mm_blend_epi32::<6>(a.low, b.low),
+        7 => _mm_blend_epi32::<7>(a.low, b.low),
+        8 => _mm_blend_epi32::<8>(a.low, b.low),
+        9 => _mm_blend_epi32::<9>(a.low, b.low),
+        10 => _mm_blend_epi32::<10>(a.low, b.low),
+        11 => _mm_blend_epi32::<11>(a.low, b.low),
+        12 => _mm_blend_epi32::<12>(a.low, b.low),
+        13 => _mm_blend_epi32::<13>(a.low, b.low),
+        14 => _mm_blend_epi32::<14>(a.low, b.low),
+        15 => _mm_blend_epi32::<15>(a.low, b.low),
+        _ => unreachable!(),
+    };
+    // We only care about the lower 4 bits (0-15)
+    let high = match (MASK >> 4) & 0xF {
+        0 => _mm_blend_epi32::<0>(a.high, b.high),
+        1 => _mm_blend_epi32::<1>(a.high, b.high),
+        2 => _mm_blend_epi32::<2>(a.high, b.high),
+        3 => _mm_blend_epi32::<3>(a.high, b.high),
+        4 => _mm_blend_epi32::<4>(a.high, b.high),
+        5 => _mm_blend_epi32::<5>(a.high, b.high),
+        6 => _mm_blend_epi32::<6>(a.high, b.high),
+        7 => _mm_blend_epi32::<7>(a.high, b.high),
+        8 => _mm_blend_epi32::<8>(a.high, b.high),
+        9 => _mm_blend_epi32::<9>(a.high, b.high),
+        10 => _mm_blend_epi32::<10>(a.high, b.high),
+        11 => _mm_blend_epi32::<11>(a.high, b.high),
+        12 => _mm_blend_epi32::<12>(a.high, b.high),
+        13 => _mm_blend_epi32::<13>(a.high, b.high),
+        14 => _mm_blend_epi32::<14>(a.high, b.high),
+        15 => _mm_blend_epi32::<15>(a.high, b.high),
+        _ => unreachable!(),
+    };
+
+    __m256i { low, high }
 }
 
 #[target_feature(enable = "sse2")]

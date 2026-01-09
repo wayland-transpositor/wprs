@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::arch::x86_64::_mm256_castps_si256;
-use std::arch::x86_64::_mm256_castsi256_ps;
-use std::arch::x86_64::_mm256_loadu_si256;
-use std::arch::x86_64::_mm256_shuffle_ps;
-use std::arch::x86_64::_mm_loadu_si128;
-
 pub use std::arch::x86_64::__m128i;
 pub use std::arch::x86_64::__m256i;
 pub use std::arch::x86_64::_mm_add_epi8;
 pub use std::arch::x86_64::_mm_extract_epi8;
+use std::arch::x86_64::_mm_loadu_si128;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
+use std::arch::x86_64::_mm256_castps_si256;
 pub use std::arch::x86_64::_mm256_castsi128_si256;
+use std::arch::x86_64::_mm256_castsi256_ps;
 pub use std::arch::x86_64::_mm256_castsi256_si128;
+use std::arch::x86_64::_mm256_loadu_si256;
 pub use std::arch::x86_64::_mm256_set_m128i;
+use std::arch::x86_64::_mm256_shuffle_ps;
 pub use std::arch::x86_64::_mm256_storeu_si256;
 
 use cfg_if::cfg_if;

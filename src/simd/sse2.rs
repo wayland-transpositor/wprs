@@ -12,28 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use cfg_if::cfg_if;
-
+pub use std::arch::x86_64::__m128i;
+pub use std::arch::x86_64::_mm_add_epi8;
 use std::arch::x86_64::_mm_and_si128;
 use std::arch::x86_64::_mm_andnot_si128;
 use std::arch::x86_64::_mm_castps_si128;
 use std::arch::x86_64::_mm_castsi128_ps;
 use std::arch::x86_64::_mm_loadu_si128;
 use std::arch::x86_64::_mm_or_si128;
-use std::arch::x86_64::_mm_set_epi32;
 use std::arch::x86_64::_mm_set_epi8;
+use std::arch::x86_64::_mm_set_epi32;
+pub use std::arch::x86_64::_mm_set1_epi8;
+pub use std::arch::x86_64::_mm_setzero_si128;
 use std::arch::x86_64::_mm_shuffle_ps;
 use std::arch::x86_64::_mm_slli_si128;
+pub use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm_sub_epi8;
+
+use cfg_if::cfg_if;
 
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::vec4u8::Vec4u8;
-
-pub use std::arch::x86_64::__m128i;
-pub use std::arch::x86_64::_mm_add_epi8;
-pub use std::arch::x86_64::_mm_set1_epi8;
-pub use std::arch::x86_64::_mm_setzero_si128;
-pub use std::arch::x86_64::_mm_storeu_si128;
 
 #[allow(non_camel_case_types)]
 #[repr(C, align(32))]
@@ -414,10 +413,18 @@ cfg_if! {
 #[inline]
 pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     // 1. Process the Low 128 bits
-    let low = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(a.low), _mm_castsi128_ps(b.low), MASK));
+    let low = _mm_castps_si128(_mm_shuffle_ps(
+        _mm_castsi128_ps(a.low),
+        _mm_castsi128_ps(b.low),
+        MASK,
+    ));
 
     // 2. Process the High 128 bits (exactly the same logic)
-    let high = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(a.high),_mm_castsi128_ps(b.high), MASK));
+    let high = _mm_castps_si128(_mm_shuffle_ps(
+        _mm_castsi128_ps(a.high),
+        _mm_castsi128_ps(b.high),
+        MASK,
+    ));
 
     __m256i { low, high }
 }

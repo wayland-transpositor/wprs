@@ -18,6 +18,7 @@ use std::arch::x86_64::_mm_and_si128;
 use std::arch::x86_64::_mm_andnot_si128;
 use std::arch::x86_64::_mm_castps_si128;
 use std::arch::x86_64::_mm_castsi128_ps;
+use std::arch::x86_64::_mm_load_si128;
 use std::arch::x86_64::_mm_loadu_si128;
 use std::arch::x86_64::_mm_or_si128;
 use std::arch::x86_64::_mm_set_epi8;
@@ -26,6 +27,7 @@ pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 use std::arch::x86_64::_mm_shuffle_ps;
 use std::arch::x86_64::_mm_slli_si128;
+use std::arch::x86_64::_mm_store_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm_sub_epi8;
 
@@ -70,10 +72,12 @@ pub fn _mm256_castsi256_si128(a: __m256i) -> __m128i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_storeu_si256(mem_addr: *mut __m256i, a: __m256i) {
+pub fn _mm256_storeu_si256(dst: *mut __m256i, a: __m256i) {
     // 1. Cast the pointer to a byte-addressable pointer (u8)
-    let base_ptr = mem_addr as *mut u8;
+    let base_ptr = dst as *mut u8;
 
+    // SAFETY: dst is which is pointer to __m256i, so it is safe to read
+    // 256 bits from it in two rounds of 128bit each.
     unsafe {
         // 2. Store the low 128 bits at the base address
         _mm_storeu_si128(base_ptr as *mut __m128i, a.low);
@@ -374,25 +378,35 @@ cfg_if! {
         #[inline]
         #[target_feature(enable = "sse2")]
         fn _mm_shuffle_epi8(a: __m128i, b: __m128i) -> __m128i {
-            // 1. Cast to arrays to access individual bytes (SSE2 doesn't have a direct
+            #[repr(align(16))]
+            struct AlignedM128([u8; 16]);
+
+            // Copy to arrays to access individual bytes (SSE2 doesn't have a direct
             // variable byte-shuffler like PSHUFB).
-            let src: [u8; 16] = unsafe {std::mem::transmute(a)};
-            let mask: [u8; 16] = unsafe {std::mem::transmute(b)};
-            let mut res = [0u8; 16];
+            let mut src = AlignedM128([0u8; 16]);
+            // SAFETY: a is __m128i so it is safe to write [u8;16] = 128 bits to it.
+            unsafe {_mm_store_si128(src.0.as_mut_ptr().cast::<__m128i>(), a)}
+
+            let mut mask = AlignedM128([0u8; 16]);
+            // SAFETY: b is __m128i so it is safe to write [u8;16] = 128 bits to it.
+            unsafe {_mm_store_si128(mask.0.as_mut_ptr().cast::<__m128i>(), b)}
+
+            let mut res = AlignedM128([0u8; 16]);
 
             for i in 0..16 {
                 // SSSE3/AVX2 Logic:
                 // If bit 7 of the mask byte is set, the result is 0.
                 // Otherwise, use the lower 4 bits as an index into the source lane.
-                if (mask[i] & 0x80) == 0 {
-                    let index = (mask[i] & 0x0F) as usize;
-                    res[i] = src[index];
+                if (mask.0[i] & 0x80) == 0 {
+                    let index = (mask.0[i] & 0x0F) as usize;
+                    res.0[i] = src.0[index];
                 } else {
-                    res[i] = 0;
+                    res.0[i] = 0;
                 }
             }
 
-            unsafe {std::mem::transmute(res)}
+            // SAFETY: res is __m128i so it is safe to read [u8;16] = 128 bits from it.
+            unsafe {_mm_load_si128(res.0.as_ptr() as *const __m128i)}
         }
 
         #[target_feature(enable = "sse2")]
@@ -433,6 +447,8 @@ pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_loadu_si256_mem(src: &[u8; 32]) -> __m256i {
+    // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
+    // 256 bits from it.
     unsafe {
         let ptr = src.as_ptr();
 

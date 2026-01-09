@@ -13,6 +13,19 @@
 // limitations under the License.
 
 use cfg_if::cfg_if;
+
+use std::arch::x86_64::_mm_and_si128;
+use std::arch::x86_64::_mm_andnot_si128;
+use std::arch::x86_64::_mm_castps_si128;
+use std::arch::x86_64::_mm_castsi128_ps;
+use std::arch::x86_64::_mm_loadu_si128;
+use std::arch::x86_64::_mm_or_si128;
+use std::arch::x86_64::_mm_set_epi32;
+use std::arch::x86_64::_mm_set_epi8;
+use std::arch::x86_64::_mm_shuffle_ps;
+use std::arch::x86_64::_mm_slli_si128;
+use std::arch::x86_64::_mm_sub_epi8;
+
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::vec4u8::Vec4u8;
 
@@ -45,7 +58,7 @@ pub fn _mm256_castsi128_si256(a: __m128i) -> __m256i {
     // We set the high bits to zero to represent the 'undefined' state safely.
     __m256i {
         low: a,
-        high: std::arch::x86_64::_mm_setzero_si128(),
+        high: _mm_setzero_si128(),
     }
 }
 
@@ -64,10 +77,10 @@ pub fn _mm256_storeu_si256(mem_addr: *mut __m256i, a: __m256i) {
 
     unsafe {
         // 2. Store the low 128 bits at the base address
-        std::arch::x86_64::_mm_storeu_si128(base_ptr as *mut __m128i, a.low);
+        _mm_storeu_si128(base_ptr as *mut __m128i, a.low);
 
         // 3. Store the high 128 bits 16 bytes (128 bits) offset from base
-        std::arch::x86_64::_mm_storeu_si128(base_ptr.add(16) as *mut __m128i, a.high);
+        _mm_storeu_si128(base_ptr.add(16) as *mut __m128i, a.high);
     }
 }
 
@@ -75,7 +88,6 @@ pub fn _mm256_storeu_si256(mem_addr: *mut __m256i, a: __m256i) {
  * We use these macros here to have the same body (implementation)
  * for SSE2 and SSE4.1 _mm256_* emulation while calling target specific
  * intrinsics without safety warnings.
- *
  */
 macro_rules! _mm256_extract_epi8 {
     ($a:expr, $INDEX:expr) => {{
@@ -129,20 +141,22 @@ cfg_if! {
             _mm256_extract_epi8!(a, INDEX)
         }
     } else {
+        use std::arch::x86_64::_mm_extract_epi16;
+
         #[target_feature(enable = "sse2")]
         #[inline]
         pub fn _mm_extract_epi8<const INDEX: i32>(a: __m128i) -> i32 {
             // TODO: revisit this when generic_const_exprs graduates from nightly
             // _mm_extract_epi16 is available in SSE2
             let word = match INDEX / 2 {
-                0 => std::arch::x86_64::_mm_extract_epi16(a, 0),
-                1 => std::arch::x86_64::_mm_extract_epi16(a, 1),
-                2 => std::arch::x86_64::_mm_extract_epi16(a, 2),
-                3 => std::arch::x86_64::_mm_extract_epi16(a, 3),
-                4 => std::arch::x86_64::_mm_extract_epi16(a, 4),
-                5 => std::arch::x86_64::_mm_extract_epi16(a, 5),
-                6 => std::arch::x86_64::_mm_extract_epi16(a, 6),
-                7 => std::arch::x86_64::_mm_extract_epi16(a, 7),
+                0 => _mm_extract_epi16(a, 0),
+                1 => _mm_extract_epi16(a, 1),
+                2 => _mm_extract_epi16(a, 2),
+                3 => _mm_extract_epi16(a, 3),
+                4 => _mm_extract_epi16(a, 4),
+                5 => _mm_extract_epi16(a, 5),
+                6 => _mm_extract_epi16(a, 6),
+                7 => _mm_extract_epi16(a, 7),
                 _ => unreachable!(),
             };
 
@@ -168,16 +182,14 @@ fn _mm_blend_epi32<const MASK: i32>(a: __m128i, b: __m128i) -> __m128i {
     // Fallback for SSE2, SSE3, SSSE3 (Generic bitwise blend)
     // This is a bitwise selection: (b & mask) | (a & ~mask)
     // We create a 128-bit mask based on the 4-bit M constant
-    let mask = std::arch::x86_64::_mm_set_epi32(
+    let mask = _mm_set_epi32(
         if (MASK & 8) != 0 { -1 } else { 0 },
         if (MASK & 4) != 0 { -1 } else { 0 },
         if (MASK & 2) != 0 { -1 } else { 0 },
         if (MASK & 1) != 0 { -1 } else { 0 },
     );
-    std::arch::x86_64::_mm_or_si128(
-        std::arch::x86_64::_mm_and_si128(mask, b),
-        std::arch::x86_64::_mm_andnot_si128(mask, a),
-    )
+
+    _mm_or_si128(_mm_and_si128(mask, b), _mm_andnot_si128(mask, a))
 }
 
 #[target_feature(enable = "sse2")]
@@ -233,8 +245,8 @@ pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
 pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
     // We use _mm_sub_epi8 (SSE2) twice.
     __m256i {
-        low: std::arch::x86_64::_mm_sub_epi8(a.low, b.low),
-        high: std::arch::x86_64::_mm_sub_epi8(a.high, b.high),
+        low: _mm_sub_epi8(a.low, b.low),
+        high: _mm_sub_epi8(a.high, b.high),
     }
 }
 
@@ -243,8 +255,8 @@ pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
 pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
     // We use _mm_add_epi8 (SSE2) twice.
     __m256i {
-        low: std::arch::x86_64::_mm_add_epi8(a.low, b.low),
-        high: std::arch::x86_64::_mm_add_epi8(a.high, b.high),
+        low: _mm_add_epi8(a.low, b.low),
+        high: _mm_add_epi8(a.high, b.high),
     }
 }
 
@@ -256,8 +268,8 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
     // Bits do not carry across the 128-bit boundary, perfectly
     // matching the behavior of the AVX2 256-bit version.
     __m256i {
-        low: std::arch::x86_64::_mm_slli_si128(a.low, SHIFT),
-        high: std::arch::x86_64::_mm_slli_si128(a.high, SHIFT),
+        low: _mm_slli_si128(a.low, SHIFT),
+        high: _mm_slli_si128(a.high, SHIFT),
     }
 }
 
@@ -323,30 +335,40 @@ pub fn _mm256_set_epi8(
     e0: i8,
 ) -> __m256i {
     // Construct the low 128-bit part (e0 through e15)
-    let low = std::arch::x86_64::_mm_set_epi8(
+    let low = _mm_set_epi8(
         e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0,
     );
     // Construct the high 128-bit part (e16 through e31)
-    let high = std::arch::x86_64::_mm_set_epi8(
+    let high = _mm_set_epi8(
         e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16,
     );
 
     __m256i { low, high }
 }
 
+/**
+ * We use these macros here to have the same body (implementation)
+ * for SSE2 and SSE3 _mm256_* emulation while calling target specific
+ * intrinsics without safety warnings.
+ */
+macro_rules! _mm256_shuffle_epi8 {
+    ($a:expr, $b:expr) => {{
+        // We must shuffle 'low' and 'high' independently to match AVX2 behavior.
+        __m256i {
+            low: _mm_shuffle_epi8($a.low, $b.low),
+            high: _mm_shuffle_epi8($a.high, $b.high),
+        }
+    }};
+}
+
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3"))] {
+        use std::arch::x86_64::_mm_shuffle_epi8;
+
         #[target_feature(enable = "ssse3")]
         #[inline]
         pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
-            // SSSE3 _mm_shuffle_epi8 operates on 128-bit registers.
-            // We shuffle the 'low' part of 'a' using the 'low' part of 'b'.
-            let low = std::arch::x86_64::_mm_shuffle_epi8(a.low, b.low);
-
-            // We shuffle the 'high' part of 'a' using the 'high' part of 'b'.
-            let high = std::arch::x86_64::_mm_shuffle_epi8(a.high, b.high);
-
-            __m256i { low, high }
+            _mm256_shuffle_epi8!(a, b)
         }
     } else {
         /// Emulates SSSE3 _mm_shuffle_epi8 using non SIMD instructions
@@ -377,11 +399,7 @@ cfg_if! {
         #[target_feature(enable = "sse2")]
         #[inline]
         pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
-            // We must shuffle 'low' and 'high' independently to match AVX2 behavior.
-            __m256i {
-                low: _mm_shuffle_epi8(a.low, b.low),
-                high: _mm_shuffle_epi8(a.high, b.high),
-            }
+            _mm256_shuffle_epi8!(a, b)
         }
     }
 }
@@ -396,18 +414,10 @@ cfg_if! {
 #[inline]
 pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     // 1. Process the Low 128 bits
-    let low = std::arch::x86_64::_mm_castps_si128(std::arch::x86_64::_mm_shuffle_ps(
-        std::arch::x86_64::_mm_castsi128_ps(a.low),
-        std::arch::x86_64::_mm_castsi128_ps(b.low),
-        MASK,
-    ));
+    let low = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(a.low), _mm_castsi128_ps(b.low), MASK));
 
     // 2. Process the High 128 bits (exactly the same logic)
-    let high = std::arch::x86_64::_mm_castps_si128(std::arch::x86_64::_mm_shuffle_ps(
-        std::arch::x86_64::_mm_castsi128_ps(a.high),
-        std::arch::x86_64::_mm_castsi128_ps(b.high),
-        MASK,
-    ));
+    let high = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(a.high),_mm_castsi128_ps(b.high), MASK));
 
     __m256i { low, high }
 }
@@ -421,11 +431,11 @@ pub fn _mm256_loadu_si256_mem(src: &[u8; 32]) -> __m256i {
 
         // 1. Load the first 128 bits (indices 0, 1, 2, 3)
         // Cast the i32 pointer to an __m128i pointer for the intrinsic
-        let low = std::arch::x86_64::_mm_loadu_si128(ptr.cast::<__m128i>());
+        let low = _mm_loadu_si128(ptr.cast::<__m128i>());
 
         // 2. Load the second 128 bits (indices 4, 5, 6, 7)
         // We offset the pointer by 4 (since it's a *const i32, this is 16 bytes)
-        let high = std::arch::x86_64::_mm_loadu_si128(ptr.add(16).cast::<__m128i>());
+        let high = _mm_loadu_si128(ptr.add(16).cast::<__m128i>());
 
         __m256i { low, high }
     }
@@ -440,11 +450,11 @@ pub fn _mm256_storeu_si256_mem(dst: &mut [u8; 32], val: __m256i) {
     unsafe {
         let base_ptr = dst.as_mut_ptr();
         // 1. Store the low 128 bits into indices [0..16]
-        std::arch::x86_64::_mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
+        _mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
 
         // 2. Store the high 128 bits into indices [16..32]
         // We offset the pointer by 16 bytes.
-        std::arch::x86_64::_mm_storeu_si128(base_ptr.add(16).cast::<__m128i>(), val.high);
+        _mm_storeu_si128(base_ptr.add(16).cast::<__m128i>(), val.high);
     }
 }
 
@@ -453,7 +463,7 @@ pub fn _mm256_storeu_si256_mem(dst: &mut [u8; 32], val: __m256i) {
 pub fn _mm_loadu_si128_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
     // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
     // safe to read 128 bits from it.
-    unsafe { std::arch::x86_64::_mm_loadu_si128(src.ptr().cast::<__m128i>()) }
+    unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
 }
 
 #[target_feature(enable = "sse2")]
@@ -467,10 +477,10 @@ pub fn _mm256_storeu_si256_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
         let base_ptr = dst.as_mut_ptr() as *mut Vec4u8;
 
         // Store the low 128 bits into the first 16 bytes (indices 0-15)
-        std::arch::x86_64::_mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
+        _mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
 
         // Store the high 128 bits into the next 16 bytes (indices 16-31)
         // .add(16) moves the pointer forward by 16 bytes
-        std::arch::x86_64::_mm_storeu_si128(base_ptr.add(4).cast::<__m128i>(), val.high);
+        _mm_storeu_si128(base_ptr.add(4).cast::<__m128i>(), val.high);
     }
 }

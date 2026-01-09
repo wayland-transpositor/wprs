@@ -15,6 +15,7 @@
 pub use std::arch::x86_64::__m128i;
 pub use std::arch::x86_64::__m256i;
 pub use std::arch::x86_64::_mm_add_epi8;
+pub use std::arch::x86_64::_mm_extract_epi8;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
@@ -28,57 +29,17 @@ use cfg_if::cfg_if;
 use crate::buffer_pointer::KnownSizeBufferPointer;
 use crate::vec4u8::Vec4u8;
 
-/*
- * We must enfonce that a parameter is an immediate constant in order
- * to fit inside the assembly instruction. The Rust way to do this
- * is with a Const Generic Parameter hence this pattern.
- */
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm_extract_epi8<const INDEX: i32>(a: __m128i) -> i32 {
-    // This is the same with the plain SSE4.1 but we want the VEX encoded variant
-    std::arch::x86_64::_mm_extract_epi8(a, INDEX)
-}
-
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
-        pub use std::arch::x86_64::_mm256_sub_epi8;
         pub use std::arch::x86_64::_mm256_add_epi8;
+        pub use std::arch::x86_64::_mm256_blend_epi32;
+        pub use std::arch::x86_64::_mm256_extract_epi8;
+        pub use std::arch::x86_64::_mm256_extracti128_si256;
+        pub use std::arch::x86_64::_mm256_inserti128_si256;
         pub use std::arch::x86_64::_mm256_set_epi8;
         pub use std::arch::x86_64::_mm256_shuffle_epi8;
-
-        /* We must enfonce that a parameter is an immediate constant in order
-         to fit inside the assembly instruction. The Rust way to do this
-         is with a Const Generic Parameter */
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
-            std::arch::x86_64::_mm256_slli_si256(a, SHIFT)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        pub fn _mm256_extracti128_si256<const HIGH: i32>(a: __m256i) -> __m128i {
-            std::arch::x86_64::_mm256_extracti128_si256(a, HIGH)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-            std::arch::x86_64::_mm256_blend_epi32(a, b, MASK)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
-            std::arch::x86_64::_mm256_extract_epi8(a, INDEX)
-        }
-
-        #[target_feature(enable = "avx2")]
-        #[inline]
-        pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m256i {
-            std::arch::x86_64::_mm256_inserti128_si256(a, b, LANE)
-        }
+        pub use std::arch::x86_64::_mm256_slli_si256;
+        pub use std::arch::x86_64::_mm256_sub_epi8;
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
         #[target_feature(enable = "avx")]
         #[inline]

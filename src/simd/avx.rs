@@ -26,15 +26,15 @@ use std::arch::x86_64::_mm_slli_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm_sub_epi8;
 use std::arch::x86_64::_mm256_blend_ps;
-use std::arch::x86_64::_mm256_castps_si256;
+pub use std::arch::x86_64::_mm256_castps_si256;
 pub use std::arch::x86_64::_mm256_castsi128_si256;
-use std::arch::x86_64::_mm256_castsi256_ps;
+pub use std::arch::x86_64::_mm256_castsi256_ps;
 pub use std::arch::x86_64::_mm256_castsi256_si128;
 use std::arch::x86_64::_mm256_extractf128_si256;
 use std::arch::x86_64::_mm256_insertf128_ps;
 pub use std::arch::x86_64::_mm256_loadu_si256;
 pub use std::arch::x86_64::_mm256_set_m128i;
-use std::arch::x86_64::_mm256_shuffle_ps;
+pub use std::arch::x86_64::_mm256_shuffle_ps;
 pub use std::arch::x86_64::_mm256_storeu_si256;
 
 #[target_feature(enable = "avx")]

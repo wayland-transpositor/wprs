@@ -38,7 +38,9 @@ use crate::simd::_mm_set1_epi8;
 use crate::simd::_mm_setzero_si128;
 use crate::simd::_mm256_add_epi8;
 use crate::simd::_mm256_blend_epi32;
+use crate::simd::_mm256_castps_si256;
 use crate::simd::_mm256_castsi128_si256;
+use crate::simd::_mm256_castsi256_ps;
 use crate::simd::_mm256_castsi256_si128;
 use crate::simd::_mm256_extract_epi8;
 use crate::simd::_mm256_extracti128_si256;
@@ -47,12 +49,23 @@ use crate::simd::_mm256_loadu_si256;
 use crate::simd::_mm256_set_epi8;
 use crate::simd::_mm256_set_m128i;
 use crate::simd::_mm256_shuffle_epi8;
-use crate::simd::_mm256_shufps_epi32;
+use crate::simd::_mm256_shuffle_ps;
 use crate::simd::_mm256_slli_si256;
 use crate::simd::_mm256_storeu_si256;
 use crate::simd::_mm256_sub_epi8;
+
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
+
+#[inline]
+fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
+    unsafe {
+        _mm256_castps_si256(_mm256_shuffle_ps::<MASK>(
+            _mm256_castsi256_ps(a),
+            _mm256_castsi256_ps(b),
+        ))
+    }
+}
 
 #[inline]
 fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {

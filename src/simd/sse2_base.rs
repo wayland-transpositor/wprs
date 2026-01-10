@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use std::arch::x86_64::__m128;
 pub use std::arch::x86_64::__m128i;
 pub use std::arch::x86_64::_mm_add_epi8;
 use std::arch::x86_64::_mm_and_si128;
@@ -28,6 +29,14 @@ use std::arch::x86_64::_mm_shuffle_ps;
 use std::arch::x86_64::_mm_slli_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm_sub_epi8;
+
+#[allow(non_camel_case_types)]
+#[repr(C, align(32))]
+#[derive(Copy, Clone)]
+pub struct __m256 {
+    pub low: __m128,
+    pub high: __m128,
+}
 
 #[allow(non_camel_case_types)]
 #[repr(C, align(32))]
@@ -257,28 +266,35 @@ pub fn _mm256_set_epi8(
     __m256i { low, high }
 }
 
-/**
- * NOTE: The following functions are not actual std::arch::x86_64 intrinsics.
- * They are wprs specific but we put them here because they have a specific
- * SSE counterpart
- */
+#[target_feature(enable = "sse2")]
+#[inline]
+pub fn _mm256_castsi256_ps(a: __m256i) -> __m256 {
+    __m256 {
+        // Cast the lower 128 bits
+        low: _mm_castsi128_ps(a.low),
+        // Cast the upper 128 bits
+        high: _mm_castsi128_ps(a.high),
+    }
+}
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-    // 1. Process the Low 128 bits
-    let low = _mm_castps_si128(_mm_shuffle_ps(
-        _mm_castsi128_ps(a.low),
-        _mm_castsi128_ps(b.low),
-        MASK,
-    ));
+pub unsafe fn _mm256_castps_si256(a: __m256) -> __m256i {
+    __m256i {
+        // Cast lower 128 bits float -> int
+        low: _mm_castps_si128(a.low),
+        // Cast upper 128 bits float -> int
+        high: _mm_castps_si128(a.high),
+    }
+}
 
-    // 2. Process the High 128 bits (exactly the same logic)
-    let high = _mm_castps_si128(_mm_shuffle_ps(
-        _mm_castsi128_ps(a.high),
-        _mm_castsi128_ps(b.high),
-        MASK,
-    ));
-
-    __m256i { low, high }
+#[target_feature(enable = "sse2")]
+#[inline]
+pub fn _mm256_shuffle_ps<const MASK: i32>(a: __m256, b: __m256) -> __m256 {
+    __m256 {
+        // Low lane shuffle: uses a.low and b.low
+        low: _mm_shuffle_ps::<MASK>(a.low, b.low),
+        // High lane shuffle: uses a.high and b.high
+        high: _mm_shuffle_ps::<MASK>(a.high, b.high),
+    }
 }

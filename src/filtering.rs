@@ -33,7 +33,7 @@ use crate::simd::__m128i;
 use crate::simd::__m256i;
 use crate::simd::_mm_add_epi8;
 use crate::simd::_mm_extract_epi8;
-use crate::simd::_mm_loadu_si128_vec4u8;
+use crate::simd::_mm_loadu_si128;
 use crate::simd::_mm_set1_epi8;
 use crate::simd::_mm_setzero_si128;
 use crate::simd::_mm256_add_epi8;
@@ -43,17 +43,44 @@ use crate::simd::_mm256_castsi256_si128;
 use crate::simd::_mm256_extract_epi8;
 use crate::simd::_mm256_extracti128_si256;
 use crate::simd::_mm256_inserti128_si256;
-use crate::simd::_mm256_loadu_si256_mem;
+use crate::simd::_mm256_loadu_si256;
 use crate::simd::_mm256_set_epi8;
 use crate::simd::_mm256_set_m128i;
 use crate::simd::_mm256_shuffle_epi8;
 use crate::simd::_mm256_shufps_epi32;
 use crate::simd::_mm256_slli_si256;
-use crate::simd::_mm256_storeu_si256_mem;
-use crate::simd::_mm256_storeu_si256_vec4u8;
+use crate::simd::_mm256_storeu_si256;
 use crate::simd::_mm256_sub_epi8;
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
+
+#[inline]
+fn load_m128i_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
+    // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
+    // safe to read 128 bits from it.
+    unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
+}
+
+#[inline]
+fn load_m256i(src: &[u8; 32]) -> __m256i {
+    // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
+    // 256 bits from it.
+    unsafe { _mm256_loadu_si256(src.as_ptr().cast::<__m256i>()) }
+}
+
+#[inline]
+fn store_m256i(dst: &mut [u8; 32], val: __m256i) {
+    // SAFETY: dst is 32 u8s, which is 256 bits, so it is safe to write 256 bits
+    // to it.
+    unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
+}
+
+#[inline]
+fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
+    // SAFETY: dst is 8 Vec4u8s, which is 32 u8s, which is 256 bits, so it is
+    // safe to write 256 bits to it.
+    unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
+}
 
 #[inline]
 fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
@@ -186,13 +213,13 @@ fn aos_to_soa_u8_32x4(
 
         // let input: *const u8 = input.ptr().cast();
         // print!("i0  ");
-        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(0).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(0).cast::<[u8; 32]>()));
         // print!("i1  ");
-        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(32).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(32).cast::<[u8; 32]>()));
         // print!("i2  ");
-        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(64).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(64).cast::<[u8; 32]>()));
         // print!("i3  ");
-        // crate::utils::print_vec_char_256_hex(_mm256_loadu_si256_mem(&*input.offset(96).cast::<[u8; 32]>()));
+        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(96).cast::<[u8; 32]>()));
         // print!("\n");
 
         // i0  1f 1e 1d 1c | 1b 1a 19 18 | 17 16 15 14 | 13 12 11 10 || 0f 0e 0d 0c | 0b 0a 09 08 | 07 06 05 04 | 03 02 01 00
@@ -200,15 +227,15 @@ fn aos_to_soa_u8_32x4(
         // i2  5f 5e 5d 5c | 5b 5a 59 58 | 57 56 55 54 | 53 52 51 50 || 4f 4e 4d 4c | 4b 4a 49 48 | 47 46 45 44 | 43 42 41 40
         // i3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60
 
-        let mut t0 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i0));
-        let mut t1 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i1));
-        let mut t2 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i2));
-        let mut t3 = _mm256_castsi128_si256(_mm_loadu_si128_vec4u8(&i3));
+        let mut t0 = _mm256_castsi128_si256(load_m128i_vec4u8(&i0));
+        let mut t1 = _mm256_castsi128_si256(load_m128i_vec4u8(&i1));
+        let mut t2 = _mm256_castsi128_si256(load_m128i_vec4u8(&i2));
+        let mut t3 = _mm256_castsi128_si256(load_m128i_vec4u8(&i3));
 
-        t0 = _mm256_inserti128_si256::<1>(t0, _mm_loadu_si128_vec4u8(&i4));
-        t1 = _mm256_inserti128_si256::<1>(t1, _mm_loadu_si128_vec4u8(&i5));
-        t2 = _mm256_inserti128_si256::<1>(t2, _mm_loadu_si128_vec4u8(&i6));
-        t3 = _mm256_inserti128_si256::<1>(t3, _mm_loadu_si128_vec4u8(&i7));
+        t0 = _mm256_inserti128_si256::<1>(t0, load_m128i_vec4u8(&i4));
+        t1 = _mm256_inserti128_si256::<1>(t1, load_m128i_vec4u8(&i5));
+        t2 = _mm256_inserti128_si256::<1>(t2, load_m128i_vec4u8(&i6));
+        t3 = _mm256_inserti128_si256::<1>(t3, load_m128i_vec4u8(&i7));
 
         // print!("t0  ");
         // crate::utils::print_vec_char_256_hex(t0);
@@ -294,10 +321,10 @@ fn aos_to_soa_u8_32x4(
         (t2, next2) = running_difference_32(t2, prev2);
         (t3, next3) = running_difference_32(t3, prev3);
 
-        _mm256_storeu_si256_mem(out0, t0);
-        _mm256_storeu_si256_mem(out1, t1);
-        _mm256_storeu_si256_mem(out2, t2);
-        _mm256_storeu_si256_mem(out3, t3);
+        store_m256i(out0, t0);
+        store_m256i(out1, t1);
+        store_m256i(out2, t2);
+        store_m256i(out3, t3);
 
         (next0, next1, next2, next3)
     }
@@ -333,10 +360,10 @@ fn soa_to_aos_u8_32x4(
             1, 13, 8, 4, 0, 12,
         );
 
-        let mut t0 = _mm256_loadu_si256_mem(input0);
-        let mut t1 = _mm256_loadu_si256_mem(input1);
-        let mut t2 = _mm256_loadu_si256_mem(input2);
-        let mut t3 = _mm256_loadu_si256_mem(input3);
+        let mut t0 = load_m256i(input0);
+        let mut t1 = load_m256i(input1);
+        let mut t2 = load_m256i(input2);
+        let mut t3 = load_m256i(input3);
 
         (t0, prev0) = prefix_sum(t0, prev0);
         (t1, prev1) = prefix_sum(t1, prev1);
@@ -420,23 +447,23 @@ fn soa_to_aos_u8_32x4(
         // t2  6f 6e 6d 6c | 6b 6a 69 68 | 67 66 65 64 | 63 62 61 60 || 2f 2e 2d 2c | 2b 2a 29 28 | 27 26 25 24 | 23 22 21 20
         // t3  7f 7e 7d 7c | 7b 7a 79 78 | 77 76 75 74 | 73 72 71 70 || 3f 3e 3d 3c | 3b 3a 39 38 | 37 36 35 34 | 33 32 31 30
 
-        _mm256_storeu_si256_vec4u8(
+        store_m256i_vec4u8(
             out.index_mut(0..8).try_into().unwrap(),
             _mm256_set_m128i(_mm256_castsi256_si128(t1), _mm256_castsi256_si128(t0)),
         );
-        _mm256_storeu_si256_vec4u8(
+        store_m256i_vec4u8(
             out.index_mut(8..16).try_into().unwrap(),
             _mm256_set_m128i(_mm256_castsi256_si128(t3), _mm256_castsi256_si128(t2)),
         );
 
-        _mm256_storeu_si256_vec4u8(
+        store_m256i_vec4u8(
             out.index_mut(16..24).try_into().unwrap(),
             _mm256_set_m128i(
                 _mm256_extracti128_si256::<1>(t1),
                 _mm256_extracti128_si256::<1>(t0),
             ),
         );
-        _mm256_storeu_si256_vec4u8(
+        store_m256i_vec4u8(
             out.index_mut(24..32).try_into().unwrap(),
             _mm256_set_m128i(
                 _mm256_extracti128_si256::<1>(t3),
@@ -639,10 +666,10 @@ mod tests {
         ];
         let mut output = [0; 32];
         unsafe {
-            _mm256_storeu_si256_mem(
+            store_m256i(
                 (&mut output[..]).try_into().unwrap(),
                 prefix_sum(
-                    _mm256_loadu_si256_mem((&input[..]).try_into().unwrap()),
+                    load_m256i((&input[..]).try_into().unwrap()),
                     _mm_setzero_si128(),
                 )
                 .0,
@@ -663,13 +690,10 @@ mod tests {
             24, 25, 26, 27, 28, 29, 30, 31,
         ];
         let mut output = [0; 32];
-        unsafe {
-            _mm256_storeu_si256_mem(
-                (&mut output[..]).try_into().unwrap(),
-                running_difference_32(_mm256_loadu_si256_mem((&input[..]).try_into().unwrap()), 0)
-                    .0,
-            );
-        }
+        store_m256i(
+            (&mut output[..]).try_into().unwrap(),
+            running_difference_32(load_m256i((&input[..]).try_into().unwrap()), 0).0,
+        );
         let expected = [
             0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
             1, 1, 1,

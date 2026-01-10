@@ -16,7 +16,7 @@ pub use std::arch::x86_64::__m128i;
 pub use std::arch::x86_64::__m256i;
 pub use std::arch::x86_64::_mm_add_epi8;
 pub use std::arch::x86_64::_mm_extract_epi8;
-use std::arch::x86_64::_mm_loadu_si128;
+pub use std::arch::x86_64::_mm_loadu_si128;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
@@ -24,15 +24,12 @@ use std::arch::x86_64::_mm256_castps_si256;
 pub use std::arch::x86_64::_mm256_castsi128_si256;
 use std::arch::x86_64::_mm256_castsi256_ps;
 pub use std::arch::x86_64::_mm256_castsi256_si128;
-use std::arch::x86_64::_mm256_loadu_si256;
+pub use std::arch::x86_64::_mm256_loadu_si256;
 pub use std::arch::x86_64::_mm256_set_m128i;
 use std::arch::x86_64::_mm256_shuffle_ps;
 pub use std::arch::x86_64::_mm256_storeu_si256;
 
 use cfg_if::cfg_if;
-
-use crate::buffer_pointer::KnownSizeBufferPointer;
-use crate::vec4u8::Vec4u8;
 
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
@@ -255,36 +252,4 @@ pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
         _mm256_castsi256_ps(b),
         MASK,
     ))
-}
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm256_loadu_si256_mem(src: &[u8; 32]) -> __m256i {
-    // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
-    // 256 bits from it.
-    unsafe { _mm256_loadu_si256(src.as_ptr().cast::<__m256i>()) }
-}
-
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm256_storeu_si256_mem(dst: &mut [u8; 32], val: __m256i) {
-    // SAFETY: dst is 32 u8s, which is 256 bits, so it is safe to write 256 bits
-    // to it.
-    unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
-}
-
-// This is the same with the plain SSE2 but we want the VEX encoded variant
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm_loadu_si128_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
-    // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
-    // safe to read 128 bits from it.
-    unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
-}
-
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm256_storeu_si256_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
-    // SAFETY: dst is 8 Vec4u8s, which is 32 u8s, which is 256 bits, so it is
-    // safe to write 256 bits to it.
-    unsafe { _mm256_storeu_si256(dst.as_mut_ptr().cast::<__m256i>(), val) }
 }

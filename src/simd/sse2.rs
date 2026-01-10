@@ -18,8 +18,7 @@ use std::arch::x86_64::_mm_and_si128;
 use std::arch::x86_64::_mm_andnot_si128;
 use std::arch::x86_64::_mm_castps_si128;
 use std::arch::x86_64::_mm_castsi128_ps;
-use std::arch::x86_64::_mm_load_si128;
-use std::arch::x86_64::_mm_loadu_si128;
+pub use std::arch::x86_64::_mm_loadu_si128;
 use std::arch::x86_64::_mm_or_si128;
 use std::arch::x86_64::_mm_set_epi8;
 use std::arch::x86_64::_mm_set_epi32;
@@ -27,14 +26,10 @@ pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 use std::arch::x86_64::_mm_shuffle_ps;
 use std::arch::x86_64::_mm_slli_si128;
-use std::arch::x86_64::_mm_store_si128;
 pub use std::arch::x86_64::_mm_storeu_si128;
 use std::arch::x86_64::_mm_sub_epi8;
 
 use cfg_if::cfg_if;
-
-use crate::buffer_pointer::KnownSizeBufferPointer;
-use crate::vec4u8::Vec4u8;
 
 #[allow(non_camel_case_types)]
 #[repr(C, align(32))]
@@ -72,18 +67,25 @@ pub fn _mm256_castsi256_si128(a: __m256i) -> __m128i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_storeu_si256(dst: *mut __m256i, a: __m256i) {
-    // 1. Cast the pointer to a byte-addressable pointer (u8)
-    let base_ptr = dst as *mut u8;
-
-    // SAFETY: dst is which is pointer to __m256i, so it is safe to read
+pub fn _mm256_loadu_si256(src: *const __m256i) -> __m256i {
+    // SAFETY: dst is pointer to __m256i, so it is safe to read
     // 256 bits from it in two rounds of 128bit each.
     unsafe {
-        // 2. Store the low 128 bits at the base address
-        _mm_storeu_si128(base_ptr as *mut __m128i, a.low);
+        __m256i {
+            low: _mm_loadu_si128(&(*src).low),
+            high: _mm_loadu_si128(&(*src).high),
+        }
+    }
+}
 
-        // 3. Store the high 128 bits 16 bytes (128 bits) offset from base
-        _mm_storeu_si128(base_ptr.add(16) as *mut __m128i, a.high);
+#[target_feature(enable = "sse2")]
+#[inline]
+pub fn _mm256_storeu_si256(dst: *mut __m256i, a: __m256i) {
+    // SAFETY: src is pointer to __m256i, so it is safe to read
+    // 256 bits from it in two rounds of 128bit each.
+    unsafe {
+        _mm_storeu_si128(&mut (*dst).low, a.low);
+        _mm_storeu_si128(&mut (*dst).high, a.high);
     }
 }
 
@@ -374,6 +376,9 @@ cfg_if! {
             _mm256_shuffle_epi8!(a, b)
         }
     } else {
+        use std::arch::x86_64::_mm_load_si128;
+        use std::arch::x86_64::_mm_store_si128;
+
         /// Emulates SSSE3 _mm_shuffle_epi8 using non SIMD instructions
         #[inline]
         #[target_feature(enable = "sse2")]
@@ -441,69 +446,4 @@ pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
     ));
 
     __m256i { low, high }
-}
-
-/// Emulates a 256-bit aligned load using SSE2 instructions.
-#[target_feature(enable = "sse2")]
-#[inline]
-pub fn _mm256_loadu_si256_mem(src: &[u8; 32]) -> __m256i {
-    // SAFETY: src is which is 32 u8s, which is 256 bits, so it is safe to read
-    // 256 bits from it.
-    unsafe {
-        let ptr = src.as_ptr();
-
-        // 1. Load the first 128 bits (indices 0, 1, 2, 3)
-        // Cast the i32 pointer to an __m128i pointer for the intrinsic
-        let low = _mm_loadu_si128(ptr.cast::<__m128i>());
-
-        // 2. Load the second 128 bits (indices 4, 5, 6, 7)
-        // We offset the pointer by 4 (since it's a *const i32, this is 16 bytes)
-        let high = _mm_loadu_si128(ptr.add(16).cast::<__m128i>());
-
-        __m256i { low, high }
-    }
-}
-
-/// Emulates a 256-bit aligned store using SSE2 instructions.
-#[target_feature(enable = "sse2")]
-#[inline]
-pub fn _mm256_storeu_si256_mem(dst: &mut [u8; 32], val: __m256i) {
-    // SAFETY: dst is 32 u8s (256 bits).
-    // We store two 128-bit chunks sequentially.
-    unsafe {
-        let base_ptr = dst.as_mut_ptr();
-        // 1. Store the low 128 bits into indices [0..16]
-        _mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
-
-        // 2. Store the high 128 bits into indices [16..32]
-        // We offset the pointer by 16 bytes.
-        _mm_storeu_si128(base_ptr.add(16).cast::<__m128i>(), val.high);
-    }
-}
-
-#[target_feature(enable = "sse2")]
-#[inline]
-pub fn _mm_loadu_si128_vec4u8(src: &KnownSizeBufferPointer<Vec4u8, 4>) -> __m128i {
-    // SAFETY: src is 4 Vec4u8s, which is 16 u8s, which is 128 bits, so it is
-    // safe to read 128 bits from it.
-    unsafe { _mm_loadu_si128(src.ptr().cast::<__m128i>()) }
-}
-
-#[target_feature(enable = "sse2")]
-#[inline]
-pub fn _mm256_storeu_si256_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
-    // SAFETY: dst is 8 Vec4u8s, which is 32 u8s, which is 256 bits, so it is
-    // safe to write 256 bits to it.
-    // val consists of two 128-bit registers = 256 bytes.
-    unsafe {
-        // Get a raw pointer to the start of the 32-byte buffer
-        let base_ptr = dst.as_mut_ptr() as *mut Vec4u8;
-
-        // Store the low 128 bits into the first 16 bytes (indices 0-15)
-        _mm_storeu_si128(base_ptr.cast::<__m128i>(), val.low);
-
-        // Store the high 128 bits into the next 16 bytes (indices 16-31)
-        // .add(16) moves the pointer forward by 16 bytes
-        _mm_storeu_si128(base_ptr.add(4).cast::<__m128i>(), val.high);
-    }
 }

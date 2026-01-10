@@ -65,7 +65,7 @@ pub fn _mm256_castsi256_si128(a: __m256i) -> __m128i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_loadu_si256(src: *const __m256i) -> __m256i {
+pub unsafe fn _mm256_loadu_si256(src: *const __m256i) -> __m256i {
     // SAFETY: dst is pointer to __m256i, so it is safe to read
     // 256 bits from it in two rounds of 128bit each.
     unsafe {
@@ -78,7 +78,7 @@ pub fn _mm256_loadu_si256(src: *const __m256i) -> __m256i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_storeu_si256(dst: *mut __m256i, a: __m256i) {
+pub unsafe fn _mm256_storeu_si256(dst: *mut __m256i, a: __m256i) {
     // SAFETY: src is pointer to __m256i, so it is safe to read
     // 256 bits from it in two rounds of 128bit each.
     unsafe {

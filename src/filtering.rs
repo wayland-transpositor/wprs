@@ -53,7 +53,6 @@ use crate::simd::_mm256_shuffle_ps;
 use crate::simd::_mm256_slli_si256;
 use crate::simd::_mm256_storeu_si256;
 use crate::simd::_mm256_sub_epi8;
-
 use crate::vec4u8::Vec4u8;
 use crate::vec4u8::Vec4u8s;
 

@@ -160,11 +160,11 @@ Then update the `wprsc.ron` and `wprsd.ron` files with your desired settings.
 `wprsc` is normally a Wayland client and requires a local Wayland compositor.
 For development and experimentation on non-Wayland desktops (for example macOS
 or Windows), `wprsc` also supports a cross-platform backend using `winit` +
-`wgpu`.
+`pixels`.
 
 When no Wayland compositor is detected, `wprsc` will automatically fall back to
 this backend (it is enabled by default). You can override the selection with
-`--backend auto|wayland|winit-wgpu`.
+`--backend auto|wayland|winit-pixels`.
 
 ```bash
 cargo run --profile dev --bin wprsc
@@ -178,13 +178,14 @@ Keyboard behavior is configurable:
   file via `--xkb-keymap-file=/path/to/keymap`.
 * `--keyboard-mode=evdev`: send Linux evdev keycodes without sending a keymap.
 
-Current limitations of the `winit` + `wgpu` backend:
+Current limitations of the `winit` + `pixels` backend:
 
 * Only `xdg-toplevel` surfaces are displayed.
 * Input forwarding is best-effort (pointer and basic keyboard).
   Keyboard events are translated to Linux evdev keycodes and may be incomplete
   on non-Linux hosts.
 * Popups/subsurfaces are not fully supported.
+* Pinch/rotation gestures are not forwarded yet.
 
 ## Current Limitations
 

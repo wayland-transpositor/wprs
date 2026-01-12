@@ -14,16 +14,26 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::mem::ManuallyDrop;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 
+use pixels::{Pixels, SurfaceTexture};
+use raw_window_handle::DisplayHandle;
+use raw_window_handle::HandleError;
+use raw_window_handle::HasDisplayHandle;
+use raw_window_handle::HasWindowHandle;
+use raw_window_handle::RawDisplayHandle;
+use raw_window_handle::RawWindowHandle;
+use raw_window_handle::WindowHandle;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalPosition;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::CursorIcon;
 use winit::window::Window;
 use winit::window::WindowLevel;
 
@@ -41,29 +51,18 @@ use crate::protocols::wprs::Request;
 use crate::protocols::wprs::SendType;
 use crate::protocols::wprs::Serializer;
 use crate::protocols::wprs::geometry::{Point, Size};
-use crate::protocols::wprs::wayland::PointerGestureEvent;
 use crate::protocols::wprs::wayland::{
-    AxisScroll, AxisSource, KeyInner, KeyState, KeyboardEvent, ModifierState, PointerEvent,
-    PointerEventKind,
-};
-use crate::protocols::wprs::wayland::{
-    BufferAssignment, BufferData, Mode, OutputEvent, OutputInfo, Subpixel, SurfaceRequest,
-    SurfaceRequestPayload, Transform, UncompressedBufferData, WlSurfaceId,
+    AxisScroll, AxisSource, BufferAssignment, BufferData, BufferFormat, Mode, OutputEvent,
+    OutputInfo, Subpixel, SurfaceRequest, SurfaceRequestPayload, Transform, UncompressedBufferData,
+    WlSurfaceId,
 };
 use crate::protocols::wprs::xdg_shell::XdgPopupState;
 use crate::protocols::wprs::xdg_shell::{
     DecorationMode, ToplevelClose, ToplevelConfigure, ToplevelEvent, WindowState,
 };
 
-#[derive(Debug, Clone, Copy, Default)]
-struct PinchGestureState {
-    active_pinch: bool,
-    active_rotation: bool,
-    scale: f64,
-}
-
 #[derive(Clone, Debug)]
-pub struct WinitWgpuOptions {
+pub struct WinitPixelsOptions {
     pub keyboard_mode: KeyboardMode,
     pub xkb_keymap_file: Option<std::path::PathBuf>,
     pub ui_scale_factor: f64,
@@ -78,9 +77,9 @@ pub enum UserEvent {
 #[derive(Debug)]
 pub struct DecodedFrame {
     pub surface_id: WlSurfaceId,
-    pub metadata: crate::protocols::wprs::wayland::BufferMetadata,
-    pub padded_row_bytes: u32,
-    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -90,317 +89,94 @@ struct DecodeJob {
     filtered: crate::vec4u8::Vec4u8s,
 }
 
-#[derive(Clone)]
-struct WgpuShared {
-    instance: Arc<wgpu::Instance>,
-    adapter: Arc<wgpu::Adapter>,
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-}
-
 struct WindowRenderer {
     window: Arc<Window>,
-    surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-
-    bind_group_layout: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    bind_group: Option<wgpu::BindGroup>,
-    texture: Option<wgpu::Texture>,
-    texture_size: Option<(u32, u32)>,
+    surface_handle: *mut OwnedSurface,
+    pixels: ManuallyDrop<Pixels<'static>>,
+    surface_size: (u32, u32),
+    buffer_size: (u32, u32),
 }
 
 impl WindowRenderer {
-    fn new(shared: &WgpuShared, window: Arc<Window>) -> Result<Self> {
-        let surface = shared
-            .instance
-            .create_surface(window.clone())
-            .location(loc!())?;
-
-        let caps = surface.get_capabilities(&shared.adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(caps.formats[0]);
+    fn new(window: Arc<Window>) -> Result<Self> {
         let size = window.inner_size();
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
-            present_mode: caps.present_modes[0],
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&shared.device, &config);
+        let surface_w = size.width.max(1);
+        let surface_h = size.height.max(1);
 
-        let shader = shared
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("wprs_winit_wgpu_shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-            });
-
-        let bind_group_layout =
-            shared
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("wprs_winit_wgpu_bgl"),
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                    ],
-                });
-
-        let sampler = shared.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("wprs_winit_wgpu_sampler"),
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        let pipeline_layout =
-            shared
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("wprs_winit_wgpu_pipeline_layout"),
-                    bind_group_layouts: &[&bind_group_layout],
-                    push_constant_ranges: &[],
-                });
-
-        let pipeline = shared
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("wprs_winit_wgpu_pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: 16,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 0,
-                            },
-                            wgpu::VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 8,
-                                shader_location: 1,
-                            },
-                        ],
-                    }],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                multiview: None,
-                cache: None,
-            });
-
-        let vertex_data: &[f32] = &[
-            // pos(x,y) uv(u,v)
-            -1.0, -1.0, 0.0, 1.0, //
-            1.0, -1.0, 1.0, 1.0, //
-            1.0, 1.0, 1.0, 0.0, //
-            -1.0, -1.0, 0.0, 1.0, //
-            1.0, 1.0, 1.0, 0.0, //
-            -1.0, 1.0, 0.0, 0.0, //
-        ];
-        let vertex_buffer = shared.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("wprs_winit_wgpu_vertex_buffer"),
-            size: (vertex_data.len() * std::mem::size_of::<f32>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        shared
-            .queue
-            .write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(vertex_data));
+        let surface_handle = Box::new(OwnedSurface::new(window.as_ref()).location(loc!())?);
+        let surface_handle = Box::into_raw(surface_handle);
+        let surface_ref: &'static OwnedSurface = unsafe { &*surface_handle };
+        let surface_texture = SurfaceTexture::new(surface_w, surface_h, surface_ref);
+        let pixels = Pixels::new(surface_w, surface_h, surface_texture)
+            .map_err(|err| anyhow!("create pixels failed: {err:?}"))?;
 
         Ok(Self {
             window,
-            surface,
-            config,
-            pipeline,
-            vertex_buffer,
-            bind_group_layout,
-            sampler,
-            bind_group: None,
-            texture: None,
-            texture_size: None,
+            surface_handle,
+            pixels: ManuallyDrop::new(pixels),
+            surface_size: (surface_w, surface_h),
+            buffer_size: (1, 1),
         })
     }
 
-    fn resize(&mut self, shared: &WgpuShared, size: PhysicalSize<u32>) {
-        self.config.width = size.width.max(1);
-        self.config.height = size.height.max(1);
-        self.surface.configure(&shared.device, &self.config);
+    fn resize_surface(&mut self, size: PhysicalSize<u32>) -> Result<()> {
+        let width = size.width.max(1);
+        let height = size.height.max(1);
+        if self.surface_size == (width, height) {
+            return Ok(());
+        }
+        self.surface_size = (width, height);
+        self.pixels
+            .resize_surface(width, height)
+            .map_err(|err| anyhow!("pixels resize_surface failed: {err:?}"))?;
+        Ok(())
     }
 
-    fn update_texture_from_padded_bgra(
-        &mut self,
-        shared: &WgpuShared,
-        metadata: &crate::protocols::wprs::wayland::BufferMetadata,
-        padded_row_bytes: u32,
-        padded_data: &[u8],
-    ) {
-        let width = metadata.width as u32;
-        let height = metadata.height as u32;
-
-        if self.texture_size != Some((width, height)) {
-            let texture = shared.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("wprs_remote_texture"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = shared.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("wprs_remote_texture_bg"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            });
-            self.texture = Some(texture);
-            self.bind_group = Some(bind_group);
-            self.texture_size = Some((width, height));
+    fn resize_buffer(&mut self, width: u32, height: u32) -> Result<()> {
+        let width = width.max(1);
+        let height = height.max(1);
+        if self.buffer_size == (width, height) {
+            return Ok(());
         }
-
-        let texture = self.texture.as_ref().unwrap();
-        shared.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            padded_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(padded_row_bytes),
-                rows_per_image: Some(height),
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
+        self.buffer_size = (width, height);
+        self.pixels
+            .resize_buffer(width, height)
+            .map_err(|err| anyhow!("pixels resize_buffer failed: {err:?}"))?;
+        Ok(())
     }
 
-    fn render(&mut self, shared: &WgpuShared) -> Result<()> {
-        debug_assert_eq!(self.bind_group.is_some(), self.texture.is_some());
-        debug_assert_eq!(self.bind_group.is_some(), self.texture_size.is_some());
-
-        let frame = match self.surface.get_current_texture() {
-            Ok(frame) => frame,
-            Err(wgpu::SurfaceError::Outdated) | Err(wgpu::SurfaceError::Lost) => {
-                self.surface.configure(&shared.device, &self.config);
-                return Ok(());
-            },
-            Err(wgpu::SurfaceError::Timeout) => return Ok(()),
-            Err(err) => return Err(anyhow!("surface acquire failed: {err:?}")),
-        };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = shared
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("wprs_winit_wgpu_encoder"),
-            });
-        {
-            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("wprs_winit_wgpu_render_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            // The pipeline expects a texture/sampler bind group at index 0. Avoid issuing draw
-            // calls before we've received the first remote frame (or if the texture was reset).
-            if let Some(bind_group) = &self.bind_group {
-                rp.set_pipeline(&self.pipeline);
-                rp.set_bind_group(0, bind_group, &[]);
-                rp.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                rp.draw(0..6, 0..1);
-            }
+    fn update_frame(&mut self, frame: &DecodedFrame) -> Result<()> {
+        self.resize_buffer(frame.width, frame.height).location(loc!())?;
+        let dst = self.pixels.frame_mut();
+        if dst.len() != frame.pixels.len() {
+            return Ok(());
         }
-        shared.queue.submit([encoder.finish()]);
-        frame.present();
+        dst.copy_from_slice(&frame.pixels);
+        Ok(())
+    }
+
+    fn render(&mut self) -> Result<()> {
+        self.pixels
+            .render()
+            .map_err(|err| anyhow!("pixels render failed: {err:?}"))?;
         Ok(())
     }
 }
 
-fn align_up(value: usize, alignment: usize) -> usize {
-    debug_assert!(alignment.is_power_of_two());
-    (value + alignment - 1) & !(alignment - 1)
+impl Drop for WindowRenderer {
+    fn drop(&mut self) {
+        unsafe { ManuallyDrop::drop(&mut self.pixels) };
+        if !self.surface_handle.is_null() {
+            unsafe { drop(Box::from_raw(self.surface_handle)) };
+            self.surface_handle = std::ptr::null_mut();
+        }
+    }
 }
 
-fn decode_filtered_to_padded_bgra(
+fn decode_filtered_to_rgba(
     metadata: &crate::protocols::wprs::wayland::BufferMetadata,
     filtered: &crate::vec4u8::Vec4u8s,
-) -> (u32, Vec<u8>) {
+) -> Vec<u8> {
     let width = metadata.width as usize;
     let height = metadata.height as usize;
     let src_stride = metadata.stride as usize;
@@ -409,15 +185,27 @@ fn decode_filtered_to_padded_bgra(
     let mut unfiltered = vec![0u8; metadata.len()];
     filtering::unfilter(filtered, &mut unfiltered);
 
-    let padded_row_bytes = align_up(row_bytes, 256);
-    let mut padded = vec![0u8; padded_row_bytes * height];
+    let mut rgba = vec![0u8; row_bytes * height];
     for y in 0..height {
         let src = &unfiltered[y * src_stride..y * src_stride + row_bytes];
-        let dst = &mut padded[y * padded_row_bytes..y * padded_row_bytes + row_bytes];
-        dst.copy_from_slice(src);
+        let dst = &mut rgba[y * row_bytes..y * row_bytes + row_bytes];
+        for x in 0..width {
+            let i = x * 4;
+            let b = src[i];
+            let g = src[i + 1];
+            let r = src[i + 2];
+            let a = match metadata.format {
+                BufferFormat::Argb8888 => src[i + 3],
+                BufferFormat::Xrgb8888 => 0xFF,
+            };
+            dst[i] = r;
+            dst[i + 1] = g;
+            dst[i + 2] = b;
+            dst[i + 3] = a;
+        }
     }
 
-    (padded_row_bytes as u32, padded)
+    rgba
 }
 
 fn output_info_from_monitor(id: u32, monitor: &winit::monitor::MonitorHandle) -> OutputInfo {
@@ -452,7 +240,6 @@ fn output_info_from_monitor(id: u32, monitor: &winit::monitor::MonitorHandle) ->
 }
 
 struct App {
-    shared: WgpuShared,
     serializer: Serializer<proto::Event, Request>,
     decode_tx: std::sync::mpsc::Sender<DecodeJob>,
     buffer_cache: Option<UncompressedBufferData>,
@@ -476,8 +263,6 @@ struct App {
     pointer_inside: HashSet<winit::window::WindowId>,
     pointer_surface: Option<WlSurfaceId>,
 
-    pinch_state: HashMap<WlSurfaceId, PinchGestureState>,
-
     popup_state_by_surface: HashMap<WlSurfaceId, XdgPopupState>,
 }
 
@@ -496,6 +281,7 @@ impl App {
             y: window_logical.y / scale,
         }
     }
+
     fn schedule_decode(
         &self,
         surface_id: WlSurfaceId,
@@ -512,16 +298,12 @@ impl App {
 
     fn compute_popup_position(&self, popup: &XdgPopupState) -> Option<PhysicalPosition<i32>> {
         let parent_renderer = self.windows.get(&popup.parent_surface_id)?;
-        // Popups are positioned relative to the parent surface coordinate space (i.e. the parent
-        // window's inner content origin). Using outer_position() shifts popups by decorations.
         let parent_pos = parent_renderer
             .window
             .inner_position()
             .or_else(|_| parent_renderer.window.outer_position())
             .ok()?;
 
-        // The positioner is expressed in the parent's surface coordinate space.
-        // Map it into a global coordinate space using the parent's outer position.
         let anchor = popup.positioner.anchor_rect;
         let offset = popup.positioner.offset;
 
@@ -555,9 +337,7 @@ impl App {
         }
     }
 
-    fn cursor_icon_from_wayland_name(name: &str) -> winit::window::CursorIcon {
-        use winit::window::CursorIcon;
-
+    fn cursor_icon_from_wayland_name(name: &str) -> CursorIcon {
         match name {
             "default" | "left_ptr" | "arrow" => CursorIcon::Default,
             "pointer" | "hand" | "hand1" | "hand2" => CursorIcon::Pointer,
@@ -620,22 +400,17 @@ impl App {
                 renderer.window.set_cursor(icon);
             },
             crate::protocols::wprs::wayland::CursorImageStatus::Surface { .. } => {
-                // winit doesn't expose a cross-platform API to set a custom bitmap cursor.
                 debug!(
                     "cursor surface: surface={surface_id:?} serial={} (custom cursor unsupported in winit backend)",
                     serial
                 );
                 renderer.window.set_cursor_visible(true);
-                renderer
-                    .window
-                    .set_cursor(winit::window::CursorIcon::Default);
+                renderer.window.set_cursor(CursorIcon::Default);
             },
         }
     }
 
     fn generate_keymap_from_tools() -> Result<String> {
-        // Preferred path: ask X11 for the active keymap (works under Xwayland/X11).
-        // `setxkbmap -print` emits an XKB config, `xkbcomp -xkb - -` compiles it to a keymap.
         let setxkbmap_output = std::process::Command::new("setxkbmap")
             .args(["-print"])
             .output()
@@ -704,9 +479,10 @@ impl App {
         self.serializer
             .writer()
             .send(SendType::Object(proto::Event::KeyboardEvent(
-                KeyboardEvent::Keymap(keymap),
+                crate::protocols::wprs::wayland::KeyboardEvent::Keymap(keymap),
             )));
     }
+
     fn next_serial(&mut self) -> u32 {
         self.serial_counter = self.serial_counter.wrapping_add(1);
         if self.serial_counter == 0 {
@@ -729,12 +505,12 @@ impl App {
         &mut self,
         surface_id: WlSurfaceId,
         position: crate::protocols::wprs::geometry::Point<f64>,
-        kind: PointerEventKind,
+        kind: crate::protocols::wprs::wayland::PointerEventKind,
     ) {
         self.serializer
             .writer()
             .send(SendType::Object(proto::Event::PointerFrame(vec![
-                PointerEvent {
+                crate::protocols::wprs::wayland::PointerEvent {
                     surface_id,
                     position,
                     kind,
@@ -752,7 +528,7 @@ impl App {
             self.serializer
                 .writer()
                 .send(SendType::Object(proto::Event::KeyboardEvent(
-                    KeyboardEvent::Leave { serial },
+                    crate::protocols::wprs::wayland::KeyboardEvent::Leave { serial },
                 )));
         }
 
@@ -765,7 +541,7 @@ impl App {
             self.serializer
                 .writer()
                 .send(SendType::Object(proto::Event::KeyboardEvent(
-                    KeyboardEvent::Enter {
+                    crate::protocols::wprs::wayland::KeyboardEvent::Enter {
                         serial,
                         surface_id,
                         keycodes,
@@ -779,8 +555,8 @@ impl App {
         self.serializer
             .writer()
             .send(SendType::Object(proto::Event::KeyboardEvent(
-                KeyboardEvent::Modifiers {
-                    modifier_state: ModifierState {
+                crate::protocols::wprs::wayland::KeyboardEvent::Modifiers {
+                    modifier_state: crate::protocols::wprs::wayland::ModifierState {
                         ctrl: modifiers.control_key(),
                         alt: modifiers.alt_key(),
                         shift: modifiers.shift_key(),
@@ -794,8 +570,7 @@ impl App {
             )));
     }
 
-    fn send_key(&mut self, keycode: u32, state: KeyState) {
-        // Keyboard events are applied to the currently-focused surface on the server side.
+    fn send_key(&mut self, keycode: u32, state: crate::protocols::wprs::wayland::KeyState) {
         if self.focused_surface.is_none() {
             return;
         }
@@ -803,16 +578,17 @@ impl App {
         self.serializer
             .writer()
             .send(SendType::Object(proto::Event::KeyboardEvent(
-                KeyboardEvent::Key(KeyInner {
-                    serial,
-                    raw_code: keycode,
-                    state,
-                }),
+                crate::protocols::wprs::wayland::KeyboardEvent::Key(
+                    crate::protocols::wprs::wayland::KeyInner {
+                        serial,
+                        raw_code: keycode,
+                        state,
+                    },
+                ),
             )));
     }
 
     fn linux_button_from_winit(button: MouseButton) -> Option<u32> {
-        // linux/input-event-codes.h
         match button {
             MouseButton::Left => Some(272),
             MouseButton::Right => Some(273),
@@ -826,7 +602,6 @@ impl App {
     fn linux_keycode_from_winit(code: winit::keyboard::KeyCode) -> Option<u32> {
         use winit::keyboard::KeyCode;
 
-        // linux/input-event-codes.h keycodes (evdev)
         Some(match code {
             KeyCode::Escape => 1,
             KeyCode::Digit1 => 2,
@@ -958,7 +733,6 @@ impl App {
                 self.handle_cursor_image(cursor);
                 Ok(())
             },
-            // Not yet handled in this backend.
             _ => Ok(()),
         }
     }
@@ -969,14 +743,10 @@ impl App {
         };
         let size = renderer.window.inner_size();
         let logical: winit::dpi::LogicalSize<f64> = size.to_logical(renderer.window.scale_factor());
-        // Window sizes are in local logical points, but the server expects surface logical points.
-        // When `ui_scale_factor` is set, we scale the view (local window size) without resizing the
-        // remote surface, so we need to map back into the server's coordinate space.
         let server_logical_w = (logical.width / self.ui_scale()).round().max(1.0) as u32;
         let server_logical_h = (logical.height / self.ui_scale()).round().max(1.0) as u32;
         let configure = ToplevelConfigure {
             surface_id,
-            // Configure sizes are in logical points.
             new_size: Size {
                 w: NonZeroU32::new(server_logical_w),
                 h: NonZeroU32::new(server_logical_h),
@@ -1026,7 +796,6 @@ impl App {
                     self.popup_state_by_surface.remove(&surface_id);
                 }
 
-                // Ensure we have a window for this surface.
                 if !self.windows.contains_key(&surface_id) {
                     let mut attrs = if let Some(toplevel) = toplevel {
                         let title = toplevel.title.clone().unwrap_or_else(|| "wprs".to_string());
@@ -1044,7 +813,6 @@ impl App {
                         let server_scale = state.buffer_scale.max(1) as f64;
                         let logical_w = (f64::from(w) / server_scale).max(1.0);
                         let logical_h = (f64::from(h) / server_scale).max(1.0);
-                        // Client-side scaling knob: magnify/shrink the window in logical units.
                         attrs = attrs.with_inner_size(LogicalSize::new(
                             logical_w * self.ui_scale(),
                             logical_h * self.ui_scale(),
@@ -1073,29 +841,27 @@ impl App {
                     }
 
                     let window = Arc::new(event_loop.create_window(attrs).location(loc!())?);
-                    let renderer =
-                        WindowRenderer::new(&self.shared, window.clone()).location(loc!())?;
-                    self.surface_by_window.insert(window.id(), surface_id);
+                    let renderer = WindowRenderer::new(window.clone()).location(loc!())?;
+                    let window_id = window.id();
+                    self.surface_by_window.insert(window_id, surface_id);
                     self.windows.insert(surface_id, renderer);
 
                     if let Some(popup) = popup {
                         if let Some(pos) = self.compute_popup_position(popup) {
-                            window.set_outer_position(pos);
+                            let renderer = self.windows.get(&surface_id).expect("renderer");
+                            renderer.window.set_outer_position(pos);
                         }
                     }
 
-                    // Send an initial configure so apps can begin drawing.
                     if toplevel.is_some() {
                         self.send_configure_for_surface(surface_id);
                     }
                 }
 
-                // Keep popup windows in sync with their parent.
                 if let Some(popup) = popup {
                     self.update_popup_position(surface_id, popup);
                 }
 
-                // Apply buffer if present.
                 if let Some(BufferAssignment::New(mut buf)) = state.buffer.take() {
                     if buf.data.is_external() {
                         if let Some(cache) = self.buffer_cache.take() {
@@ -1123,8 +889,6 @@ impl App {
                             return Ok(());
                         },
                     };
-                    // Unfiltering can be expensive on non-SIMD platforms; do it
-                    // off the winit/UI thread to keep the window responsive.
                     self.schedule_decode(surface_id, buf.metadata, filtered);
                 }
                 Ok(())
@@ -1160,12 +924,7 @@ impl ApplicationHandler<UserEvent> for App {
                 let Some(renderer) = self.windows.get_mut(&frame.surface_id) else {
                     return;
                 };
-                renderer.update_texture_from_padded_bgra(
-                    &self.shared,
-                    &frame.metadata,
-                    frame.padded_row_bytes,
-                    &frame.data,
-                );
+                renderer.update_frame(&frame).log_and_ignore(loc!());
                 renderer.window.request_redraw();
                 self.surfaces_with_frame.insert(frame.surface_id);
             },
@@ -1187,7 +946,7 @@ impl ApplicationHandler<UserEvent> for App {
         if let Some(renderer) = self.windows.get_mut(&surface_id) {
             match &event {
                 WindowEvent::Resized(size) => {
-                    renderer.resize(&self.shared, *size);
+                    renderer.resize_surface(*size).log_and_ignore(loc!());
                     debug!("winit window resized: surface={surface_id:?} size={size:?}");
                     self.send_configure_for_surface(surface_id);
                     self.update_popups_for_parent(surface_id);
@@ -1201,7 +960,7 @@ impl ApplicationHandler<UserEvent> for App {
                     self.update_popups_for_parent(surface_id);
                 },
                 WindowEvent::RedrawRequested => {
-                    renderer.render(&self.shared).log_and_ignore(loc!());
+                    renderer.render().log_and_ignore(loc!());
                 },
                 WindowEvent::CloseRequested => {
                     debug!("winit close requested: surface={surface_id:?}");
@@ -1242,16 +1001,23 @@ impl ApplicationHandler<UserEvent> for App {
                 };
 
                 let state = match (event.state, event.repeat) {
-                    (ElementState::Pressed, true) => KeyState::Repeated,
-                    (ElementState::Pressed, false) => KeyState::Pressed,
-                    (ElementState::Released, _) => KeyState::Released,
+                    (ElementState::Pressed, true) => {
+                        crate::protocols::wprs::wayland::KeyState::Repeated
+                    },
+                    (ElementState::Pressed, false) => {
+                        crate::protocols::wprs::wayland::KeyState::Pressed
+                    },
+                    (ElementState::Released, _) => {
+                        crate::protocols::wprs::wayland::KeyState::Released
+                    },
                 };
 
                 match state {
-                    KeyState::Pressed | KeyState::Repeated => {
+                    crate::protocols::wprs::wayland::KeyState::Pressed
+                    | crate::protocols::wprs::wayland::KeyState::Repeated => {
                         self.pressed_keycodes.insert(linux_keycode);
                     },
-                    KeyState::Released => {
+                    crate::protocols::wprs::wayland::KeyState::Released => {
                         self.pressed_keycodes.remove(&linux_keycode);
                     },
                 }
@@ -1270,20 +1036,30 @@ impl ApplicationHandler<UserEvent> for App {
                 self.last_cursor_pos.insert(window_id, pos);
                 self.pointer_surface = Some(surface_id);
 
-                // Some platforms don't emit CursorEntered if the cursor is
-                // already inside the window when it is created.
                 if self.pointer_inside.insert(window_id) {
                     let serial = self.next_serial();
-                    self.send_pointer_event(surface_id, pos, PointerEventKind::Enter { serial });
+                    self.send_pointer_event(
+                        surface_id,
+                        pos,
+                        crate::protocols::wprs::wayland::PointerEventKind::Enter { serial },
+                    );
                 }
-                self.send_pointer_event(surface_id, pos, PointerEventKind::Motion);
+                self.send_pointer_event(
+                    surface_id,
+                    pos,
+                    crate::protocols::wprs::wayland::PointerEventKind::Motion,
+                );
             },
             WindowEvent::CursorEntered { .. } => {
                 let pos = self.cursor_pos_for(window_id);
                 let serial = self.next_serial();
                 self.pointer_inside.insert(window_id);
                 self.pointer_surface = Some(surface_id);
-                self.send_pointer_event(surface_id, pos, PointerEventKind::Enter { serial });
+                self.send_pointer_event(
+                    surface_id,
+                    pos,
+                    crate::protocols::wprs::wayland::PointerEventKind::Enter { serial },
+                );
             },
             WindowEvent::CursorLeft { .. } => {
                 let pos = self.cursor_pos_for(window_id);
@@ -1292,7 +1068,11 @@ impl ApplicationHandler<UserEvent> for App {
                 if self.pointer_surface == Some(surface_id) {
                     self.pointer_surface = None;
                 }
-                self.send_pointer_event(surface_id, pos, PointerEventKind::Leave { serial });
+                self.send_pointer_event(
+                    surface_id,
+                    pos,
+                    crate::protocols::wprs::wayland::PointerEventKind::Leave { serial },
+                );
             },
             WindowEvent::MouseInput { state, button, .. } => {
                 let Some(button) = Self::linux_button_from_winit(button) else {
@@ -1300,23 +1080,33 @@ impl ApplicationHandler<UserEvent> for App {
                 };
                 let pos = self.cursor_pos_for(window_id);
                 let kind = match state {
-                    ElementState::Pressed => PointerEventKind::Press {
-                        button,
-                        serial: self.next_serial(),
+                    ElementState::Pressed => {
+                        crate::protocols::wprs::wayland::PointerEventKind::Press {
+                            button,
+                            serial: self.next_serial(),
+                        }
                     },
-                    ElementState::Released => PointerEventKind::Release {
-                        button,
-                        serial: self.next_serial(),
+                    ElementState::Released => {
+                        crate::protocols::wprs::wayland::PointerEventKind::Release {
+                            button,
+                            serial: self.next_serial(),
+                        }
                     },
                 };
                 self.send_pointer_event(surface_id, pos, kind);
             },
             WindowEvent::MouseWheel { delta, .. } => {
-                let (h_abs, v_abs, h_discrete, v_discrete) = match delta {
+                let (h_abs, v_abs, h_discrete, v_discrete, source) = match delta {
                     MouseScrollDelta::LineDelta(x, y) => {
                         let v120_x = (x * 120.0) as i32;
                         let v120_y = (y * 120.0) as i32;
-                        (f64::from(x) * 15.0, f64::from(y) * 15.0, v120_x, v120_y)
+                        (
+                            f64::from(x) * 15.0,
+                            f64::from(y) * 15.0,
+                            v120_x,
+                            v120_y,
+                            Some(AxisSource::Wheel),
+                        )
                     },
                     MouseScrollDelta::PixelDelta(pos) => {
                         let Some(renderer) = self.windows.get(&surface_id) else {
@@ -1325,14 +1115,10 @@ impl ApplicationHandler<UserEvent> for App {
                         let logical = pos.to_logical::<f64>(renderer.window.scale_factor());
                         let dx = logical.x / self.ui_scale();
                         let dy = logical.y / self.ui_scale();
-                        (dx, dy, 0, 0)
+                        (dx, dy, 0, 0, Some(AxisSource::Finger))
                     },
                 };
                 let pos = self.cursor_pos_for(window_id);
-                let source = match delta {
-                    MouseScrollDelta::LineDelta(_, _) => Some(AxisSource::Wheel),
-                    MouseScrollDelta::PixelDelta(_) => Some(AxisSource::Finger),
-                };
 
                 debug!(
                     "scroll: surface={surface_id:?} source={source:?} h_abs={h_abs:.2} v_abs={v_abs:.2} h_discrete={h_discrete} v_discrete={v_discrete}"
@@ -1340,7 +1126,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_pointer_event(
                     surface_id,
                     pos,
-                    PointerEventKind::Axis {
+                    crate::protocols::wprs::wayland::PointerEventKind::Axis {
                         horizontal: AxisScroll {
                             absolute: h_abs,
                             discrete: h_discrete,
@@ -1355,120 +1141,6 @@ impl ApplicationHandler<UserEvent> for App {
                     },
                 );
             },
-            WindowEvent::PinchGesture { delta, phase, .. } => {
-                debug!("pinch: surface={surface_id:?} phase={phase:?} delta={delta:?}");
-                let pos = self.cursor_pos_for(window_id);
-                let state = self.pinch_state.entry(surface_id).or_default();
-                let was_active = state.active_pinch || state.active_rotation;
-
-                match phase {
-                    winit::event::TouchPhase::Started => {
-                        state.active_pinch = true;
-                        if state.scale == 0.0 {
-                            state.scale = 1.0;
-                        }
-                        if !was_active {
-                            let serial = self.next_serial();
-                            self.serializer.writer().send(SendType::Object(
-                                proto::Event::PointerGesture(PointerGestureEvent::PinchBegin {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    fingers: 2,
-                                }),
-                            ));
-                        }
-                    },
-                    winit::event::TouchPhase::Moved => {
-                        if delta.is_finite() {
-                            // NSEvent magnification is additive; store an absolute scale for smithay.
-                            state.scale = (state.scale + delta).clamp(0.1, 10.0);
-                        }
-                        self.serializer.writer().send(SendType::Object(
-                            proto::Event::PointerGesture(PointerGestureEvent::PinchUpdate {
-                                surface_id,
-                                position: pos,
-                                delta: (0.0, 0.0).into(),
-                                scale: state.scale.max(0.1),
-                                rotation: 0.0,
-                            }),
-                        ));
-                    },
-                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
-                        state.active_pinch = false;
-                        let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
-                        let is_active = state.active_pinch || state.active_rotation;
-                        if !is_active {
-                            self.pinch_state.remove(&surface_id);
-                            let serial = self.next_serial();
-                            self.serializer.writer().send(SendType::Object(
-                                proto::Event::PointerGesture(PointerGestureEvent::PinchEnd {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    cancelled,
-                                }),
-                            ));
-                        }
-                    },
-                }
-            },
-
-            WindowEvent::RotationGesture { delta, phase, .. } => {
-                debug!("rotation: surface={surface_id:?} phase={phase:?} delta_deg={delta}");
-                let pos = self.cursor_pos_for(window_id);
-                let state = self.pinch_state.entry(surface_id).or_default();
-                let was_active = state.active_pinch || state.active_rotation;
-                match phase {
-                    winit::event::TouchPhase::Started => {
-                        state.active_rotation = true;
-                        if state.scale == 0.0 {
-                            state.scale = 1.0;
-                        }
-                        if !was_active {
-                            let serial = self.next_serial();
-                            self.serializer.writer().send(SendType::Object(
-                                proto::Event::PointerGesture(PointerGestureEvent::PinchBegin {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    fingers: 2,
-                                }),
-                            ));
-                        }
-                    },
-                    winit::event::TouchPhase::Moved => {
-                        // winit uses CCW-positive, smithay uses clockwise-positive.
-                        let rotation = -(delta as f64);
-                        self.serializer.writer().send(SendType::Object(
-                            proto::Event::PointerGesture(PointerGestureEvent::PinchUpdate {
-                                surface_id,
-                                position: pos,
-                                delta: (0.0, 0.0).into(),
-                                scale: state.scale.max(0.1),
-                                rotation,
-                            }),
-                        ));
-                    },
-                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
-                        state.active_rotation = false;
-                        let cancelled = matches!(phase, winit::event::TouchPhase::Cancelled);
-                        let is_active = state.active_pinch || state.active_rotation;
-                        if !is_active {
-                            self.pinch_state.remove(&surface_id);
-                            let serial = self.next_serial();
-                            self.serializer.writer().send(SendType::Object(
-                                proto::Event::PointerGesture(PointerGestureEvent::PinchEnd {
-                                    surface_id,
-                                    position: pos,
-                                    serial,
-                                    cancelled,
-                                }),
-                            ));
-                        }
-                    },
-                }
-            },
             _ => {},
         }
     }
@@ -1476,7 +1148,7 @@ impl ApplicationHandler<UserEvent> for App {
 
 pub fn run(
     mut serializer: Serializer<proto::Event, Request>,
-    options: WinitWgpuOptions,
+    options: WinitPixelsOptions,
 ) -> Result<()> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -1487,19 +1159,17 @@ pub fn run(
         let proxy = proxy.clone();
         thread::spawn(move || {
             while let Ok(job) = decode_rx.recv() {
-                let (padded_row_bytes, padded) =
-                    decode_filtered_to_padded_bgra(&job.metadata, &job.filtered);
+                let pixels = decode_filtered_to_rgba(&job.metadata, &job.filtered);
                 let _ = proxy.send_event(UserEvent::DecodedFrame(DecodedFrame {
                     surface_id: job.surface_id,
-                    metadata: job.metadata,
-                    padded_row_bytes,
-                    data: padded,
+                    width: job.metadata.width.max(1) as u32,
+                    height: job.metadata.height.max(1) as u32,
+                    pixels,
                 }));
             }
         });
     }
 
-    // Forward serializer messages to the winit event loop.
     let reader = serializer.reader().location(loc!())?;
     let proxy_for_reader = proxy.clone();
     thread::spawn(move || {
@@ -1508,9 +1178,7 @@ pub fn run(
             .handle()
             .insert_source(reader, move |event, _metadata, _state| {
                 if let CalloopChannelEvent::Msg(msg) = event {
-                    proxy_for_reader
-                        .send_event(UserEvent::ServerMessage(msg))
-                        .ok();
+                    proxy_for_reader.send_event(UserEvent::ServerMessage(msg)).ok();
                 }
             })
             .expect("insert serializer reader");
@@ -1518,40 +1186,7 @@ pub fn run(
         loop_.run(None, &mut (), |_| {}).ok();
     });
 
-    // Init shared wgpu context.
-    let instance = Arc::new(wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    }));
-
-    let adapter = Arc::new(
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .location(loc!())?,
-    );
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("wprs_winit_wgpu_device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::default(),
-        memory_hints: wgpu::MemoryHints::Performance,
-        ..Default::default()
-    }))
-    .location(loc!())?;
-
-    debug!("wgpu adapter: {:?}", adapter.get_info());
-
-    let shared = WgpuShared {
-        instance,
-        adapter,
-        device: Arc::new(device),
-        queue: Arc::new(queue),
-    };
-
     let mut app = App {
-        shared,
         serializer,
         decode_tx,
         buffer_cache: None,
@@ -1574,7 +1209,6 @@ pub fn run(
         last_cursor_pos: HashMap::new(),
         pointer_inside: HashSet::new(),
         pointer_surface: None,
-        pinch_state: HashMap::new(),
 
         popup_state_by_surface: HashMap::new(),
     };
@@ -1583,15 +1217,98 @@ pub fn run(
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-pub struct WinitWgpuClientBackend {
-    options: WinitWgpuOptions,
+#[derive(Clone, Debug)]
+struct OwnedDisplay {
+    raw: RawDisplayHandle,
 }
 
-impl WinitWgpuClientBackend {
+// Raw display handles are just opaque pointers/IDs.
+unsafe impl Send for OwnedDisplay {}
+unsafe impl Sync for OwnedDisplay {}
+
+impl OwnedDisplay {
+    fn new(window: &winit::window::Window) -> Result<Self> {
+        let handle = window
+            .display_handle()
+            .map_err(|err| anyhow!("display handle failed: {err:?}"))?;
+        Ok(Self {
+            raw: handle.as_raw(),
+        })
+    }
+}
+
+impl HasDisplayHandle for OwnedDisplay {
+    fn display_handle(&self) -> std::result::Result<DisplayHandle<'_>, HandleError> {
+        Ok(unsafe { DisplayHandle::borrow_raw(self.raw) })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct OwnedWindow {
+    raw: RawWindowHandle,
+}
+
+// Raw window handles are just opaque pointers/IDs.
+unsafe impl Send for OwnedWindow {}
+unsafe impl Sync for OwnedWindow {}
+
+impl OwnedWindow {
+    fn new(window: &winit::window::Window) -> Result<Self> {
+        let handle = window
+            .window_handle()
+            .map_err(|err| anyhow!("window handle failed: {err:?}"))?;
+        Ok(Self {
+            raw: handle.as_raw(),
+        })
+    }
+}
+
+impl HasWindowHandle for OwnedWindow {
+    fn window_handle(&self) -> std::result::Result<WindowHandle<'_>, HandleError> {
+        Ok(unsafe { WindowHandle::borrow_raw(self.raw) })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct OwnedSurface {
+    window: OwnedWindow,
+    display: OwnedDisplay,
+}
+
+// `pixels`/`wgpu` requires the window handle provider to be Send + Sync.
+unsafe impl Send for OwnedSurface {}
+unsafe impl Sync for OwnedSurface {}
+
+impl OwnedSurface {
+    fn new(window: &winit::window::Window) -> Result<Self> {
+        Ok(Self {
+            window: OwnedWindow::new(window).location(loc!())?,
+            display: OwnedDisplay::new(window).location(loc!())?,
+        })
+    }
+}
+
+impl HasWindowHandle for OwnedSurface {
+    fn window_handle(&self) -> std::result::Result<WindowHandle<'_>, HandleError> {
+        self.window.window_handle()
+    }
+}
+
+impl HasDisplayHandle for OwnedSurface {
+    fn display_handle(&self) -> std::result::Result<DisplayHandle<'_>, HandleError> {
+        self.display.display_handle()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WinitPixelsClientBackend {
+    options: WinitPixelsOptions,
+}
+
+impl WinitPixelsClientBackend {
     pub fn new(config: crate::client::backend::ClientBackendConfig) -> Self {
         Self {
-            options: WinitWgpuOptions {
+            options: WinitPixelsOptions {
                 keyboard_mode: config.keyboard_mode,
                 xkb_keymap_file: config.xkb_keymap_file,
                 ui_scale_factor: config.ui_scale_factor,
@@ -1600,9 +1317,9 @@ impl WinitWgpuClientBackend {
     }
 }
 
-impl crate::client::backend::ClientBackend for WinitWgpuClientBackend {
+impl crate::client::backend::ClientBackend for WinitPixelsClientBackend {
     fn name(&self) -> &'static str {
-        "winit-wgpu"
+        "winit-pixels"
     }
 
     fn run(self: Box<Self>, serializer: Serializer<proto::Event, proto::Request>) -> Result<()> {

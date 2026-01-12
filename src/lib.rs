@@ -39,7 +39,7 @@ compile_error!(
     any(target_os = "macos", target_os = "ios")
 ))]
 compile_error!(
-    "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms. Use `--features winit-wgpu-client` instead."
+    "The `wayland-client` feature (SCTK/Wayland backend) is not supported on Apple platforms. Use `--features winit-pixels-client` instead."
 );
 
 #[cfg(feature = "tracy-allocator")]

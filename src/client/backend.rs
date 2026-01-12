@@ -42,19 +42,19 @@ pub fn build_client_backend(
                 )
             }
         }
-        config::ClientBackend::WinitWgpu => {
-            #[cfg(feature = "winit-wgpu-client")]
+        config::ClientBackend::WinitPixels => {
+            #[cfg(feature = "winit-pixels-client")]
             {
                 Ok(Box::new(
-                    crate::client::backends::winit_wgpu::WinitWgpuClientBackend::new(config),
+                    crate::client::backends::winit_pixels::WinitPixelsClientBackend::new(config),
                 ))
             }
 
-            #[cfg(not(feature = "winit-wgpu-client"))]
+            #[cfg(not(feature = "winit-pixels-client"))]
             {
                 let _ = config;
                 bail!(
-                    "winit-wgpu backend requested but not compiled in. Rebuild with `--features winit-wgpu-client`."
+                    "winit-pixels backend requested but not compiled in. Rebuild with `--features winit-pixels-client`."
                 )
             }
         }
@@ -79,18 +79,18 @@ pub fn build_client_backend(
                 }
             }
 
-            #[cfg(feature = "winit-wgpu-client")]
+            #[cfg(feature = "winit-pixels-client")]
             {
                 Ok(Box::new(
-                    crate::client::backends::winit_wgpu::WinitWgpuClientBackend::new(config),
+                    crate::client::backends::winit_pixels::WinitPixelsClientBackend::new(config),
                 ))
             }
 
-            #[cfg(not(feature = "winit-wgpu-client"))]
+            #[cfg(not(feature = "winit-pixels-client"))]
             {
                 let _ = config;
                 bail!(
-                    "No usable client backend available. Enable `wayland-client` for the Wayland backend and/or `winit-wgpu-client` for the cross-platform backend."
+                    "No usable client backend available. Enable `wayland-client` for the Wayland backend and/or `winit-pixels-client` for the cross-platform backend."
                 )
             }
         }

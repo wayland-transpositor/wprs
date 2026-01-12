@@ -671,15 +671,12 @@ fn accept_loop_inner<ST, RT, S>(
         + for<'a> bytecheck::CheckBytes<HighValidator<'a, RancorError>>,
 {
     thread::scope(|scope| {
-        let (read_thread, write_thread) = spawn_rw_loops(
-            scope,
-            stream,
-            read_channel_tx,
-            write_channel_rx,
-            other_end_connected.clone(),
-        )
-        .unwrap();
-        let read_thread_result = utils::join_unwrap(read_thread);
+        let write_stream = stream.clone_stream().location(loc!()).unwrap();
+        let write_other_end_connected = other_end_connected.clone();
+        let write_thread =
+            scope.spawn(move || write_loop(write_stream, write_channel_rx, write_other_end_connected));
+
+        let read_thread_result = read_loop(stream, read_channel_tx);
         debug!("read thread joined: {read_thread_result:?}");
         other_end_connected.store(false, Ordering::Relaxed);
         let write_thread_result = utils::join_unwrap(write_thread);

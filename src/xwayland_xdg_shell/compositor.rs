@@ -670,7 +670,7 @@ impl SeatHandler for WprsState {
             .unwrap();
         let pointer = themed_pointer.pointer();
 
-        // TODO: move to a fn on wprs protocol CursorImageStatus
+        // TODO: move to a fn on wprs::protocol::CursorImageStatus
         match image {
             CursorImageStatus::Hidden => {
                 themed_pointer.hide_cursor().log_and_ignore(loc!());

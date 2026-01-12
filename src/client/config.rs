@@ -17,8 +17,6 @@ use crate::protocols::wprs::Endpoint;
 pub enum ClientBackend {
     Auto,
     Wayland,
-    #[serde(alias = "winit-wgpu", alias = "tao-pixels")]
-    #[value(alias = "winit-wgpu", alias = "tao-pixels")]
     WinitPixels,
 }
 

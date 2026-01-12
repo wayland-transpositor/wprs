@@ -21,7 +21,29 @@ use std::io::Write;
 use std::os::fd::AsFd;
 use std::thread;
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+    target_os = "illumos",
+    target_os = "solaris",
+))]
 use nix::fcntl::OFlag;
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "dragonfly",
+    target_os = "illumos",
+    target_os = "solaris",
+)))]
+use nix::fcntl::{FcntlArg, FdFlag, fcntl};
 use nix::unistd;
 use smithay::backend::input::Axis;
 use smithay::backend::input::ButtonState;
@@ -48,39 +70,39 @@ use smithay::wayland::selection::data_device;
 use smithay::wayland::selection::data_device::SourceMetadata;
 use smithay::wayland::selection::primary_selection;
 
-use crate::args;
-use crate::compositor_utils;
+use crate::config;
 use crate::prelude::*;
-use crate::serialization::Capabilities;
-use crate::serialization::Event;
-use crate::serialization::RecvType;
-use crate::serialization::Request;
-use crate::serialization::SendType;
-use crate::serialization::wayland::DataDestinationEvent;
-use crate::serialization::wayland::DataEvent;
-use crate::serialization::wayland::DataRequest;
-use crate::serialization::wayland::DataSource;
-use crate::serialization::wayland::DataSourceEvent;
-use crate::serialization::wayland::DataToTransfer;
-use crate::serialization::wayland::KeyInner;
-use crate::serialization::wayland::KeyState;
-use crate::serialization::wayland::KeyboardEvent;
-use crate::serialization::wayland::OutputEvent;
-use crate::serialization::wayland::PointerEvent;
-use crate::serialization::wayland::PointerEventKind;
-use crate::serialization::wayland::RepeatInfo;
-use crate::serialization::wayland::SurfaceEvent;
-use crate::serialization::wayland::SurfaceEventPayload;
-use crate::serialization::wayland::SurfaceRequest;
-use crate::serialization::wayland::SurfaceRequestPayload;
-use crate::serialization::wayland::WlSurfaceId;
-use crate::serialization::xdg_shell::PopupConfigure;
-use crate::serialization::xdg_shell::PopupEvent;
-use crate::serialization::xdg_shell::ToplevelConfigure;
-use crate::serialization::xdg_shell::ToplevelEvent;
-use crate::server::LockedSurfaceState;
-use crate::server::WprsServerState;
-use crate::server::smithay_handlers::DndGrab;
+use crate::protocols::wprs::Capabilities;
+use crate::protocols::wprs::Event;
+use crate::protocols::wprs::RecvType;
+use crate::protocols::wprs::Request;
+use crate::protocols::wprs::SendType;
+use crate::protocols::wprs::wayland::DataDestinationEvent;
+use crate::protocols::wprs::wayland::DataEvent;
+use crate::protocols::wprs::wayland::DataRequest;
+use crate::protocols::wprs::wayland::DataSource;
+use crate::protocols::wprs::wayland::DataSourceEvent;
+use crate::protocols::wprs::wayland::DataToTransfer;
+use crate::protocols::wprs::wayland::KeyInner;
+use crate::protocols::wprs::wayland::KeyState;
+use crate::protocols::wprs::wayland::KeyboardEvent;
+use crate::protocols::wprs::wayland::OutputEvent;
+use crate::protocols::wprs::wayland::PointerEvent;
+use crate::protocols::wprs::wayland::PointerEventKind;
+use crate::protocols::wprs::wayland::RepeatInfo;
+use crate::protocols::wprs::wayland::SurfaceEvent;
+use crate::protocols::wprs::wayland::SurfaceEventPayload;
+use crate::protocols::wprs::wayland::SurfaceRequest;
+use crate::protocols::wprs::wayland::SurfaceRequestPayload;
+use crate::protocols::wprs::wayland::WlSurfaceId;
+use crate::protocols::wprs::xdg_shell::PopupConfigure;
+use crate::protocols::wprs::xdg_shell::PopupEvent;
+use crate::protocols::wprs::xdg_shell::ToplevelConfigure;
+use crate::protocols::wprs::xdg_shell::ToplevelEvent;
+use crate::server::backends::wayland::LockedSurfaceState;
+use crate::server::backends::wayland::WprsServerState;
+use crate::server::backends::wayland::smithay_handlers::DndGrab;
+use crate::utils::compositor as compositor_utils;
 
 enum UnknownSurfaceErr {
     ObjectId(WlSurfaceId),
@@ -267,7 +289,7 @@ impl WprsServerState {
     fn set_key_state(&mut self, keycode: u32, state: KeyState, serial: Serial) -> Result<()> {
         let keyboard = self.seat.get_keyboard().location(loc!())?;
 
-        if args::get_log_priv_data() {
+        if config::get_log_priv_data() {
             debug!("sending key input: code {keycode:?}, state {state:?}");
         }
 
@@ -276,7 +298,7 @@ impl WprsServerState {
             modifiers_state: &ModifiersState,
             keysym: KeysymHandle,
         ) -> FilterResult<()> {
-            if args::get_log_priv_data() {
+            if config::get_log_priv_data() {
                 debug!("modifiers_state {modifiers_state:?}, keysym {keysym:?}");
             }
             FilterResult::Forward
@@ -625,7 +647,8 @@ impl WprsServerState {
                 xwayland: self.xwayland_enabled,
             })));
 
-        self.for_each_surface(|_, surface_data| {
+        let mut surfaces = Vec::new();
+        self.for_each_surface(|surface, surface_data| {
             let surface_state = surface_data
                 .data_map
                 .get::<LockedSurfaceState>()
@@ -634,24 +657,28 @@ impl WprsServerState {
                 .lock()
                 .unwrap()
                 .clone();
+            surfaces.push((surface.clone(), surface_state));
+        });
 
+        for (surface, surface_state) in surfaces {
             let mut surface_state_to_send = surface_state.clone_without_buffer();
             let raw_buffer_to_send = surface_state_to_send
                 .update_with_external_buffer(&surface_state.buffer)
-                .unwrap();
+                .location(loc!())?;
 
             self.serializer
                 .writer()
                 .send(SendType::RawBuffer(raw_buffer_to_send));
-
             self.serializer
                 .writer()
-                .send(SendType::Object(Request::Surface(SurfaceRequest {
-                    client: surface_state.client,
-                    surface: surface_state.id,
-                    payload: SurfaceRequestPayload::Commit(surface_state_to_send),
-                })));
-        });
+                .send(SendType::Object(Request::Surface(
+                    SurfaceRequest::new(
+                        &surface,
+                        SurfaceRequestPayload::Commit(surface_state_to_send),
+                    )
+                    .location(loc!())?,
+                )));
+        }
 
         Ok(())
     }
@@ -671,7 +698,40 @@ impl WprsServerState {
                 source,
                 mime,
             )) => {
-                let (recv_fd, send_fd) = unistd::pipe2(OFlag::O_CLOEXEC).location(loc!())?; // TODO: handle error
+                let (recv_fd, send_fd) = {
+                    #[cfg(any(
+                        target_os = "linux",
+                        target_os = "android",
+                        target_os = "freebsd",
+                        target_os = "netbsd",
+                        target_os = "openbsd",
+                        target_os = "dragonfly",
+                        target_os = "illumos",
+                        target_os = "solaris",
+                    ))]
+                    {
+                        unistd::pipe2(OFlag::O_CLOEXEC).location(loc!())?
+                    }
+
+                    #[cfg(not(any(
+                        target_os = "linux",
+                        target_os = "android",
+                        target_os = "freebsd",
+                        target_os = "netbsd",
+                        target_os = "openbsd",
+                        target_os = "dragonfly",
+                        target_os = "illumos",
+                        target_os = "solaris",
+                    )))]
+                    {
+                        let (recv_fd, send_fd) = unistd::pipe().location(loc!())?;
+                        fcntl(recv_fd.as_fd(), FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))
+                            .location(loc!())?;
+                        fcntl(send_fd.as_fd(), FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))
+                            .location(loc!())?;
+                        (recv_fd, send_fd)
+                    }
+                }; // TODO: handle error
                 let mut f = File::from(recv_fd);
 
                 {
@@ -967,15 +1027,13 @@ impl WprsServerState {
     pub fn handle_event(&mut self, event: RecvType<Event>) {
         match event {
             RecvType::Object(Event::WprsClientConnect) => self.handle_connect(),
-            RecvType::Object(Event::Toplevel(toplevel)) => self.handle_toplevel(toplevel),
-            RecvType::Object(Event::Popup(popup)) => self.handle_popup(popup),
+            RecvType::Object(Event::Toplevel(event)) => self.handle_toplevel(event),
+            RecvType::Object(Event::Popup(event)) => self.handle_popup(event),
             RecvType::Object(Event::KeyboardEvent(event)) => self.handle_keyboard_event(event),
             RecvType::Object(Event::PointerFrame(events)) => self.handle_pointer_frame(events),
-            RecvType::Object(Event::Output(output_event)) => self.handle_output(output_event),
-            RecvType::Object(Event::Data(data_event)) => self.handle_data_event(data_event),
-            RecvType::Object(Event::Surface(surface_event)) => {
-                self.handle_surface_event(surface_event)
-            },
+            RecvType::Object(Event::Output(event)) => self.handle_output(event),
+            RecvType::Object(Event::Data(event)) => self.handle_data_event(event),
+            RecvType::Object(Event::Surface(event)) => self.handle_surface_event(event),
             RecvType::RawBuffer(_) => unreachable!(),
         }
         .log_and_ignore(loc!());

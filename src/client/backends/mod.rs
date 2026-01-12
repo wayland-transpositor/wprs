@@ -1,3 +1,5 @@
+#[cfg(feature = "wayland-client")]
+pub mod wayland;
 // Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,23 +13,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use std::collections::hash_map::Entry;
-
-pub trait FallibleEntryExt<'a, K, V> {
-    fn or_insert_with_result<F, E>(self, default: F) -> Result<&'a mut V, E>
-    where
-        F: FnOnce() -> Result<V, E>;
-}
-
-impl<'a, K, V> FallibleEntryExt<'a, K, V> for Entry<'a, K, V> {
-    fn or_insert_with_result<F, E>(self, default: F) -> Result<&'a mut V, E>
-    where
-        F: FnOnce() -> Result<V, E>,
-    {
-        Ok(match self {
-            Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => entry.insert(default()?),
-        })
-    }
-}

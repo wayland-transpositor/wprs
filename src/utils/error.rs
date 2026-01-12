@@ -16,8 +16,8 @@ use std::fmt;
 use std::fmt::Display;
 
 use anyhow::Context;
-
-use crate::prelude::*;
+use anyhow::Result;
+use tracing::{debug, error, info, trace, warn};
 
 // TODO(https://github.com/dtolnay/anyhow/issues/139): replace all this with the
 // anyhow feature. That may not include the function name though.
@@ -54,8 +54,8 @@ impl fmt::Display for Location {
 #[macro_export]
 macro_rules! loc {
     () => {
-        Location {
-            fname: fname!(),
+        $crate::utils::error::Location {
+            fname: $crate::fname!(),
             file: file!(),
             line: line!(),
         }

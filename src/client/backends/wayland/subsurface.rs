@@ -22,18 +22,18 @@ use smithay_client_toolkit::reexports::client::protocol::wl_subsurface::WlSubsur
 use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
 
-use crate::client::ObjectBimap;
-use crate::client::RemoteSurface;
-use crate::client::Role;
-use crate::client::WprsClientState;
-use crate::client::smithay_handlers::SubSurfaceData;
-use crate::fallible_entry::FallibleEntryExt;
+use super::ObjectBimap;
+use super::RemoteSurface;
+use super::Role;
+use super::WprsClientState;
+use super::smithay_handlers::SubSurfaceData;
+use crate::utils::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
-use crate::serialization::ClientId;
-use crate::serialization::wayland::SubSurfaceState;
-use crate::serialization::wayland::SubsurfacePosition;
-use crate::serialization::wayland::SurfaceState;
-use crate::serialization::wayland::WlSurfaceId;
+use crate::protocols::wprs::ClientId;
+use crate::protocols::wprs::wayland::SubSurfaceState;
+use crate::protocols::wprs::wayland::SubsurfacePosition;
+use crate::protocols::wprs::wayland::SurfaceState;
+use crate::protocols::wprs::wayland::WlSurfaceId;
 
 pub(crate) fn populate_subsurfaces(
     client_id: ClientId,

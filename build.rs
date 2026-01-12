@@ -18,7 +18,7 @@ use merkle_hash::Algorithm;
 use merkle_hash::MerkleTree;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let serialization_tree = MerkleTree::builder("./src/serialization")
+    let serialization_tree = MerkleTree::builder("./src/protocols/wprs")
         .algorithm(Algorithm::Blake3)
         .hash_names(false)
         .build()?;

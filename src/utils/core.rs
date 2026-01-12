@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::arch::x86_64::__m128i;
-use std::arch::x86_64::__m256i;
-use std::arch::x86_64::_mm_storeu_si128;
-use std::arch::x86_64::_mm256_storeu_si256;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use std::arch::x86_64::{__m128i, __m256i, _mm_storeu_si128, _mm256_storeu_si256};
 use std::backtrace::Backtrace;
+#[cfg(feature = "wayland-compositor")]
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -30,13 +29,21 @@ use std::thread::ScopedJoinHandle;
 
 use nix::sys::stat;
 use nix::sys::stat::Mode;
+#[cfg(feature = "wayland-compositor")]
 use smithay::utils::SERIAL_COUNTER;
+#[cfg(feature = "wayland-compositor")]
 use smithay::utils::Serial;
 use tracing::Level;
+#[cfg(feature = "wayland-compositor")]
+use tracing::instrument;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 
-use crate::prelude::*;
+use anyhow::Result;
+use tracing::error;
+
+use crate::utils::error::LocationContextExt;
+use crate::utils::error::loc;
 
 pub fn configure_tracing<P: AsRef<Path>>(
     stderr_log_level: Level,
@@ -91,12 +98,14 @@ pub fn join_unwrap<T>(handle: ScopedJoinHandle<T>) -> T {
     }
 }
 
+#[cfg(feature = "wayland-compositor")]
 #[derive(Debug)]
 pub struct SerialMap {
     map: HashMap<u32, u32>,
     last_serial: u32,
 }
 
+#[cfg(feature = "wayland-compositor")]
 impl SerialMap {
     pub fn new() -> Self {
         Self {
@@ -128,6 +137,7 @@ impl SerialMap {
     }
 }
 
+#[cfg(feature = "wayland-compositor")]
 impl Default for SerialMap {
     fn default() -> Self {
         Self::new()

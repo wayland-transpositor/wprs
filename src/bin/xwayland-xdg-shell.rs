@@ -12,136 +12,58 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(target_os = "linux")]
 use std::ffi::OsString;
-use std::path::PathBuf;
 
-use bpaf::Parser;
+#[cfg(target_os = "linux")]
 use calloop::RegistrationToken;
+#[cfg(target_os = "linux")]
 use calloop::signals::Signal;
+#[cfg(target_os = "linux")]
 use calloop::signals::Signals;
-use optional_struct::optional_struct;
-use serde_derive::Deserialize;
-use serde_derive::Serialize;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop::EventLoop;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop::Interest;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop::Mode;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop::PostAction;
+#[cfg(target_os = "linux")]
 use smithay::reexports::calloop::generic::Generic;
+#[cfg(target_os = "linux")]
 use smithay::reexports::wayland_server::Display;
+#[cfg(target_os = "linux")]
 use smithay::wayland::socket::ListeningSocketSource;
+#[cfg(target_os = "linux")]
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
+#[cfg(target_os = "linux")]
 use smithay_client_toolkit::reexports::client::Connection;
+#[cfg(target_os = "linux")]
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
-use tracing::Level;
+#[cfg(target_os = "linux")]
 use wprs::args;
-use wprs::args::Config;
-use wprs::args::OptionalConfig;
-use wprs::args::SerializableLevel;
+#[cfg(target_os = "linux")]
+use wprs::config;
+#[cfg(target_os = "linux")]
 use wprs::prelude::*;
+#[cfg(target_os = "linux")]
+use wprs::server::config::xwayland_xdg_shell::OptionalXwaylandXdgShellConfig;
+#[cfg(target_os = "linux")]
+use wprs::server::config::xwayland_xdg_shell::XwaylandXdgShellConfig;
+#[cfg(target_os = "linux")]
 use wprs::utils;
+#[cfg(target_os = "linux")]
 use wprs::xwayland_xdg_shell::WprsState;
-use wprs::xwayland_xdg_shell::compositor::DecorationBehavior;
+#[cfg(target_os = "linux")]
 use wprs::xwayland_xdg_shell::compositor::XwaylandOptions;
 
-#[optional_struct]
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct XwaylandXdgShellConfig {
-    // Skip serializing fields which aren't ever useful to put into a config
-    // file.
-    #[serde(skip_serializing)]
-    print_default_config_and_exit: bool,
-    #[serde(skip_serializing)]
-    config_file: PathBuf,
-    wayland_display: String,
-    display: u32,
-    // Optional fields don't get wrapped unless we specify it ourselves
-    #[optional_wrap]
-    log_file: Option<PathBuf>,
-    stderr_log_level: SerializableLevel,
-    file_log_level: SerializableLevel,
-    log_priv_data: bool,
-    xwayland_wayland_debug: bool,
-    decoration_behavior: DecorationBehavior,
-}
+#[cfg(not(target_os = "linux"))]
+compile_error!("xwayland-xdg-shell is only supported on Linux targets.");
 
-impl Default for XwaylandXdgShellConfig {
-    fn default() -> Self {
-        Self {
-            print_default_config_and_exit: false,
-            config_file: args::default_config_file("xwayland-xdg-shell"),
-            wayland_display: "xwayland-xdg-shell-0".to_string(),
-            display: 100,
-            log_file: None,
-            stderr_log_level: SerializableLevel(Level::INFO),
-            file_log_level: SerializableLevel(Level::TRACE),
-            log_priv_data: false,
-            xwayland_wayland_debug: false,
-            decoration_behavior: DecorationBehavior::Auto,
-        }
-    }
-}
-
-impl Config for XwaylandXdgShellConfig {
-    fn config_file(&self) -> PathBuf {
-        self.config_file.clone()
-    }
-}
-
-fn display() -> impl Parser<Option<u32>> {
-    bpaf::long("display").argument::<u32>("NUM").optional()
-}
-
-fn xwayland_wayland_debug() -> impl Parser<Option<bool>> {
-    bpaf::long("xwayland-wayland-debug")
-        .argument::<bool>("BOOL")
-        .optional()
-}
-
-fn decoration_behavior() -> impl Parser<Option<DecorationBehavior>> {
-    bpaf::long("decoration-behavior")
-        .argument::<String>("Auto|AlwaysEnabled|AlwaysDisabled")
-        .parse(|s| ron::from_str(&s))
-        .optional()
-}
-
-impl OptionalConfig<XwaylandXdgShellConfig> for OptionalXwaylandXdgShellConfig {
-    fn parse_args() -> Self {
-        let print_default_config_and_exit = args::print_default_config_and_exit();
-        let config_file = args::config_file();
-        let wayland_display = args::wayland_display();
-        let display = display();
-        let log_file = args::log_file();
-        let stderr_log_level = args::stderr_log_level();
-        let file_log_level = args::file_log_level();
-        let log_priv_data = args::log_priv_data();
-        let xwayland_wayland_debug = xwayland_wayland_debug();
-        let decoration_behavior = decoration_behavior();
-        bpaf::construct!(Self {
-            print_default_config_and_exit,
-            config_file,
-            wayland_display,
-            display,
-            log_file,
-            stderr_log_level,
-            file_log_level,
-            log_priv_data,
-            xwayland_wayland_debug,
-            decoration_behavior,
-        })
-        .to_options()
-        .run()
-    }
-
-    fn print_default_config_and_exit(&self) -> Option<bool> {
-        self.print_default_config_and_exit
-    }
-
-    fn config_file(&self) -> Option<PathBuf> {
-        self.config_file.clone()
-    }
-}
-
+#[cfg(target_os = "linux")]
 fn init_wayland_listener(
     wayland_display: &str,
     mut display: Display<WprsState>,
@@ -171,13 +93,16 @@ fn init_wayland_listener(
     Ok(socket_name)
 }
 
+#[cfg(target_os = "linux")]
 #[allow(clippy::missing_panics_doc)]
-pub fn main() -> Result<()> {
-    let config = args::init_config::<XwaylandXdgShellConfig, OptionalXwaylandXdgShellConfig>();
-    args::set_log_priv_data(config.log_priv_data);
+fn main() -> Result<()> {
+    let config = args::init_config::<XwaylandXdgShellConfig, OptionalXwaylandXdgShellConfig>()
+        .location(loc!())?;
+
+    config::set_log_priv_data(config.log_priv_data);
     utils::configure_tracing(
         config.stderr_log_level.0,
-        config.log_file,
+        config.log_file.clone(),
         config.file_log_level.0,
     )
     .location(loc!())?;
@@ -192,11 +117,7 @@ pub fn main() -> Result<()> {
     let xwayland_options = XwaylandOptions {
         env: vec![(
             "WAYLAND_DEBUG",
-            if config.xwayland_wayland_debug {
-                "1"
-            } else {
-                "0"
-            },
+            if config.xwayland_wayland_debug { "1" } else { "0" },
         )],
         display: Some(config.display),
     };
@@ -212,41 +133,40 @@ pub fn main() -> Result<()> {
     )
     .location(loc!())?;
 
-    init_wayland_listener(
+    let mut registration_tokens = vec![];
+
+    let wayland_socket_name = init_wayland_listener(
         &config.wayland_display,
         display,
         &event_loop,
-        state.registration_tokens.as_mut(),
+        &mut registration_tokens,
     )
     .location(loc!())?;
-
-    let seat = &mut state.compositor_state.seat;
-    // TODO: do this in WprsState::new;
-    let _keyboard = seat
-        .add_keyboard(Default::default(), 200, 200)
-        .location(loc!())?;
-    let _pointer = seat.add_pointer();
-
     WaylandSource::new(conn, event_queue)
         .insert(event_loop.handle())
         .location(loc!())?;
 
-    let signal = event_loop.get_signal();
+    {
+        let token = event_loop
+            .handle()
+            .insert_source(
+                Signals::new([Signal::SIGINT, Signal::SIGTERM]).unwrap(),
+                |event, _, state| {
+                    for sig in event.signals() {
+                        match sig {
+                            Signal::SIGINT | Signal::SIGTERM => {
+                                info!("received signal {sig:?}, exiting");
+                                state.should_exit = true;
+                            },
+                            _ => {},
+                        }
+                    }
+                },
+            )
+            .location(loc!())?;
+        registration_tokens.push(token);
+    }
 
-    event_loop
-        .handle()
-        .insert_source(
-            Signals::new(&[Signal::SIGINT, Signal::SIGTERM]).location(loc!())?,
-            move |_event, _metadata, _state| {
-                signal.stop();
-            },
-        )
-        .location(loc!())?;
-
-    event_loop
-        .run(None, &mut state, move |state| {
-            state.dh.flush_clients().unwrap();
-        })
-        .context(loc!(), "Error starting event loop.")?;
-    Ok(())
+    info!("xwayland-xdg-shell wayland socket: {wayland_socket_name:?}");
+    event_loop.run(None, &mut state, |_| {}).location(loc!())
 }

@@ -76,12 +76,12 @@ use smithay_client_toolkit::reexports::protocols::xdg::shell::client::xdg_surfac
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::shell::xdg::XdgSurface;
 
-use crate::compositor_utils;
-use crate::fallible_entry::FallibleEntryExt;
+use crate::utils::fallible_entry::FallibleEntryExt;
 use crate::prelude::*;
-use crate::serialization::geometry::Point;
-use crate::serialization::wayland::OutputInfo;
+use crate::protocols::wprs::geometry::Point;
+use crate::protocols::wprs::wayland::OutputInfo;
 use crate::utils::SerialMap;
+use crate::utils::compositor as compositor_utils;
 use crate::xwayland_xdg_shell::WprsState;
 use crate::xwayland_xdg_shell::XWaylandSurface;
 use crate::xwayland_xdg_shell::client::Role;
@@ -670,7 +670,7 @@ impl SeatHandler for WprsState {
             .unwrap();
         let pointer = themed_pointer.pointer();
 
-        // TODO: move to a fn on serialization::CursorImaveStatus
+        // TODO: move to a fn on wprs::protocol::CursorImageStatus
         match image {
             CursorImageStatus::Hidden => {
                 themed_pointer.hide_cursor().log_and_ignore(loc!());

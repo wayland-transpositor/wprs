@@ -28,9 +28,9 @@ use smithay::wayland::shm;
 use smithay::wayland::shm::BufferAccessError;
 use smithay::wayland::shm::BufferData;
 
-use crate::buffer_pointer::BufferPointer;
+use crate::utils::buffer_pointer::BufferPointer;
 use crate::prelude::*;
-use crate::serialization::wayland::OutputInfo;
+use crate::protocols::wprs::wayland::OutputInfo;
 
 /// # Panics
 /// If smithay has a bug and with_buffer_contents gives us an invalid pointer.

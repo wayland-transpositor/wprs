@@ -1,8 +1,9 @@
-pub mod backends;
-pub mod config;
+// Protocol definitions live here.
+//
+// Keep each protocol in its own submodule to allow adding future protocols
+// without entangling their wire formats.
 
-#[cfg(feature = "wayland-compositor")]
-pub use backends::wayland::*;
+pub mod wprs;
 // Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

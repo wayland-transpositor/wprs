@@ -1,3 +1,14 @@
+#[cfg(feature = "wayland-compositor")]
+pub mod wayland;
+
+use crate::prelude::*;
+use crate::protocols::wprs::Event;
+use crate::protocols::wprs::Request;
+use crate::protocols::wprs::Serializer;
+
+pub trait ServerBackend {
+    fn run(self: Box<Self>, serializer: Serializer<Request, Event>) -> Result<()>;
+}
 // Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,9 +22,3 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-use tracy_client::ProfiledAllocator;
-
-#[global_allocator]
-static GLOBAL: ProfiledAllocator<std::alloc::System> =
-    ProfiledAllocator::new(std::alloc::System, 100);

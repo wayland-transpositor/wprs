@@ -923,7 +923,7 @@ impl SeatHandler for WprsServerState {
 
     #[instrument(skip(self, _seat), level = "debug")]
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: SmithayCursorImageStatus) {
-        // TODO: move to a fn on wprs protocol CursorImageStatus
+        // TODO: move to a fn on wprs::protocol::CursorImageStatus
         let cursor_image_status = {
             match image {
                 SmithayCursorImageStatus::Hidden => CursorImageStatus::Hidden,

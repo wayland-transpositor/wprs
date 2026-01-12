@@ -21,9 +21,9 @@ inherits = "release-lto"
 [dependencies]
 anyhow = "1.0.99"
 bimap = "0.6.3"
-bpaf = "0.9.20"
 bytemuck = { version = "1.23.2", features = ["extern_crate_alloc"] }
 calloop = { version = "0.14.3", features = ["signals"] }
+clap = { version = "4.5.53", features = ["derive"] }
 crossbeam-channel = "0.5.15"
 divbuf = "0.4.1"
 enum-as-inner = "0.6.1"
@@ -31,9 +31,10 @@ fallible-iterator = "0.3.0"
 home = "0.5.11"
 itertools = "0.14.0"
 lagoon = { version = "0.1.3", features = ["scope"] }
-nix = { version = "0.30.1", features = ["fs", "socket"] }
+nix = { version = "0.30.1", features = ["fs", "socket", "mman"] }
 num_enum = "0.7.4"
-optional_struct = "0.5.2"
+pixels = { version = "0.15.0", optional = true }
+raw-window-handle = { version = "0.6.2", optional = true }
 rkyv = { version = "0.8.11" }
 ron = "0.11.0"
 serde = "1.0.219"
@@ -43,8 +44,8 @@ smithay = { version = "0.7", default-features = false, features = [
     "desktop",
     "xwayland",
     "wayland_frontend",
-] }
-smithay-client-toolkit = "0.20"
+], optional = true }
+smithay-client-toolkit = { version = "0.20", optional = true }
 static_assertions = "1.1.0"
 sysctl = "0.6.0"
 tracing = "0.1.41"
@@ -58,13 +59,32 @@ tracy-client = { version = "0.18.2", optional = true, features = [
     "ondemand",
 ] }
 whoami = "1.6.1"
-x11rb = "0.13.2"
+winit = { version = "0.30.12", optional = true }
+x11rb = { version = "0.13.2", features = ["shm"] }
 zstd = { version = "0.13.3" }
 
 [build-dependencies]
 merkle_hash = "3.8.0"
 
 [features]
+# Ensure `wprsc` can run out-of-the-box on non-Wayland platforms.
+default = ["winit-pixels-client"]
+
+# By default, avoid pulling in platform-specific Wayland compositor/client code.
+# Enable the components you need explicitly.
+
+# Build and enable the Wayland compositor backend (Smithay).
+#
+# Note: `wprsd` is the server binary regardless of backend; this feature only
+# controls whether the Wayland compositor backend is compiled in.
+wayland = ["dep:smithay"]
+
+# Backwards-compatible alias.
+server = ["wayland"]
+
+# Build and enable the Wayland client backend for `wprsc` (SCTK-based).
+wayland-client = ["dep:smithay", "dep:smithay-client-toolkit"]
+
 # Enables exporting data to the Tracy profiler.
 # NOTE: opens a port on localhost.
 # NOTE: breaks client reconnection due to sigpipe handling.
@@ -72,6 +92,19 @@ tracy = ["dep:tracy-client", "dep:tracing-tracy"]
 # Enables memory allocation tracking for tracy. NOTE: severely decreases
 # allocation performance.
 tracy-allocator = ["tracy"]
+
+# Enables a cross-platform client fallback that can run without a Wayland compositor.
+winit-pixels-client = ["dep:winit", "dep:pixels", "dep:raw-window-handle"]
+
+[[bin]]
+name = "wprsd"
+
+[[bin]]
+name = "xwayland-xdg-shell"
+required-features = ["wayland", "wayland-client"]
+
+[[bin]]
+name = "wprsc"
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["html_reports"] }

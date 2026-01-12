@@ -1,6 +1,0 @@
-[build]
-rustflags = ["-C", "target-cpu=x86-64-v3"]
-
-[env]
-# TODO: https://github.com/rust-lang/cc-rs/issues/268 - remove this
-CFLAGS = "-march=x86-64-v3"  # for building zstd

@@ -12,10 +12,57 @@ wprs is currently only available on x86-64 with AVX2. Support for [ARM](https://
 
 Currently building wprs without AVX2 will lead to build failures.
 
+### Platform Support
+
+- `wprsc` (client) is intended to be cross-platform and should build on Linux/macOS/Windows.
+- `wprsd` has multiple backends:
+  - Wayland compositor backend (Linux/Wayland): requires the `server` feature (Smithay) and is not supported on Apple platforms.
+  - Fullscreen capture backends (macOS/Windows): use OS screen capture + input injection APIs (macOS requires Screen Recording + Accessibility permissions).
+
+In practice:
+
+- For macOS/Windows development, build `wprsc` only.
+- For Linux deployment, build both `wprsc` and `wprsd`.
+
 ### Source
 
 ```bash
 cargo build --profile=release-lto  # or release, but debug is unusably slow
+```
+
+### Cross Compilation (cross)
+
+This repo includes a `Cross.toml` with common Linux targets and the system
+dependencies needed to build the Wayland components.
+
+Examples:
+
+```bash
+# Linux x86_64
+cross build --target x86_64-unknown-linux-gnu --profile=release-lto --bin wprsc
+
+# Linux aarch64
+cross build --target aarch64-unknown-linux-gnu --profile=release-lto --bin wprsc
+```
+
+On non-Linux hosts (for example macOS), only the client is expected to build.
+By default, `wprsc` builds with the cross-platform client backend:
+
+```bash
+cargo build --bin wprsc
+```
+
+You can also run a self-contained server demo that speaks the protocol and streams a
+synthetic surface (no Wayland compositor / Smithay required):
+
+```bash
+cargo run --example wprsd_demo
+```
+
+Then connect to it with the cross-platform client backend:
+
+```bash
+cargo run --bin wprsc -- --socket /path/printed/by/demo.sock
 ```
 
 The following dependencies are required for `wprsc`, `wprsd`, `xwayland-xdg-shell`:
@@ -31,36 +78,19 @@ The launcher (`wprs`) requires:
 
 ## Packaging
 
-We officially maintain [deb](#debian) instructions for Debian-based distros.
-Contributers have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
+This repo includes packaging templates (Arch/Nix/Homebrew) and a local packaging script.
 
-### Debian
+### Local Packaging Script
+
+For local, repeatable packaging into per-target artifacts (archives + optional distro-native packages), use:
 
 ```bash
-dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
-```
-This requires cargo and a rustc matching the one in rust-toolchain.toml to be
-installed. The debian rustc package is not used due to being too old.
-
-### Docker
-
-To build .deb files without installing the above dependencies, we supply a `Dockerfile`.
-
-To build the .deb and copy it locally:
-
-```shell
-docker build . -t wprs
-docker run --user $(id -u):$(id -g)  -v $(pwd):/deb --rm wprs:latest bash -c "cp *.deb /deb/"
+./scripts/package.sh
 ```
 
-By default, the `Dockerfile` builds against `debian:trixie` but you can use the `ARG`
-`BASE_IMAGE` to overwrite this to another distribution and/or release version.
+For `deb`/`rpm` outputs, the script uses a small Docker/Podman container with packaging tools installed from the distro repos.
 
-For example:
-
-```shell
-docker build --build-arg BASE_IMAGE=ubuntu . -t wprs
-```
+Outputs are written under `dist/`.
 
 ### Arch-Linux (AUR)
 
@@ -73,7 +103,7 @@ On the remote host, put the `wprsd.service` file into place:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp wprsd.service ~/.config/systemd/user
+cp package/wprsd.service ~/.config/systemd/user
 ```
 
 and enable wprsd:
@@ -125,6 +155,38 @@ wprsd --print-default-config-and-exit=true > ~/.config/wprs/wprsd.ron
 
 Then update the `wprsc.ron` and `wprsd.ron` files with your desired settings.
 
+### Running `wprsc` Without Wayland (Experimental)
+
+`wprsc` is normally a Wayland client and requires a local Wayland compositor.
+For development and experimentation on non-Wayland desktops (for example macOS
+or Windows), `wprsc` also supports a cross-platform backend using `winit` +
+`pixels`.
+
+When no Wayland compositor is detected, `wprsc` will automatically fall back to
+this backend (it is enabled by default). You can override the selection with
+`--backend auto|wayland|winit-pixels`.
+
+```bash
+cargo run --profile dev --bin wprsc
+```
+
+Keyboard behavior is configurable:
+
+* `--keyboard-mode=keymap` (default): try to send an explicit XKB keymap to the
+  server. By default `wprsc` will try to generate one at runtime using external
+  tools (`setxkbmap` + `xkbcomp`). You can override by providing an explicit
+  file via `--xkb-keymap-file=/path/to/keymap`.
+* `--keyboard-mode=evdev`: send Linux evdev keycodes without sending a keymap.
+
+Current limitations of the `winit` + `pixels` backend:
+
+* Only `xdg-toplevel` surfaces are displayed.
+* Input forwarding is best-effort (pointer and basic keyboard).
+  Keyboard events are translated to Linux evdev keycodes and may be incomplete
+  on non-Linux hosts.
+* Popups/subsurfaces are not fully supported.
+* Pinch/rotation gestures are not forwarded yet.
+
 ## Current Limitations
 
 Currently only the the Core and XDG shell protocols are implemented. In
@@ -156,8 +218,9 @@ other events from the local compositor that wprsc are serialized and sent to
 wprsd, which forwards them to the appropriate application (the owner of the
 surface which the wprsc surface which received the events corresponds to).
 
-wprs supports session resumption (wprsc disconnection and later reconnection and
-wprsc restarts). The wayland protocol is not natively resumable in this way
+wprs supports session resumption across temporary disconnects. By default,
+`wprsc` will automatically reconnect to `wprsd` (disable with
+`wprsc --no-auto-reconnect`). The wayland protocol is not natively resumable in this way
 because it relies on shared state between the compositor and client
 applications. By implementing a wayland compositor locally relative to the
 application, wprsd stores all state necessary for wayland applications and is
@@ -239,10 +302,41 @@ protocol.
 
 ### XWayland
 
-XWayland support is implemented as a separate binary, `xwayland-xdg-shell`. The
-binary implements a wayland compositor (but only for the protocol features used
-by xwayland) and client, just like wprsd and wprsc, but in a single binary (so
-skipping the serialization/deserialization). This is the same model as
+XWayland support is implemented via the helper `xwayland-xdg-shell` by default.
+The helper implements a Wayland compositor (but only for the protocol features used
+by Xwayland) and client, just like wprsd and wprsc, but in a single binary (so
+skipping the serialization/deserialization).
+
+For deployments that prefer fewer processes, wprsd can also run the Xwayland
+proxy inline (without spawning `xwayland-xdg-shell`) by setting
+`xwayland_mode = "inline-proxy"`.
+
+To run the helper without letting wprsd spawn it (e.g. if you want separate
+process supervision), set `xwayland_mode = "external"` and start
+`xwayland-xdg-shell` yourself with `WAYLAND_DISPLAY` pointing at wprsd.
+
+### HiDPI
+
+wprs tracks scale using Wayland-style semantics:
+
+- `SurfaceState.buffer_scale` is the number of buffer pixels per logical point.
+  For example, a Retina capture typically uses `buffer_scale = 2`.
+- `wprsd` sends a `DisplayConfig` message on connect (currently used by capture
+  backends to advertise a best-effort DPI/scale).
+
+For the macOS fullscreen capture backend, wprsd detects the main display scale
+factor and reports it via both `DisplayConfig.scale_factor` and
+`SurfaceState.buffer_scale`.
+
+Override knobs:
+
+- Server DPI (generic): set `display_dpi = Some(110)` in the `wprsd` config (or
+  pass `--display-dpi 110`). This only affects backends that use it.
+- Client-side scaling (generic): set `ui_scale_factor = 1.25` in the `wprsc`
+  config (or pass `--ui-scale-factor 1.25`) to scale window sizes for
+  cross-platform clients.
+
+The helper binary model is the same as
 [xwayland-proxy-virtwl](https://github.com/talex5/wayland-proxy-virtwl#xwayland-support),
 which is itself inspired by
 [sommelier](https://chromium.googlesource.com/chromiumos/platform2/+/main/vm_tools/sommelier/).
@@ -252,7 +346,7 @@ make use of common wayland development in the form of Smithay and its wayland
 crates. Additionally, xwayland-xdg-shell is more narrowly focused and its sole
 purpose is xwayland support, not virtio-gpu or virtwl.
 
-Like xwayland-proxy-virtwl, xwayland-xdg-proxy can be used to implement external
+Like xwayland-proxy-virtwl, xwayland-xdg-shell can be used to implement external
 xwayland support for any wayland compositor instead of re-implementing it inside
 the compositor. Aside from eliminating the need to implement xwayland support in
 every compositor, this approach has been reported to result in better xwayland

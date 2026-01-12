@@ -1,0 +1,18 @@
+class Wprs < Formula
+  desc "Like xpra, but for Wayland"
+  homepage "https://github.com/wayland-transpositor/wprs"
+  url "@SOURCE_TARBALL_URL@"
+  sha256 "@SOURCE_TARBALL_SHA256@"
+  license "Apache-2.0"
+
+  depends_on "rust" => :build
+
+  def install
+    system "cargo", "build", "--profile=release-lto", "--bin", "wprsc"
+    bin.install "target/release-lto/wprsc"
+  end
+
+  test do
+    system bin/"wprsc", "--help"
+  end
+end

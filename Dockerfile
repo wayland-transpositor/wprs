@@ -30,7 +30,7 @@ ENV PATH="$PATH:/root/.cargo/bin"
 COPY / /wprs
 WORKDIR /wprs
 
-RUN dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
+RUN cp -a package/debian ./debian && cp package/wprsd.service ./wprsd.service && dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
 
 WORKDIR /
 

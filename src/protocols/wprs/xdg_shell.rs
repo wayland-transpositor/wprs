@@ -277,27 +277,6 @@ impl XdgPopupState {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Archive, Deserialize, Serialize)]
 pub struct WindowState(u16);
 
-impl WindowState {
-    pub fn from_bits(bits: u16) -> Self {
-        Self(bits)
-    }
-
-    pub fn bits(self) -> u16 {
-        self.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::WindowState;
-
-    #[test]
-    fn window_state_round_trip_bits() {
-        let state = WindowState::from_bits(0b1010);
-        assert_eq!(state.bits(), 0b1010);
-    }
-}
-
 #[cfg(feature = "wayland-compositor")]
 impl From<WindowState> for ToplevelStateSet {
     fn from(window_state: WindowState) -> Self {

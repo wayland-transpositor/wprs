@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod client;
+pub mod args;
 pub mod config;
 pub mod constants;
 pub mod control_server;

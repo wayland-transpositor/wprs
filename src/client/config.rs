@@ -14,14 +14,17 @@
 
 use std::path::PathBuf;
 
-use bpaf::OptionParser;
 use bpaf::Parser;
 use bpaf::construct;
 use bpaf::long;
+use optional_struct::optional_struct;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use tracing::Level;
 
+use crate::args;
+use crate::args::Config;
+use crate::args::OptionalConfig;
 use crate::config;
 use crate::config::SerializableLevel;
 use crate::prelude::*;
@@ -52,15 +55,22 @@ impl std::str::FromStr for ClientBackend {
     }
 }
 
+#[optional_struct]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct WprscConfig {
+    #[serde(skip_serializing, default)]
+    print_default_config_and_exit: bool,
+    #[serde(skip_serializing, default)]
+    config_file: PathBuf,
     /// Path to the local UNIX socket used for direct connections.
     pub socket: PathBuf,
     /// Optional endpoint override for TCP or UNIX socket connections.
+    #[optional_wrap]
     pub endpoint: Option<Endpoint>,
     /// Path to the local control socket.
     pub control_socket: PathBuf,
     /// Log file path for persisted logs.
+    #[optional_wrap]
     pub log_file: Option<PathBuf>,
     /// Log level for stderr output.
     pub stderr_log_level: SerializableLevel,
@@ -79,6 +89,8 @@ pub struct WprscConfig {
 impl Default for WprscConfig {
     fn default() -> Self {
         Self {
+            print_default_config_and_exit: false,
+            config_file: config::default_config_file("wprsc"),
             socket: config::default_socket_path(),
             endpoint: None,
             control_socket: config::default_control_socket_path("wprsc"),
@@ -89,126 +101,55 @@ impl Default for WprscConfig {
             title_prefix: String::new(),
 
             backend: ClientBackend::default(),
-
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct WprscArgs {
-    pub print_default_config_and_exit: bool,
-
-    pub config_file: Option<PathBuf>,
-
-    pub socket: Option<PathBuf>,
-
-    pub endpoint: Option<Endpoint>,
-
-    pub control_socket: Option<PathBuf>,
-
-    pub log_file: Option<PathBuf>,
-
-    pub stderr_log_level: Option<SerializableLevel>,
-
-    pub file_log_level: Option<SerializableLevel>,
-
-    pub log_priv_data: Option<bool>,
-
-    pub title_prefix: Option<String>,
-
-    pub backend: Option<ClientBackend>,
+impl Config for WprscConfig {
+    fn config_file(&self) -> PathBuf {
+        self.config_file.clone()
+    }
 }
 
-fn wprsc_args() -> OptionParser<WprscArgs> {
-    let print_default_config_and_exit = long("print-default-config-and-exit")
-        .argument::<bool>("BOOL")
-        .fallback(false);
+impl OptionalConfig<WprscConfig> for OptionalWprscConfig {
+    fn parse_args() -> Self {
+        let print_default_config_and_exit = args::print_default_config_and_exit();
+        let config_file = args::config_file();
+        let socket = args::socket();
+        let endpoint = args::endpoint().map(|val| val.map(Some));
+        let control_socket = args::control_socket();
+        let log_file = args::log_file();
+        let stderr_log_level = args::stderr_log_level();
+        let file_log_level = args::file_log_level();
+        let log_priv_data = args::log_priv_data();
+        let title_prefix = args::title_prefix();
+        let backend = long("backend")
+            .argument::<ClientBackend>("BACKEND")
+            .optional();
 
-    let config_file = long("config-file").argument::<PathBuf>("PATH").optional();
-    let socket = long("socket").argument::<PathBuf>("PATH").optional();
-    let endpoint = long("endpoint").argument::<Endpoint>("ENDPOINT").optional();
-    let control_socket = long("control-socket")
-        .argument::<PathBuf>("PATH")
-        .optional();
-    let log_file = long("log-file").argument::<PathBuf>("PATH").optional();
-    let stderr_log_level = long("stderr-log-level")
-        .argument::<SerializableLevel>("LEVEL")
-        .optional();
-    let file_log_level = long("file-log-level")
-        .argument::<SerializableLevel>("LEVEL")
-        .optional();
-    let log_priv_data = long("log-priv-data")
-        .argument::<bool>("BOOL")
-        .optional();
-    let title_prefix = long("title-prefix").argument::<String>("STRING").optional();
-    let backend = long("backend")
-        .argument::<ClientBackend>("BACKEND")
-        .optional();
-    construct!(WprscArgs {
-        print_default_config_and_exit,
-        config_file,
-        socket,
-        endpoint,
-        control_socket,
-        log_file,
-        stderr_log_level,
-        file_log_level,
-        log_priv_data,
-        title_prefix,
-        backend,
-    })
-    .to_options()
-    .version(env!("CARGO_PKG_VERSION"))
-}
-
-impl WprscArgs {
-    pub fn parse() -> Self {
-        wprsc_args().run()
+        construct!(Self {
+            print_default_config_and_exit,
+            config_file,
+            socket,
+            endpoint,
+            control_socket,
+            log_file,
+            stderr_log_level,
+            file_log_level,
+            log_priv_data,
+            title_prefix,
+            backend,
+        })
+        .to_options()
+        .version(env!("CARGO_PKG_VERSION"))
+        .run()
     }
 
-    pub fn load_config(self) -> Result<WprscConfig> {
-        if self.print_default_config_and_exit {
-            config::print_default_config_and_exit::<WprscConfig>();
-        }
+    fn print_default_config_and_exit(&self) -> Option<bool> {
+        self.print_default_config_and_exit
+    }
 
-        let config_file = self
-            .config_file
-            .clone()
-            .unwrap_or_else(|| config::default_config_file("wprsc"));
-        let mut cfg = WprscConfig::default();
-        if let Some(from_file) =
-            config::maybe_read_ron_file::<WprscConfig>(&config_file).location(loc!())?
-        {
-            cfg = from_file;
-        }
-
-        if let Some(socket) = self.socket {
-            cfg.socket = socket;
-        }
-        if let Some(endpoint) = self.endpoint {
-            cfg.endpoint = Some(endpoint);
-        }
-        if let Some(control_socket) = self.control_socket {
-            cfg.control_socket = control_socket;
-        }
-        if let Some(log_file) = self.log_file {
-            cfg.log_file = Some(log_file);
-        }
-        if let Some(level) = self.stderr_log_level {
-            cfg.stderr_log_level = level;
-        }
-        if let Some(level) = self.file_log_level {
-            cfg.file_log_level = level;
-        }
-        if let Some(val) = self.log_priv_data {
-            cfg.log_priv_data = val;
-        }
-        if let Some(prefix) = self.title_prefix {
-            cfg.title_prefix = prefix;
-        }
-        if let Some(backend) = self.backend {
-            cfg.backend = backend;
-        }
-        Ok(cfg)
+    fn config_file(&self) -> Option<PathBuf> {
+        self.config_file.clone()
     }
 }

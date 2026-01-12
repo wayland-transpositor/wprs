@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use std::fs;
+use wprs::args;
 use wprs::config;
 use wprs::prelude::*;
 use wprs::protocols::wprs as protocol;
 use wprs::protocols::wprs::Serializer;
 use wprs::server::backends;
 use wprs::server::backends::ServerBackend;
-use wprs::server::config::WprsdArgs;
+use wprs::server::config::OptionalWprsdConfig;
 use wprs::server::config::WprsdBackend;
 use wprs::server::config::WprsdConfig;
 use wprs::utils;
@@ -84,8 +85,7 @@ fn run_selected_backend(config: &WprsdConfig) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let args = WprsdArgs::parse();
-    let config = args.load_config().location(loc!())?;
+    let config = args::init_config::<WprsdConfig, OptionalWprsdConfig>().location(loc!())?;
 
     config::set_log_priv_data(config.log_priv_data);
     utils::configure_tracing(

@@ -929,6 +929,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
+name = "optional_struct"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14199f59efce6ed2c5854f0abc725c32eedfbd02c6ef82c9733c726f3fc6dc91"
+dependencies = [
+ "optional_struct_macro",
+ "serde",
+]
+
+[[package]]
+name = "optional_struct_macro"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5eba042d9efe5e108e0df9ce2f85c540fc4f94f41c6821cbcf70ed47c1221da"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2233,6 +2254,7 @@ dependencies = [
  "merkle_hash",
  "nix",
  "num_enum",
+ "optional_struct",
  "png",
  "proptest",
  "rkyv",

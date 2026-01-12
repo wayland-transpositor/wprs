@@ -44,11 +44,13 @@ use smithay_client_toolkit::reexports::client::Connection;
 #[cfg(target_os = "linux")]
 use smithay_client_toolkit::reexports::client::globals::registry_queue_init;
 #[cfg(target_os = "linux")]
+use wprs::args;
+#[cfg(target_os = "linux")]
 use wprs::config;
 #[cfg(target_os = "linux")]
 use wprs::prelude::*;
 #[cfg(target_os = "linux")]
-use wprs::server::config::xwayland_xdg_shell::XwaylandXdgShellArgs;
+use wprs::server::config::xwayland_xdg_shell::OptionalXwaylandXdgShellConfig;
 #[cfg(target_os = "linux")]
 use wprs::server::config::xwayland_xdg_shell::XwaylandXdgShellConfig;
 #[cfg(target_os = "linux")]
@@ -94,8 +96,8 @@ fn init_wayland_listener(
 #[cfg(target_os = "linux")]
 #[allow(clippy::missing_panics_doc)]
 fn main() -> Result<()> {
-    let args = XwaylandXdgShellArgs::parse();
-    let config: XwaylandXdgShellConfig = args.load_config().location(loc!())?;
+    let config = args::init_config::<XwaylandXdgShellConfig, OptionalXwaylandXdgShellConfig>()
+        .location(loc!())?;
 
     config::set_log_priv_data(config.log_priv_data);
     utils::configure_tracing(

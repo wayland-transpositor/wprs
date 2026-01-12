@@ -16,7 +16,9 @@ use std::fs;
 
 use wprs::client::ClientBackendConfig;
 use wprs::client::build_client_backend;
-use wprs::client::config::WprscArgs;
+use wprs::args;
+use wprs::client::config::OptionalWprscConfig;
+use wprs::client::config::WprscConfig;
 use wprs::config;
 use wprs::prelude::*;
 use wprs::protocols::wprs as protocol;
@@ -24,8 +26,7 @@ use wprs::protocols::wprs::Serializer;
 use wprs::utils;
 
 fn main() -> Result<()> {
-    let args = WprscArgs::parse();
-    let config = args.load_config().location(loc!())?;
+    let config = args::init_config::<WprscConfig, OptionalWprscConfig>().location(loc!())?;
 
     config::set_log_priv_data(config.log_priv_data);
     utils::configure_tracing(

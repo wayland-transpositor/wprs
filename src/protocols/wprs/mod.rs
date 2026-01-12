@@ -830,80 +830,74 @@ where
         }
     }
 
+    #[cfg(unix)]
     pub fn new_server<P: AsRef<Path>>(sock_path: P) -> Result<Self> {
-        #[cfg(not(unix))]
+        let listener = utils::bind_user_socket(sock_path).location(loc!())?;
+        enlarge_socket_buffer(&listener);
+
+        let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
+            channel::sync_channel(CHANNEL_SIZE);
+        let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
+            crossbeam_channel::unbounded();
+        let other_end_connected = Arc::new(AtomicBool::new(false));
+
         {
-            let _ = sock_path;
-            bail!("unix socket server is not supported on this platform")
+            let other_end_connected = other_end_connected.clone();
+            thread::spawn(move || {
+                accept_loop_unix(listener, reader_tx, writer_rx, other_end_connected)
+            });
         }
 
-        #[cfg(unix)]
-        {
-            let listener = utils::bind_user_socket(sock_path).location(loc!())?;
-            enlarge_socket_buffer(&listener);
+        let writer_tx = DiscardingSender {
+            sender: writer_tx,
+            actually_send: other_end_connected.clone(),
+        };
 
-            let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
-                channel::sync_channel(CHANNEL_SIZE);
-            let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
-                crossbeam_channel::unbounded();
-            let other_end_connected = Arc::new(AtomicBool::new(false));
-
-            {
-                let other_end_connected = other_end_connected.clone();
-                thread::spawn(move || {
-                    accept_loop_unix(listener, reader_tx, writer_rx, other_end_connected)
-                });
-            }
-
-            let writer_tx = DiscardingSender {
-                sender: writer_tx,
-                actually_send: other_end_connected.clone(),
-            };
-
-            Ok(Self {
-                read_handle: Some(reader_rx),
-                write_handle: writer_tx,
-                other_end_connected,
-            })
-        }
+        Ok(Self {
+            read_handle: Some(reader_rx),
+            write_handle: writer_tx,
+            other_end_connected,
+        })
     }
 
+    #[cfg(not(unix))]
+    pub fn new_server<P: AsRef<Path>>(_sock_path: P) -> Result<Self> {
+        bail!("unix socket server is not supported on this platform")
+    }
+
+    #[cfg(unix)]
     pub fn new_client<P: AsRef<Path>>(sock_path: P) -> Result<Self> {
-        #[cfg(not(unix))]
+        let stream = UnixStream::connect(sock_path).location(loc!())?;
+        enlarge_socket_buffer(&stream);
+
+        let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
+            channel::sync_channel(CHANNEL_SIZE);
+        let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
+            crossbeam_channel::unbounded();
+        let other_end_connected = Arc::new(AtomicBool::new(true));
+
         {
-            let _ = sock_path;
-            bail!("unix socket client is not supported on this platform")
+            let other_end_connected = other_end_connected.clone();
+            thread::spawn(move || {
+                client_loop(stream, reader_tx, writer_rx, other_end_connected)
+            });
         }
 
-        #[cfg(unix)]
-        {
-            let stream = UnixStream::connect(sock_path).location(loc!())?;
-            enlarge_socket_buffer(&stream);
+        let writer_tx = DiscardingSender {
+            sender: writer_tx,
+            actually_send: other_end_connected.clone(),
+        };
 
-            let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
-                channel::sync_channel(CHANNEL_SIZE);
-            let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
-                crossbeam_channel::unbounded();
-            let other_end_connected = Arc::new(AtomicBool::new(true));
+        Ok(Self {
+            read_handle: Some(reader_rx),
+            write_handle: writer_tx,
+            other_end_connected,
+        })
+    }
 
-            {
-                let other_end_connected = other_end_connected.clone();
-                thread::spawn(move || {
-                    client_loop(stream, reader_tx, writer_rx, other_end_connected)
-                });
-            }
-
-            let writer_tx = DiscardingSender {
-                sender: writer_tx,
-                actually_send: other_end_connected.clone(),
-            };
-
-            Ok(Self {
-                read_handle: Some(reader_rx),
-                write_handle: writer_tx,
-                other_end_connected,
-            })
-        }
+    #[cfg(not(unix))]
+    pub fn new_client<P: AsRef<Path>>(_sock_path: P) -> Result<Self> {
+        bail!("unix socket client is not supported on this platform")
     }
 
     pub fn new_server_tcp(addr: SocketAddr) -> Result<Self> {

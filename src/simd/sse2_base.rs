@@ -181,7 +181,6 @@ pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
-    // SAFETY: _mm_slli_si128 is an SSE2 intrinsic.
     // It shifts the 128-bit register left by SHIFT bytes.
     // Bits do not carry across the 128-bit boundary, perfectly
     // matching the behavior of the AVX2 256-bit version.

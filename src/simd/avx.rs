@@ -206,17 +206,3 @@ pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
     let res = _mm256_castsi128_si256(res_low);
     _mm256_inserti128_si256::<1>(res, res_high)
 }
-
-/**
- * NOTE: The following functions are not actual std::arch::x86_64 intrinsics.
- * They are wprs specific but we put them here because they have a specific
- * SSE counterpart
- */
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-    _mm256_castps_si256(_mm256_shuffle_ps::<MASK>(
-        _mm256_castsi256_ps(a),
-        _mm256_castsi256_ps(b),
-    ))
-}

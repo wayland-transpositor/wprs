@@ -24,14 +24,14 @@ pub fn _mm_extract_epi8<const INDEX: i32>(a: __m128i) -> i32 {
     // TODO: revisit this when generic_const_exprs graduates from nightly
     // _mm_extract_epi16 is available in SSE2
     let word = match INDEX / 2 {
-        0 => _mm_extract_epi16(a, 0),
-        1 => _mm_extract_epi16(a, 1),
-        2 => _mm_extract_epi16(a, 2),
-        3 => _mm_extract_epi16(a, 3),
-        4 => _mm_extract_epi16(a, 4),
-        5 => _mm_extract_epi16(a, 5),
-        6 => _mm_extract_epi16(a, 6),
-        7 => _mm_extract_epi16(a, 7),
+        0 => _mm_extract_epi16::<0>(a),
+        1 => _mm_extract_epi16::<1>(a),
+        2 => _mm_extract_epi16::<2>(a),
+        3 => _mm_extract_epi16::<3>(a),
+        4 => _mm_extract_epi16::<4>(a),
+        5 => _mm_extract_epi16::<5>(a),
+        6 => _mm_extract_epi16::<6>(a),
+        7 => _mm_extract_epi16::<7>(a),
         _ => unreachable!(),
     };
 

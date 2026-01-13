@@ -66,8 +66,6 @@ fn _mm_shuffle_epi8(a: __m128i, b: __m128i) -> __m128i {
         _mm_store_si128(mask.0.as_mut_ptr().cast::<__m128i>(), b);
     }
 
-    // SAFETY: b is __m128i so it is safe to write [u8;16] = 128 bits to it.
-
     let mut res = AlignedM128([0u8; 16]);
 
     for i in 0..16 {

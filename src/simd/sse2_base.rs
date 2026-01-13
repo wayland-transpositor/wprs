@@ -163,7 +163,6 @@ pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
-    // We use _mm_sub_epi8 (SSE2) twice.
     __m256i {
         low: _mm_sub_epi8(a.low, b.low),
         high: _mm_sub_epi8(a.high, b.high),
@@ -173,7 +172,6 @@ pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
-    // We use _mm_add_epi8 (SSE2) twice.
     __m256i {
         low: _mm_add_epi8(a.low, b.low),
         high: _mm_add_epi8(a.high, b.high),

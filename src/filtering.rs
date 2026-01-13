@@ -225,13 +225,13 @@ fn aos_to_soa_u8_32x4(
 
         // let input: *const u8 = input.ptr().cast();
         // print!("i0  ");
-        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(0).cast::<[u8; 32]>()));
+        // crate::simd::print_vec_char_256_hex(load_m256i(&*input.offset(0).cast::<[u8; 32]>()));
         // print!("i1  ");
-        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(32).cast::<[u8; 32]>()));
+        // crate::simd::print_vec_char_256_hex(load_m256i(&*input.offset(32).cast::<[u8; 32]>()));
         // print!("i2  ");
-        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(64).cast::<[u8; 32]>()));
+        // crate::simd::print_vec_char_256_hex(load_m256i(&*input.offset(64).cast::<[u8; 32]>()));
         // print!("i3  ");
-        // crate::utils::print_vec_char_256_hex(load_m256i(&*input.offset(96).cast::<[u8; 32]>()));
+        // crate::simd::print_vec_char_256_hex(load_m256i(&*input.offset(96).cast::<[u8; 32]>()));
         // print!("\n");
 
         // i0  1f 1e 1d 1c | 1b 1a 19 18 | 17 16 15 14 | 13 12 11 10 || 0f 0e 0d 0c | 0b 0a 09 08 | 07 06 05 04 | 03 02 01 00
@@ -250,13 +250,13 @@ fn aos_to_soa_u8_32x4(
         t3 = _mm256_inserti128_si256::<1>(t3, load_m128i_vec4u8(&i7));
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  4f 4e 4d 4c | 4b 4a 49 48 | 47 46 45 44 | 43 42 41 40 || 0f 0e 0d 0c | 0b 0a 09 08 | 07 06 05 04 | 03 02 01 00
@@ -270,13 +270,13 @@ fn aos_to_soa_u8_32x4(
         t3 = _mm256_shuffle_epi8(t3, p3);
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  4f 4b 47 43 | 4e 4a 46 42 | 4d 49 45 41 | 4c 48 44 40 || 0f 0b 07 03 | 0e 0a 06 02 | 0d 09 05 01 | 0c 08 04 00
@@ -290,13 +290,13 @@ fn aos_to_soa_u8_32x4(
         let u3 = _mm256_blend_epi32::<0b01010101>(t2, t3);
 
         // print!("u0  ");
-        // crate::utils::print_vec_char_256_hex(u0);
+        // crate::simd::print_vec_char_256_hex(u0);
         // print!("u1  ");
-        // crate::utils::print_vec_char_256_hex(u1);
+        // crate::simd::print_vec_char_256_hex(u1);
         // print!("u2  ");
-        // crate::utils::print_vec_char_256_hex(u2);
+        // crate::simd::print_vec_char_256_hex(u2);
         // print!("u3  ");
-        // crate::utils::print_vec_char_256_hex(u3);
+        // crate::simd::print_vec_char_256_hex(u3);
         // print!("\n");
 
         // u0  5e 5a 56 52 | 4e 4a 46 42 | 5c 58 54 50 | 4c 48 44 40 || 1e 1a 16 12 | 0e 0a 06 02 | 1c 18 14 10 | 0c 08 04 00
@@ -310,13 +310,13 @@ fn aos_to_soa_u8_32x4(
         t3 = _mm256_shufps_epi32::<0b10010011>(u2, u3);
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  7c 78 74 70 | 6c 68 64 60 | 5c 58 54 50 | 4c 48 44 40 || 3c 38 34 30 | 2c 28 24 20 | 1c 18 14 10 | 0c 08 04 00
@@ -385,13 +385,13 @@ fn soa_to_aos_u8_32x4(
         (t0, t2) = add_green(t0, t1, t2);
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  7c 78 74 70 | 6c 68 64 60 | 5c 58 54 50 | 4c 48 44 40 || 3c 38 34 30 | 2c 28 24 20 | 1c 18 14 10 | 0c 08 04 00
@@ -405,13 +405,13 @@ fn soa_to_aos_u8_32x4(
         let u3 = _mm256_shufps_epi32::<0b10111011>(t1, t3);
 
         // print!("u0  ");
-        // crate::utils::print_vec_char_256_hex(u0);
+        // crate::simd::print_vec_char_256_hex(u0);
         // print!("u1  ");
-        // crate::utils::print_vec_char_256_hex(u1);
+        // crate::simd::print_vec_char_256_hex(u1);
         // print!("u2  ");
-        // crate::utils::print_vec_char_256_hex(u2);
+        // crate::simd::print_vec_char_256_hex(u2);
         // print!("u3  ");
-        // crate::utils::print_vec_char_256_hex(u3);
+        // crate::simd::print_vec_char_256_hex(u3);
         // print!("\n");
 
         // u0  5e 5a 56 52 | 4e 4a 46 42 | 5c 58 54 50 | 4c 48 44 40 || 1e 1a 16 12 | 0e 0a 06 02 | 1c 18 14 10 | 0c 08 04 00
@@ -425,13 +425,13 @@ fn soa_to_aos_u8_32x4(
         t3 = _mm256_blend_epi32::<0b10101010>(u3, u1);
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  4d 49 45 41 | 4e 4a 46 42 | 4f 4b 47 43 | 4c 48 44 40 || 0d 09 05 01 | 0e 0a 06 02 | 0f 0b 07 03 | 0c 08 04 00
@@ -445,13 +445,13 @@ fn soa_to_aos_u8_32x4(
         t3 = _mm256_shuffle_epi8(t3, p3);
 
         // print!("t0  ");
-        // crate::utils::print_vec_char_256_hex(t0);
+        // crate::simd::print_vec_char_256_hex(t0);
         // print!("t1  ");
-        // crate::utils::print_vec_char_256_hex(t1);
+        // crate::simd::print_vec_char_256_hex(t1);
         // print!("t2  ");
-        // crate::utils::print_vec_char_256_hex(t2);
+        // crate::simd::print_vec_char_256_hex(t2);
         // print!("t3  ");
-        // crate::utils::print_vec_char_256_hex(t3);
+        // crate::simd::print_vec_char_256_hex(t3);
         // print!("\n");
 
         // t0  4f 4e 4d 4c | 4b 4a 49 48 | 47 46 45 44 | 43 42 41 40 || 0f 0e 0d 0c | 0b 0a 09 08 | 07 06 05 04 | 03 02 01 00

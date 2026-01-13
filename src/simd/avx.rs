@@ -18,7 +18,6 @@ pub use std::arch::x86_64::_mm_add_epi8;
 use std::arch::x86_64::_mm_castsi128_ps;
 pub use std::arch::x86_64::_mm_extract_epi8;
 pub use std::arch::x86_64::_mm_loadu_si128;
-use std::arch::x86_64::_mm_set_epi8;
 pub use std::arch::x86_64::_mm_set1_epi8;
 pub use std::arch::x86_64::_mm_setzero_si128;
 use std::arch::x86_64::_mm_shuffle_epi8;
@@ -33,6 +32,7 @@ pub use std::arch::x86_64::_mm256_castsi256_si128;
 use std::arch::x86_64::_mm256_extractf128_si256;
 use std::arch::x86_64::_mm256_insertf128_ps;
 pub use std::arch::x86_64::_mm256_loadu_si256;
+pub use std::arch::x86_64::_mm256_set_epi8;
 pub use std::arch::x86_64::_mm256_set_m128i;
 pub use std::arch::x86_64::_mm256_shuffle_ps;
 pub use std::arch::x86_64::_mm256_storeu_si256;
@@ -187,53 +187,6 @@ pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m25
     let b_f = _mm_castsi128_ps(b);
     let res_f = _mm256_insertf128_ps::<LANE>(a_f, b_f);
     _mm256_castps_si256(res_f)
-}
-
-#[target_feature(enable = "avx")]
-#[inline]
-pub fn _mm256_set_epi8(
-    e31: i8,
-    e30: i8,
-    e29: i8,
-    e28: i8,
-    e27: i8,
-    e26: i8,
-    e25: i8,
-    e24: i8,
-    e23: i8,
-    e22: i8,
-    e21: i8,
-    e20: i8,
-    e19: i8,
-    e18: i8,
-    e17: i8,
-    e16: i8,
-    e15: i8,
-    e14: i8,
-    e13: i8,
-    e12: i8,
-    e11: i8,
-    e10: i8,
-    e9: i8,
-    e8: i8,
-    e7: i8,
-    e6: i8,
-    e5: i8,
-    e4: i8,
-    e3: i8,
-    e2: i8,
-    e1: i8,
-    e0: i8,
-) -> __m256i {
-    let low = _mm_set_epi8(
-        e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0,
-    );
-    let high = _mm_set_epi8(
-        e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16,
-    );
-
-    let res = _mm256_castsi128_si256(low);
-    _mm256_inserti128_si256::<1>(res, high)
 }
 
 #[target_feature(enable = "avx")]

@@ -169,12 +169,12 @@ pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
         23 => _mm_extract_epi8::<7>(v),
         24 => _mm_extract_epi8::<8>(v),
         25 => _mm_extract_epi8::<9>(v),
-        26 =>  _mm_extract_epi8::<10>(v),
-        27 =>  _mm_extract_epi8::<11>(v),
-        28 =>  _mm_extract_epi8::<12>(v),
-        29 =>  _mm_extract_epi8::<13>(v),
-        30 =>  _mm_extract_epi8::<14>(v),
-        31 =>  _mm_extract_epi8::<15>(v),
+        26 => _mm_extract_epi8::<10>(v),
+        27 => _mm_extract_epi8::<11>(v),
+        28 => _mm_extract_epi8::<12>(v),
+        29 => _mm_extract_epi8::<13>(v),
+        30 => _mm_extract_epi8::<14>(v),
+        31 => _mm_extract_epi8::<15>(v),
         _ => panic!("Index out of bounds for 256-bit extract"),
     }
 }

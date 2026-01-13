@@ -49,8 +49,8 @@ pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
     // 2. Extract the high 128-bit halves.
     // _mm256_extractf128_si256 is an AVX instruction that pulls the
     // upper 128 bits into an XMM register.
-    let a_hi = _mm256_extractf128_si256(a, 1);
-    let b_hi = _mm256_extractf128_si256(b, 1);
+    let a_hi = _mm256_extractf128_si256::<1>(a);
+    let b_hi = _mm256_extractf128_si256::<1>(b);
 
     // 3. Perform 8-bit integer subtraction on the halves.
     // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
@@ -73,8 +73,8 @@ pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
     // 2. Extract the high 128-bit halves.
     // _mm256_extractf128_si256 is an AVX instruction that pulls the
     // upper 128 bits into an XMM register.
-    let a_hi = _mm256_extractf128_si256(a, 1);
-    let b_hi = _mm256_extractf128_si256(b, 1);
+    let a_hi = _mm256_extractf128_si256::<1>(a);
+    let b_hi = _mm256_extractf128_si256::<1>(b);
 
     // 3. Perform 8-bit integer subtraction on the halves.
     // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
@@ -92,12 +92,12 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
     // Cast is zero-cost; it just treats the YMM as an XMM (low half)
     let lo = _mm256_castsi256_si128(a);
     // Extract the high 128 bits
-    let hi = _mm256_extractf128_si256(a, 1);
+    let hi = _mm256_extractf128_si256::<1>(a);
 
     // 2. Shift: Apply 128-bit byte shift to each half
     // These will be compiled as VEX-encoded VPSLLDQ XMM instructions
-    let res_lo = _mm_slli_si128(lo, SHIFT);
-    let res_hi = _mm_slli_si128(hi, SHIFT);
+    let res_lo = _mm_slli_si128::<SHIFT>(lo);
+    let res_hi = _mm_slli_si128::<SHIFT>(hi);
 
     // 3. Merge: Combine back into a 256-bit register
     _mm256_set_m128i(res_hi, res_lo)
@@ -106,7 +106,7 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
 #[target_feature(enable = "avx")]
 #[inline]
 pub fn _mm256_extracti128_si256<const HIGH: i32>(a: __m256i) -> __m128i {
-    _mm256_extractf128_si256(a, HIGH)
+    _mm256_extractf128_si256::<HIGH>(a)
 }
 
 #[target_feature(enable = "avx")]
@@ -118,7 +118,7 @@ pub fn _mm256_blend_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
 
     // 2. Perform the blend using the AVX1 floating-point intrinsic.
     // We use a match to pipe the const generic MASK into the literal slot.
-    let res_f = _mm256_blend_ps(a_f, b_f, MASK);
+    let res_f = _mm256_blend_ps::<MASK>(a_f, b_f);
 
     // 3. Cast back to integer vector (bit-preserving)
     _mm256_castps_si256(res_f)
@@ -132,7 +132,7 @@ pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
         _mm256_castsi256_si128(a)
     } else {
         // Extract high 128-bit lane, then extract byte
-        _mm256_extractf128_si256(a, 1)
+        _mm256_extractf128_si256::<1>(a)
     };
 
     // This is the same with the plain SSE4.1 but we want the VEX encoded variant
@@ -142,39 +142,39 @@ pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
     // TODO: revisit this when generic_const_exprs graduates from nightly
     match INDEX {
         // Lower Lane (0-15)
-        0 => _mm_extract_epi8(v, 0),
-        1 => _mm_extract_epi8(v, 1),
-        2 => _mm_extract_epi8(v, 2),
-        3 => _mm_extract_epi8(v, 3),
-        4 => _mm_extract_epi8(v, 4),
-        5 => _mm_extract_epi8(v, 5),
-        6 => _mm_extract_epi8(v, 6),
-        7 => _mm_extract_epi8(v, 7),
-        8 => _mm_extract_epi8(v, 8),
-        9 => _mm_extract_epi8(v, 9),
-        10 => _mm_extract_epi8(v, 10),
-        11 => _mm_extract_epi8(v, 11),
-        12 => _mm_extract_epi8(v, 12),
-        13 => _mm_extract_epi8(v, 13),
-        14 => _mm_extract_epi8(v, 14),
-        15 => _mm_extract_epi8(v, 15),
+        0 => _mm_extract_epi8::<0>(v),
+        1 => _mm_extract_epi8::<1>(v),
+        2 => _mm_extract_epi8::<2>(v),
+        3 => _mm_extract_epi8::<3>(v),
+        4 => _mm_extract_epi8::<4>(v),
+        5 => _mm_extract_epi8::<5>(v),
+        6 => _mm_extract_epi8::<6>(v),
+        7 => _mm_extract_epi8::<7>(v),
+        8 => _mm_extract_epi8::<8>(v),
+        9 => _mm_extract_epi8::<9>(v),
+        10 => _mm_extract_epi8::<10>(v),
+        11 => _mm_extract_epi8::<11>(v),
+        12 => _mm_extract_epi8::<12>(v),
+        13 => _mm_extract_epi8::<13>(v),
+        14 => _mm_extract_epi8::<14>(v),
+        15 => _mm_extract_epi8::<15>(v),
         // Upper Lane (16-31)
-        16 => _mm_extract_epi8(v, 0),
-        17 => _mm_extract_epi8(v, 1),
-        18 => _mm_extract_epi8(v, 2),
-        19 => _mm_extract_epi8(v, 3),
-        20 => _mm_extract_epi8(v, 4),
-        21 => _mm_extract_epi8(v, 5),
-        22 => _mm_extract_epi8(v, 6),
-        23 => _mm_extract_epi8(v, 7),
-        24 => _mm_extract_epi8(v, 8),
-        25 => _mm_extract_epi8(v, 9),
-        26 => _mm_extract_epi8(v, 10),
-        27 => _mm_extract_epi8(v, 11),
-        28 => _mm_extract_epi8(v, 12),
-        29 => _mm_extract_epi8(v, 13),
-        30 => _mm_extract_epi8(v, 14),
-        31 => _mm_extract_epi8(v, 15),
+        16 => _mm_extract_epi8::<0>(v),
+        17 => _mm_extract_epi8::<1>(v),
+        18 => _mm_extract_epi8::<2>(v),
+        19 => _mm_extract_epi8::<3>(v),
+        20 => _mm_extract_epi8::<4>(v),
+        21 => _mm_extract_epi8::<5>(v),
+        22 => _mm_extract_epi8::<6>(v),
+        23 => _mm_extract_epi8::<7>(v),
+        24 => _mm_extract_epi8::<8>(v),
+        25 => _mm_extract_epi8::<9>(v),
+        26 =>  _mm_extract_epi8::<10>(v),
+        27 =>  _mm_extract_epi8::<11>(v),
+        28 =>  _mm_extract_epi8::<12>(v),
+        29 =>  _mm_extract_epi8::<13>(v),
+        30 =>  _mm_extract_epi8::<14>(v),
+        31 =>  _mm_extract_epi8::<15>(v),
         _ => panic!("Index out of bounds for 256-bit extract"),
     }
 }
@@ -185,7 +185,7 @@ pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m25
     // Cast to __m256 (float), insert, cast back
     let a_f = _mm256_castsi256_ps(a);
     let b_f = _mm_castsi128_ps(b);
-    let res_f = _mm256_insertf128_ps(a_f, b_f, LANE);
+    let res_f = _mm256_insertf128_ps::<LANE>(a_f, b_f);
     _mm256_castps_si256(res_f)
 }
 
@@ -241,9 +241,9 @@ pub fn _mm256_set_epi8(
 pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
     // 1. Extract halves of data and mask
     let a_low = _mm256_castsi256_si128(a);
-    let a_high = _mm256_extractf128_si256(a, 1);
+    let a_high = _mm256_extractf128_si256::<1>(a);
     let b_low = _mm256_castsi256_si128(b);
-    let b_high = _mm256_extractf128_si256(b, 1);
+    let b_high = _mm256_extractf128_si256::<1>(b);
 
     // 2. Perform SSSE3 shuffle on each 128-bit lane
     let res_low = _mm_shuffle_epi8(a_low, b_low);
@@ -262,9 +262,8 @@ pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
 #[target_feature(enable = "avx")]
 #[inline]
 pub fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
-    _mm256_castps_si256(_mm256_shuffle_ps(
+    _mm256_castps_si256(_mm256_shuffle_ps::<MASK>(
         _mm256_castsi256_ps(a),
         _mm256_castsi256_ps(b),
-        MASK,
     ))
 }

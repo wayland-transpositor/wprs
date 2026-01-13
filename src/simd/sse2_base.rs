@@ -188,8 +188,8 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
     // Bits do not carry across the 128-bit boundary, perfectly
     // matching the behavior of the AVX2 256-bit version.
     __m256i {
-        low: _mm_slli_si128(a.low, SHIFT),
-        high: _mm_slli_si128(a.high, SHIFT),
+        low: _mm_slli_si128::<SHIFT>(a.low),
+        high: _mm_slli_si128::<SHIFT>(a.high),
     }
 }
 

@@ -192,26 +192,30 @@ pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_extracti128_si256<const HIGH: i32>(a: __m256i) -> __m128i {
-    // Because HIGH must be a compile-time constant,
+pub fn _mm256_extracti128_si256<const LANE: i32>(a: __m256i) -> __m128i {
+    // Because LANE must be a compile-time constant,
     // the compiler will optimize this branch away entirely.
-    if HIGH == 0 { a.low } else { a.high }
+    match LANE {
+        0 => a.low,
+        1 => a.high,
+        _ => panic!("LANE can be 0 or 1"),
+    }
 }
 
 #[target_feature(enable = "sse2")]
 #[inline]
 pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m256i {
     // In SIMD, Lane 0 is the lower 128 bits, Lane 1 is the upper 128 bits.
-    if LANE == 0 {
-        __m256i {
+    match LANE {
+        0 => __m256i {
             low: b,       // Replace low with new 128-bit value
             high: a.high, // Keep existing high
-        }
-    } else {
-        __m256i {
+        },
+        1 => __m256i {
             low: a.low, // Keep existing low
             high: b,    // Replace high with new 128-bit value
-        }
+        },
+        _ => panic!("LANE can be 0 or 1"),
     }
 }
 

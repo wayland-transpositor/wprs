@@ -81,7 +81,7 @@ fn _mm_shuffle_epi8(a: __m128i, b: __m128i) -> __m128i {
     }
 
     // SAFETY: res is __m128i so it is safe to read [u8;16] = 128 bits from it.
-    unsafe { _mm_load_si128(res.0.as_ptr() as *const __m128i) }
+    unsafe { _mm_load_si128(res.0.as_ptr().cast::<__m128i>()) }
 }
 
 #[target_feature(enable = "sse2")]

@@ -48,10 +48,10 @@ pub struct __m256i {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub fn _mm256_set_m128i(hi: __m128i, lo: __m128i) -> __m256i {
+pub fn _mm256_set_m128i(high: __m128i, low: __m128i) -> __m256i {
     // In SSE2, we simply wrap the two 128-bit values
     // into our custom 256-bit emulation struct.
-    __m256i { low: lo, high: hi }
+    __m256i { low, high }
 }
 
 #[target_feature(enable = "sse2")]

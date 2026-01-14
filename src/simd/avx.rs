@@ -39,68 +39,58 @@ pub use std::arch::x86_64::_mm256_storeu_si256;
 
 #[target_feature(enable = "avx")]
 #[inline]
-pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
+fn extract_low_high(a: __m256i) -> (__m128i, __m128i) {
     // 1. Extract the low 128-bit halves from the 256-bit registers.
     // _mm256_castsi256_si128 is a zero-cost instruction that just treats
     // the YMM register as an XMM register.
-    let a_lo = _mm256_castsi256_si128(a);
-    let b_lo = _mm256_castsi256_si128(b);
-
     // 2. Extract the high 128-bit halves.
     // _mm256_extractf128_si256 is an AVX instruction that pulls the
     // upper 128 bits into an XMM register.
-    let a_hi = _mm256_extractf128_si256::<1>(a);
-    let b_hi = _mm256_extractf128_si256::<1>(b);
+    (_mm256_castsi256_si128(a), _mm256_extractf128_si256::<1>(a))
+}
 
-    // 3. Perform 8-bit integer subtraction on the halves.
+#[target_feature(enable = "avx")]
+#[inline]
+pub fn _mm256_sub_epi8(a: __m256i, b: __m256i) -> __m256i {
+    let (a_low, a_high) = extract_low_high(a);
+    let (b_low, b_high) = extract_low_high(b);
+
+    // Perform 8-bit integer subtraction on the halves.
     // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
-    let res_lo = _mm_sub_epi8(a_lo, b_lo);
-    let res_hi = _mm_sub_epi8(a_hi, b_hi);
+    let res_low = _mm_sub_epi8(a_low, b_low);
+    let res_high = _mm_sub_epi8(a_high, b_high);
 
-    // 4. Recombine the two 128-bit results back into a single 256-bit register.
-    _mm256_set_m128i(res_hi, res_lo)
+    // Recombine the two 128-bit results back into a single 256-bit register.
+    _mm256_set_m128i(res_high, res_low)
 }
 
 #[target_feature(enable = "avx")]
 #[inline]
 pub fn _mm256_add_epi8(a: __m256i, b: __m256i) -> __m256i {
-    // 1. Extract the low 128-bit halves from the 256-bit registers.
-    // _mm256_castsi256_si128 is a zero-cost instruction that just treats
-    // the YMM register as an XMM register.
-    let a_lo = _mm256_castsi256_si128(a);
-    let b_lo = _mm256_castsi256_si128(b);
-
-    // 2. Extract the high 128-bit halves.
-    // _mm256_extractf128_si256 is an AVX instruction that pulls the
-    // upper 128 bits into an XMM register.
-    let a_hi = _mm256_extractf128_si256::<1>(a);
-    let b_hi = _mm256_extractf128_si256::<1>(b);
+    let (a_low, a_high) = extract_low_high(a);
+    let (b_low, b_high) = extract_low_high(b);
 
     // 3. Perform 8-bit integer subtraction on the halves.
     // On AVX hardware, these will be emitted as VEX-encoded VPSUBB instructions.
-    let res_lo = _mm_add_epi8(a_lo, b_lo);
-    let res_hi = _mm_add_epi8(a_hi, b_hi);
+    let res_low = _mm_add_epi8(a_low, b_low);
+    let res_high = _mm_add_epi8(a_high, b_high);
 
     // 4. Recombine the two 128-bit results back into a single 256-bit register.
-    _mm256_set_m128i(res_hi, res_lo)
+    _mm256_set_m128i(res_high, res_low)
 }
 
 #[target_feature(enable = "avx")]
 #[inline]
 pub fn _mm256_slli_si256<const SHIFT: i32>(a: __m256i) -> __m256i {
-    // 1. Split: Extract the 128-bit halves
-    // Cast is zero-cost; it just treats the YMM as an XMM (low half)
-    let lo = _mm256_castsi256_si128(a);
-    // Extract the high 128 bits
-    let hi = _mm256_extractf128_si256::<1>(a);
+    let (a_low, a_high) = extract_low_high(a);
 
     // 2. Shift: Apply 128-bit byte shift to each half
     // These will be compiled as VEX-encoded VPSLLDQ XMM instructions
-    let res_lo = _mm_slli_si128::<SHIFT>(lo);
-    let res_hi = _mm_slli_si128::<SHIFT>(hi);
+    let res_low = _mm_slli_si128::<SHIFT>(a_low);
+    let res_high = _mm_slli_si128::<SHIFT>(a_high);
 
     // 3. Merge: Combine back into a 256-bit register
-    _mm256_set_m128i(res_hi, res_lo)
+    _mm256_set_m128i(res_high, res_low)
 }
 
 #[target_feature(enable = "avx")]
@@ -192,11 +182,8 @@ pub fn _mm256_inserti128_si256<const LANE: i32>(a: __m256i, b: __m128i) -> __m25
 #[target_feature(enable = "avx")]
 #[inline]
 pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
-    // 1. Extract halves of data and mask
-    let a_low = _mm256_castsi256_si128(a);
-    let a_high = _mm256_extractf128_si256::<1>(a);
-    let b_low = _mm256_castsi256_si128(b);
-    let b_high = _mm256_extractf128_si256::<1>(b);
+    let (a_low, a_high) = extract_low_high(a);
+    let (b_low, b_high) = extract_low_high(b);
 
     // 2. Perform SSSE3 shuffle on each 128-bit lane
     let res_low = _mm_shuffle_epi8(a_low, b_low);

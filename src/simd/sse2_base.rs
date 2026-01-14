@@ -244,20 +244,20 @@ pub fn _mm256_set_epi8(
     e12: i8,
     e11: i8,
     e10: i8,
-    e9: i8,
-    e8: i8,
-    e7: i8,
-    e6: i8,
-    e5: i8,
-    e4: i8,
-    e3: i8,
-    e2: i8,
-    e1: i8,
-    e0: i8,
+    e09: i8,
+    e08: i8,
+    e07: i8,
+    e06: i8,
+    e05: i8,
+    e04: i8,
+    e03: i8,
+    e02: i8,
+    e01: i8,
+    e00: i8,
 ) -> __m256i {
     // Construct the low 128-bit part (e0 through e15)
     let low = _mm_set_epi8(
-        e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0,
+        e15, e14, e13, e12, e11, e10, e09, e08, e07, e06, e05, e04, e03, e02, e01, e00,
     );
     // Construct the high 128-bit part (e16 through e31)
     let high = _mm_set_epi8(

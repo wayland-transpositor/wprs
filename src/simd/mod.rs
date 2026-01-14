@@ -14,7 +14,6 @@
 
 use cfg_if::cfg_if;
 
-
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
         mod avx2;

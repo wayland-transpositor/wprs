@@ -280,7 +280,7 @@ pub fn _mm256_castsi256_ps(a: __m256i) -> __m256 {
 
 #[target_feature(enable = "sse2")]
 #[inline]
-pub unsafe fn _mm256_castps_si256(a: __m256) -> __m256i {
+pub fn _mm256_castps_si256(a: __m256) -> __m256i {
     __m256i {
         // Cast lower 128 bits float -> int
         low: _mm_castps_si128(a.low),

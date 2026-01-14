@@ -58,6 +58,9 @@ use crate::vec4u8::Vec4u8s;
 
 #[inline]
 fn _mm256_shufps_epi32<const MASK: i32>(a: __m256i, b: __m256i) -> __m256i {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         _mm256_castps_si256(_mm256_shuffle_ps::<MASK>(
             _mm256_castsi256_ps(a),
@@ -96,16 +99,25 @@ fn store_m256i_vec4u8(dst: &mut [Vec4u8; 8], val: __m256i) {
 
 #[inline]
 fn subtract_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe { (_mm256_sub_epi8(b, g), _mm256_sub_epi8(r, g)) }
 }
 
 #[inline]
 fn add_green(b: __m256i, g: __m256i, r: __m256i) -> (__m256i, __m256i) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe { (_mm256_add_epi8(b, g), _mm256_add_epi8(r, g)) }
 }
 
 #[inline]
 fn prefix_sum_32(mut block: __m256i) -> __m256i {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         block = _mm256_add_epi8(block, _mm256_slli_si256::<1>(block));
         block = _mm256_add_epi8(block, _mm256_slli_si256::<2>(block));
@@ -117,6 +129,9 @@ fn prefix_sum_32(mut block: __m256i) -> __m256i {
 
 #[inline]
 fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m128i) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let cur_sum = _mm_set1_epi8(_mm_extract_epi8::<15>(block) as i8);
         block = _mm_add_epi8(prev_block, block);
@@ -126,6 +141,9 @@ fn accumulate_sum_16(mut block: __m128i, prev_block: __m128i) -> (__m128i, __m12
 
 #[inline]
 fn accumulate_sum_32(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let (block0, prev_block) =
             accumulate_sum_16(_mm256_extracti128_si256::<0>(block), prev_block);
@@ -142,6 +160,9 @@ fn prefix_sum(block: __m256i, prev_block: __m128i) -> (__m256i, __m128i) {
 
 #[inline]
 fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let prev = _mm256_set_epi8(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -203,6 +224,9 @@ fn aos_to_soa_u8_32x4(
     prev2: u8,
     prev3: u8,
 ) -> (u8, u8, u8, u8) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let p0 = _mm256_set_epi8(
             15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0, 15, 11, 7, 3, 14, 10, 6, 2, 13,
@@ -354,6 +378,9 @@ fn soa_to_aos_u8_32x4(
     mut prev2: __m128i,
     mut prev3: __m128i,
 ) -> (__m128i, __m128i, __m128i, __m128i) {
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let p0 = _mm256_set_epi8(
             7, 11, 15, 3, 6, 10, 14, 2, 5, 9, 13, 1, 4, 8, 12, 0, 7, 11, 15, 3, 6, 10, 14, 2, 5, 9,
@@ -593,6 +620,9 @@ fn vec4u8_soa_to_aos_avx2_parallel(soa: &Vec4u8s, aos: &mut [Vec4u8]) {
     let blocks_per_thread = cmp::max(n_blocks / n_threads, 1);
     let thread_chunk_size = blocks_per_thread * 32;
 
+    // SAFETY: simd/mod.rs exposes versions of this function for SSE2, SSSE3,
+    // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
+    // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
         let z = _mm_setzero_si128();
         let (mut prev0, mut prev1, mut prev2, mut prev3) = (z, z, z, z);

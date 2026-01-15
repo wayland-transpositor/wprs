@@ -12,26 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod arc_slice;
-pub mod args;
-pub mod buffer_pointer;
-pub mod channel_utils;
-pub mod client;
-pub mod client_utils;
-pub mod compositor_utils;
-pub mod constants;
-pub mod control_server;
-pub mod error_utils;
-pub mod fallible_entry;
-pub mod filtering;
-pub mod prelude;
-pub mod serialization;
-pub mod server;
-pub mod sharding_compression;
-pub mod simd;
-pub mod utils;
-pub mod vec4u8;
-pub mod xwayland_xdg_shell;
+use std::arch::x86_64::_mm_shuffle_epi8;
 
-#[cfg(feature = "tracy-allocator")]
-pub mod tracy_allocator;
+use cfg_if::cfg_if;
+
+cfg_if! {
+    if #[cfg(all(target_arch = "x86_64", not(target_feature = "sse4.1")))] {
+        pub use crate::simd::sse2::_mm_extract_epi8;
+        pub use crate::simd::sse2::_mm256_extract_epi8;
+    }
+}
+pub use crate::simd::sse2_base::*;
+
+#[target_feature(enable = "ssse3")]
+#[inline]
+pub fn _mm256_shuffle_epi8(a: __m256i, b: __m256i) -> __m256i {
+    _mm256_shuffle_epi8!(a, b)
+}

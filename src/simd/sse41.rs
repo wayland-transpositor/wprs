@@ -12,26 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod arc_slice;
-pub mod args;
-pub mod buffer_pointer;
-pub mod channel_utils;
-pub mod client;
-pub mod client_utils;
-pub mod compositor_utils;
-pub mod constants;
-pub mod control_server;
-pub mod error_utils;
-pub mod fallible_entry;
-pub mod filtering;
-pub mod prelude;
-pub mod serialization;
-pub mod server;
-pub mod sharding_compression;
-pub mod simd;
-pub mod utils;
-pub mod vec4u8;
-pub mod xwayland_xdg_shell;
+pub use std::arch::x86_64::_mm_extract_epi8;
 
-#[cfg(feature = "tracy-allocator")]
-pub mod tracy_allocator;
+pub use crate::simd::sse2_base::*;
+pub use crate::simd::ssse3::_mm256_shuffle_epi8;
+
+#[target_feature(enable = "sse4.1")]
+#[inline]
+pub fn _mm256_extract_epi8<const INDEX: i32>(a: __m256i) -> i32 {
+    _mm256_extract_epi8!(a, INDEX)
+}

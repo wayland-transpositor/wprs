@@ -107,7 +107,7 @@ pub struct ClientOptions {
 }
 
 pub struct WprsClientState {
-    qh: QueueHandle<WprsClientState>,
+    qh: QueueHandle<Self>,
     conn: Connection,
     pub capabilities: Arc<OnceLock<Capabilities>>,
 

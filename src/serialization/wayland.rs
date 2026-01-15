@@ -881,8 +881,7 @@ impl From<SctkOutputInfo> for OutputInfo {
             mode: output
                 .modes
                 .iter()
-                .filter(|mode| mode.current)
-                .next_back()
+                .rfind(|mode| mode.current)
                 .unwrap()
                 .into(),
             name: output.name.clone(),

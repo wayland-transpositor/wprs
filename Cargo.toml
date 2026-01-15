@@ -34,7 +34,7 @@ lagoon = { version = "0.1.3", features = ["scope"] }
 nix = { version = "0.30.1", features = ["fs", "socket"] }
 num_enum = "0.7.4"
 optional_struct = "0.5.2"
-rkyv = { version = "0.8.11" }
+rkyv = { version = "0.8.14" }
 ron = "0.11.0"
 serde = "1.0.219"
 serde_derive = "1.0.219"

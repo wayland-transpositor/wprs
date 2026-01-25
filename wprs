@@ -260,6 +260,7 @@ def pulse_socket() -> str:
 
 
 def forward_pulse_sock() -> None:
+  run_remote_command(['rm', '-fv', remote_socket_dir() + '/wprs-pulse'], {})
   cmd = (SSH_COMMON_ARGS +
          ['-O', 'forward',
           '-R', f'{remote_socket_dir()}/wprs-pulse:{pulse_socket()}']

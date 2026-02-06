@@ -14,36 +14,58 @@
 
 use cfg_if::cfg_if;
 
+#[derive(Clone, Copy)]
+pub struct SoaToAosPrev<T>
+where
+    T: Clone + Copy,
+{
+    pub prev0: T,
+    pub prev1: T,
+    pub prev2: T,
+    pub prev3: T,
+}
+
 cfg_if! {
     if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
         mod avx2;
+        mod x86_transpose;
         pub use crate::simd::avx2::*;
+        pub use crate::simd::x86_transpose::*;
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx"))] {
         mod avx;
+        mod x86_transpose;
         pub use crate::simd::avx::*;
+        pub use crate::simd::x86_transpose::*;
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))] {
         #[macro_use]
         mod sse2_base;
         mod ssse3;
         mod sse41;
+        mod x86_transpose;
         pub use crate::simd::sse41::*;
+        pub use crate::simd::x86_transpose::*;
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "ssse3"))] {
         #[macro_use]
         mod sse2_base;
         mod sse2;
         mod ssse3;
+        mod x86_transpose;
         pub use crate::simd::ssse3::*;
+        pub use crate::simd::x86_transpose::*;
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))] {
         #[macro_use]
         mod sse2_base;
         mod sse2;
+        mod x86_transpose;
         pub use crate::simd::sse2::*;
+        pub use crate::simd::x86_transpose::*;
     } else {
         compile_error!("x86_64 SIMD support is required.");
     }
 }
 
 #[allow(dead_code)]
+#[cfg(target_arch = "x86_64")]
 pub fn print_vec_char_128_dec(x: __m128i) {
     let mut v = [0u8; 16];
     // SAFETY: dst is 16 * 8 = bytes
@@ -72,6 +94,7 @@ pub fn print_vec_char_128_dec(x: __m128i) {
 }
 
 #[allow(dead_code)]
+#[cfg(target_arch = "x86_64")]
 pub fn print_vec_char_256_hex(x: __m256i) {
     let mut v = [0u8; 32];
     // SAFETY: dst is 32 * 8 = bytes

@@ -37,7 +37,7 @@ use crate::serialization::wayland::WlSurfaceId;
 
 pub(crate) fn populate_subsurfaces(
     client_id: ClientId,
-    surface_id: WlSurfaceId,
+    parent_id: WlSurfaceId,
     surfaces: &mut HashMap<WlSurfaceId, RemoteSurface>,
     compositor: &CompositorState,
     subcompositor: &WlSubcompositor,
@@ -45,18 +45,19 @@ pub(crate) fn populate_subsurfaces(
     object_bimap: &mut ObjectBimap,
 ) -> Result<()> {
     let children = surfaces
-        .get(&surface_id)
+        .get(&parent_id)
         .location(loc!())?
         .z_ordered_children
         .clone();
-    for child in children.into_iter().filter(|c| c.id != surface_id) {
+    for child in children.into_iter().filter(|c| c.id != parent_id) {
         surfaces.entry(child.id).or_insert_with_result(|| {
-            RemoteSurface::new(client_id, surface_id, compositor, qh, object_bimap)
+            // If a child surface hasn't been commited yet, create a placeholder surface.
+            RemoteSurface::new(client_id, child.id, compositor, qh, object_bimap)
         })?;
 
         RemoteSubSurface::set_role(
             client_id,
-            surface_id,
+            parent_id,
             child.id,
             surfaces,
             compositor,

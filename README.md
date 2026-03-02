@@ -31,36 +31,19 @@ The launcher (`wprs`) requires:
 
 ## Packaging
 
-We officially maintain [deb](#debian) instructions for Debian-based distros.
-Contributers have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
+This repo includes packaging templates (Arch/Nix/Homebrew) and a local packaging script.
 
-### Debian
+### Local Packaging Script
+
+For local, repeatable packaging into per-target artifacts (archives + optional distro-native packages), use:
 
 ```bash
-dpkg-buildpackage --sanitize-env -us -uc -b -d -rfakeroot
-```
-This requires cargo and a rustc matching the one in rust-toolchain.toml to be
-installed. The debian rustc package is not used due to being too old.
-
-### Docker
-
-To build .deb files without installing the above dependencies, we supply a `Dockerfile`.
-
-To build the .deb and copy it locally:
-
-```shell
-docker build . -t wprs
-docker run --user $(id -u):$(id -g)  -v $(pwd):/deb --rm wprs:latest bash -c "cp *.deb /deb/"
+./scripts/package.sh
 ```
 
-By default, the `Dockerfile` builds against `debian:trixie` but you can use the `ARG`
-`BASE_IMAGE` to overwrite this to another distribution and/or release version.
+For `deb`/`rpm` outputs, the script uses a small Docker/Podman container with packaging tools installed from the distro repos.
 
-For example:
-
-```shell
-docker build --build-arg BASE_IMAGE=ubuntu . -t wprs
-```
+Outputs are written under `dist/`.
 
 ### Arch-Linux (AUR)
 
@@ -73,7 +56,7 @@ On the remote host, put the `wprsd.service` file into place:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp wprsd.service ~/.config/systemd/user
+cp package/wprsd.service ~/.config/systemd/user
 ```
 
 and enable wprsd:

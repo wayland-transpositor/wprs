@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wprs"
+version = "0.0.0"
+description = "Python launcher for wprs/wprsc"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["psutil>=5.9"]
+
+[project.scripts]
+wprs = "wprs.cli:main"
+
+[tool.setuptools]
+packages = ["wprs"]
+include-package-data = true
+

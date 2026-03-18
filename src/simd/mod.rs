@@ -38,15 +38,22 @@ cfg_if! {
         mod sse2_base;
         mod sse2;
         pub use crate::simd::sse2::*;
+    } else if #[cfg(target_arch = "aarch64")] {
+        // The aarch64 filtering pipeline uses NEON structure load/store
+        // instructions (vld4q/vst4q) directly, bypassing this abstraction
+        // layer entirely. See filtering/neon.rs.
     } else {
-        compile_error!("x86_64 SIMD support is required.");
+        compile_error!("Requires x86_64 (SSE2+) or aarch64 (NEON).");
     }
 }
 
+// Debug helpers for x86 vector types. These use the x86 SIMD types re-exported
+// above and are only meaningful on x86_64.
+#[cfg(target_arch = "x86_64")]
 #[allow(dead_code)]
 pub fn print_vec_char_128_dec(x: __m128i) {
     let mut v = [0u8; 16];
-    // SAFETY: dst is 16 * 8 = bytes
+    // SAFETY: dst is 16 bytes, matching the 128-bit source.
     unsafe {
         _mm_storeu_si128(v.as_mut_ptr().cast::<__m128i>(), x);
     }
@@ -71,10 +78,11 @@ pub fn print_vec_char_128_dec(x: __m128i) {
     );
 }
 
+#[cfg(target_arch = "x86_64")]
 #[allow(dead_code)]
 pub fn print_vec_char_256_hex(x: __m256i) {
     let mut v = [0u8; 32];
-    // SAFETY: dst is 32 * 8 = bytes
+    // SAFETY: dst is 32 bytes, matching the 256-bit source.
     unsafe {
         _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), x);
     }

@@ -8,9 +8,7 @@ XWayland) applications.
 
 ## Building
 
-wprs is currently only available on x86-64 with AVX2. Support for [ARM](https://github.com/wayland-transpositor/wprs/issues/31) and support for more fast compression implementations welcome.
-
-Currently building wprs without AVX2 will lead to build failures.
+wprs supports x86-64 (SSE2 through AVX2) and aarch64 (NEON).
 
 ### Source
 
@@ -32,7 +30,7 @@ The launcher (`wprs`) requires:
 ## Packaging
 
 We officially maintain [deb](#debian) instructions for Debian-based distros.
-Contributers have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
+Contributors have also supplied packaging for [docker](#docker) and [arch linux](#arch-linux-aur)
 
 ### Debian
 

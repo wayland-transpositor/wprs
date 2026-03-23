@@ -154,11 +154,7 @@ fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
     // SSE4.1, AVX, and AVX2. Which version is used depends on compiler flags,
     // but there is no good way to plumb that through to avoid the unsafe.
     unsafe {
-        let prev = _mm256_set_epi8(
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, prev as i8,
-        );
-        let block15_16 = _mm256_set_epi8(
+        let carry = _mm256_set_epi8(
             0,
             0,
             0,
@@ -190,13 +186,12 @@ fn running_difference_32(mut block: __m256i, prev: u8) -> (__m256i, u8) {
             0,
             0,
             0,
-            0,
+            prev as i8,
         );
         let next = _mm256_extract_epi8::<31>(block) as u8;
 
         block = _mm256_sub_epi8(block, _mm256_slli_si256::<1>(block));
-        block = _mm256_sub_epi8(block, block15_16);
-        block = _mm256_sub_epi8(block, prev);
+        block = _mm256_sub_epi8(block, carry);
 
         (block, next)
     }

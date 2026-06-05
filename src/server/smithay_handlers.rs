@@ -979,6 +979,10 @@ impl SeatHandler for WprsServerState {
 impl WprsServerState {
     fn set_decoration_mode(&self, surface: &WlSurface, mode: Option<DecorationMode>) {
         compositor::with_states(surface, |surface_data| {
+            surface_data.data_map.insert_if_missing_threadsafe(|| {
+                LockedSurfaceState(std::sync::Mutex::new(SurfaceState::new(surface, None).unwrap()))
+            });
+
             let surface_state = &mut surface_data
                 .data_map
                 .get::<LockedSurfaceState>()

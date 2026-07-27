@@ -593,14 +593,22 @@ pub fn commit_inner(
         decorated_subsurface.draw();
     }
 
+    let buffer_size = xwayland_surface
+        .buffer
+        .as_ref()
+        .map(|buffer| (buffer.metadata.width, buffer.metadata.height));
     let damage = &mut mem::take(&mut surface_attributes.damage)
         .iter()
         .map(|damage| match damage {
             Damage::Buffer(rect) => *rect,
-            Damage::Surface(rect) => rect.to_buffer(
+            // Xwayland surfaces have no viewport, but the conversion still
+            // needs the surface size rather than the damage rect's own size.
+            Damage::Surface(rect) => compositor_utils::surface_damage_to_buffer(
+                *rect,
                 surface_attributes.buffer_scale,
                 surface_attributes.buffer_transform.into(),
-                &rect.size,
+                None,
+                buffer_size,
             ),
         })
         .map(Into::into)

@@ -22,6 +22,12 @@ use smithay::output::Scale;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::Buffer as BufferCoords;
+use smithay::utils::Logical;
+use smithay::utils::Point;
+use smithay::utils::Rectangle;
+use smithay::utils::Size;
+use smithay::utils::Transform;
 use smithay::utils::user_data::UserDataMap;
 use smithay::wayland::compositor::SurfaceAttributes;
 use smithay::wayland::shm;
@@ -31,6 +37,7 @@ use smithay::wayland::shm::BufferData;
 use crate::buffer_pointer::BufferPointer;
 use crate::prelude::*;
 use crate::serialization::wayland::OutputInfo;
+use crate::serialization::wayland::ViewportState;
 
 /// # Panics
 /// If smithay has a bug and with_buffer_contents gives us an invalid pointer.
@@ -150,4 +157,64 @@ pub fn update_surface_outputs<'a, F>(
             output.leave(surface);
         }
     }
+}
+
+/// Convert a damage rectangle from surface coordinates to buffer coordinates.
+///
+/// The viewport is part of this mapping, not just buffer_scale: chromium leaves
+/// buffer_scale at 1 and scales entirely through the viewport, so using
+/// buffer_scale alone makes this the identity and the damage then covers only
+/// the top-left corner of the buffer.
+pub fn surface_damage_to_buffer(
+    rect: Rectangle<i32, Logical>,
+    buffer_scale: i32,
+    transform: Transform,
+    viewport_state: Option<&ViewportState>,
+    buffer_size: Option<(i32, i32)>,
+) -> Rectangle<i32, BufferCoords> {
+    let src = viewport_state.and_then(|viewport_state| viewport_state.src);
+    let dst = viewport_state.and_then(|viewport_state| viewport_state.dst);
+
+    // Surface-local size the buffer covers before the destination scaling.
+    let surface_size = match (src, buffer_size) {
+        (Some(src), _) => (src.size.w, src.size.h),
+        (None, Some((width, height))) => {
+            // A rotating transform swaps the axes between the two spaces.
+            let (width, height) = match transform {
+                Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
+                    (height, width)
+                },
+                _ => (width, height),
+            };
+            let scale = f64::from(buffer_scale.max(1));
+            (f64::from(width) / scale, f64::from(height) / scale)
+        },
+        // Nothing to scale against.
+        (None, None) => return rect.to_buffer(buffer_scale, transform, &rect.size),
+    };
+
+    let (scale_w, scale_h) = match dst {
+        Some(dst) if dst.w > 0 && dst.h > 0 => (
+            surface_size.0 / f64::from(dst.w),
+            surface_size.1 / f64::from(dst.h),
+        ),
+        _ => (1.0, 1.0),
+    };
+    let (offset_x, offset_y) = src.map_or((0.0, 0.0), |src| (src.loc.x, src.loc.y));
+
+    let rect = rect.to_f64();
+    let unviewported = Rectangle::new(
+        Point::from((
+            rect.loc.x * scale_w + offset_x,
+            rect.loc.y * scale_h + offset_y,
+        )),
+        Size::from((rect.size.w * scale_w, rect.size.h * scale_h)),
+    );
+
+    // Round outwards: too much damage costs a repaint, too little leaves stale
+    // pixels.
+    let area = Size::from((surface_size.0.ceil() as i32, surface_size.1.ceil() as i32));
+    unviewported
+        .to_i32_up::<i32>()
+        .to_buffer(buffer_scale, transform, &area)
 }

@@ -587,25 +587,40 @@ impl RemoteSurface {
         let Ok(wp_viewporter) = wp_viewporter.get() else {
             return;
         };
-        let Some(viewport_state) = viewport_state else {
+
+        // None still has to clear a viewport we set earlier.
+        let viewport_state = viewport_state.unwrap_or(ViewportState {
+            src: None,
+            dst: None,
+        });
+
+        // skip if the viewport state hasn't changed
+        if self.current_viewport_state == Some(viewport_state) {
             return;
-        };
+        }
+
+        // Don't create a viewport object just to unset a viewport we never set.
+        if self.viewport.is_none() && viewport_state.src.is_none() && viewport_state.dst.is_none() {
+            self.current_viewport_state = Some(viewport_state);
+            return;
+        }
 
         let wl_surface = self.wl_surface().clone();
         let viewport = self
             .viewport
             .get_or_insert_with(|| wp_viewporter.get_viewport(&wl_surface, qh, ()));
 
-        // skip if the viewport state hasn't changed
-        if self.current_viewport_state != Some(viewport_state) {
-            if let Some(src) = viewport_state.src {
-                viewport.set_source(src.loc.x, src.loc.y, src.size.w, src.size.h);
-            }
-            if let Some(dst) = viewport_state.dst {
-                viewport.set_destination(dst.w, dst.h);
-            }
-            self.current_viewport_state = Some(viewport_state);
+        // wp_viewport keeps the previous source/destination until explicitly
+        // unset with the -1 sentinels.
+        match viewport_state.src {
+            Some(src) => viewport.set_source(src.loc.x, src.loc.y, src.size.w, src.size.h),
+            None => viewport.set_source(-1.0, -1.0, -1.0, -1.0),
         }
+        match viewport_state.dst {
+            Some(dst) => viewport.set_destination(dst.w, dst.h),
+            None => viewport.set_destination(-1, -1),
+        }
+        self.current_viewport_state = Some(viewport_state);
     }
 
     pub fn set_input_region(

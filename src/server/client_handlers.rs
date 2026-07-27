@@ -18,6 +18,7 @@ use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::mem;
 use std::os::fd::AsFd;
 use std::thread;
 
@@ -161,7 +162,7 @@ impl WprsServerState {
                     // and get data_device events instead. To prevent dropping early, we shouldn't release
                     // these keys yet.
                     if self.dnd_source.is_none() {
-                        let pressed_buttons: HashSet<u32> = self.pressed_buttons.drain().collect();
+                        let pressed_buttons: HashSet<u32> = mem::take(&mut self.pressed_buttons);
                         for button in pressed_buttons {
                             debug!("releasing button {}", button);
                             pointer.button(
@@ -760,7 +761,7 @@ impl WprsServerState {
                             time,
                         },
                     );
-                    let pressed_buttons: HashSet<u32> = self.pressed_buttons.drain().collect();
+                    let pressed_buttons: HashSet<u32> = mem::take(&mut self.pressed_buttons);
                     for button in pressed_buttons {
                         debug!("releasing button {}", button);
                         pointer.button(

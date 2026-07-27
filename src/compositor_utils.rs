@@ -218,3 +218,136 @@ pub fn surface_damage_to_buffer(
         .to_i32_up::<i32>()
         .to_buffer(buffer_scale, transform, &area)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serialization::geometry;
+
+    fn viewport(src: Option<geometry::Rectangle<f64>>, dst: Option<(i32, i32)>) -> ViewportState {
+        ViewportState {
+            src,
+            dst: dst.map(|(w, h)| geometry::Size { w, h }),
+        }
+    }
+
+    fn damage(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
+        Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+    }
+
+    fn buffer_rect(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, BufferCoords> {
+        Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+    }
+
+    /// A surface with no viewport and a buffer matching its size needs no
+    /// conversion at all.
+    #[test]
+    fn identity() {
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(10, 20, 30, 40),
+                1,
+                Transform::Normal,
+                None,
+                Some((100, 100))
+            ),
+            buffer_rect(10, 20, 30, 40),
+        );
+    }
+
+    /// Without a buffer there is nothing to scale against, so buffer_scale is
+    /// all we can apply.
+    #[test]
+    fn no_buffer_uses_buffer_scale_only() {
+        assert_eq!(
+            surface_damage_to_buffer(damage(10, 20, 30, 40), 2, Transform::Normal, None, None),
+            buffer_rect(20, 40, 60, 80),
+        );
+    }
+
+    #[test]
+    fn buffer_scale_without_viewport() {
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(10, 20, 30, 40),
+                2,
+                Transform::Normal,
+                None,
+                Some((200, 200))
+            ),
+            buffer_rect(20, 40, 60, 80),
+        );
+    }
+
+    /// Regression test for damage covering only the top-left corner of the
+    /// buffer. Chromium leaves buffer_scale at 1 and scales through the
+    /// viewport instead, so the destination ratio is the only thing that
+    /// relates surface coordinates to the 2x buffer.
+    #[test]
+    fn viewport_destination_scales_damage() {
+        let viewport = viewport(None, Some((1733, 729)));
+        let buffer = Some((3466, 1458));
+
+        // Full-surface damage has to reach the whole buffer.
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(0, 0, 1733, 729),
+                1,
+                Transform::Normal,
+                Some(&viewport),
+                buffer
+            ),
+            buffer_rect(0, 0, 3466, 1458),
+        );
+
+        // And a partial rect keeps its position relative to the buffer.
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(16, 153, 1701, 403),
+                1,
+                Transform::Normal,
+                Some(&viewport),
+                buffer
+            ),
+            buffer_rect(32, 306, 3402, 806),
+        );
+    }
+
+    /// The viewport source rectangle is defined in surface-local coordinates,
+    /// so it both sets the pre-destination size and offsets the result.
+    #[test]
+    fn viewport_source_crops_and_offsets() {
+        let viewport = viewport(
+            Some(geometry::Rectangle::new(10.0, 10.0, 100.0, 50.0)),
+            Some((200, 100)),
+        );
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(0, 0, 200, 100),
+                1,
+                Transform::Normal,
+                Some(&viewport),
+                Some((400, 200))
+            ),
+            buffer_rect(10, 10, 100, 50),
+        );
+    }
+
+    /// Damage must never come out too small: a rect that lands on fractional
+    /// coordinates has to grow to cover them.
+    #[test]
+    fn rounds_outward() {
+        let viewport = viewport(None, Some((100, 100)));
+        // 3/2 scaling: x 1 -> 1.5 floors to 1, right edge 2 -> 3.0 stays 3.
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(1, 1, 1, 1),
+                1,
+                Transform::Normal,
+                Some(&viewport),
+                Some((150, 150))
+            ),
+            buffer_rect(1, 1, 2, 2),
+        );
+    }
+}

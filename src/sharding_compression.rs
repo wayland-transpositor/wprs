@@ -67,7 +67,7 @@ impl fmt::Debug for CompressedShard {
         f.debug_struct("CompressedShard")
             .field("idx", &self.idx)
             .field("compression", &self.compression)
-            .field("data", &format_args!("Vec<u8>[{:?}]", &self.data.len()))
+            .field("data", &format_args!("Vec<u8>[{:?}]", self.data.len()))
             .finish()
     }
 }

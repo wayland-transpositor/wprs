@@ -140,7 +140,7 @@ fn main() -> Result<()> {
     let mut serializer = Serializer::new_client(&config.socket).with_context(loc!(), || {
         format!(
             "Serializer unable to connect to socket {:?}.",
-            &config.socket
+            config.socket
         )
     })?;
     let reader = serializer.reader().location(loc!())?;

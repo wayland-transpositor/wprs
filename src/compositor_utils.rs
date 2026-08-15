@@ -188,7 +188,7 @@ pub fn surface_damage_to_buffer(
         (Some(src), _) => Size::from((src.size.w, src.size.h)),
         (None, Some(size)) => size,
         // Nothing to scale against.
-        (None, None) => return rect.to_buffer(buffer_scale, transform, &rect.size),
+        (None, None) => return rect.to_buffer(buffer_scale, transform.invert(), &rect.size),
     };
 
     let (scale_w, scale_h) = match dst {
@@ -214,10 +214,11 @@ pub fn surface_damage_to_buffer(
     let area = Size::from((area_size.w.ceil() as i32, area_size.h.ceil() as i32));
 
     // Round outwards: too much damage costs a repaint, too little leaves stale
-    // pixels.
+    // pixels. buffer_transform is what the client already applied to the
+    // buffer, so mapping back to buffer coordinates undoes it.
     surface_local_rect
         .to_i32_up::<i32>()
-        .to_buffer(buffer_scale, transform, &area)
+        .to_buffer(buffer_scale, transform.invert(), &area)
 }
 
 #[cfg(test)]
@@ -370,5 +371,52 @@ mod tests {
             ),
             buffer_rect(1, 1, 2, 2),
         );
+    }
+
+    /// Every transform, against the region the compositor actually samples.
+    ///
+    /// Confirmed against mutter: with any of these wrong the window stops
+    /// repainting entirely.
+    #[test]
+    fn every_transform_maps_to_the_displayed_region() {
+        // A 1200x800 buffer shown through a viewport that crops to 560x360 and
+        // scales it down to a 600x400 surface.
+        let viewport = viewport(
+            Some(geometry::Rectangle::new(20.0, 20.0, 560.0, 360.0)),
+            Some((600, 400)),
+        );
+        let buffer = Some((1200, 800));
+
+        let cases = [
+            (Transform::Normal, buffer_rect(20, 20, 560, 360)),
+            (Transform::_90, buffer_rect(20, 220, 360, 560)),
+            (Transform::_180, buffer_rect(620, 420, 560, 360)),
+            (Transform::_270, buffer_rect(820, 20, 360, 560)),
+            (Transform::Flipped, buffer_rect(620, 20, 560, 360)),
+            (Transform::Flipped90, buffer_rect(20, 20, 360, 560)),
+            (Transform::Flipped180, buffer_rect(20, 420, 560, 360)),
+            (Transform::Flipped270, buffer_rect(820, 220, 360, 560)),
+        ];
+
+        for (transform, expected) in cases {
+            let damage = surface_damage_to_buffer(
+                damage(0, 0, 600, 400),
+                1,
+                transform,
+                Some(&viewport),
+                buffer,
+            );
+            assert_eq!(damage, expected, "{transform:?}");
+
+            // Whatever the transform, the damage has to land inside the buffer.
+            assert!(
+                damage.loc.x >= 0 && damage.loc.y >= 0,
+                "{transform:?} damage starts outside the buffer: {damage:?}"
+            );
+            assert!(
+                damage.loc.x + damage.size.w <= 1200 && damage.loc.y + damage.size.h <= 800,
+                "{transform:?} damage runs past the buffer: {damage:?}"
+            );
+        }
     }
 }

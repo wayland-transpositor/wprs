@@ -175,35 +175,32 @@ pub fn surface_damage_to_buffer(
     let src = viewport_state.and_then(|viewport_state| viewport_state.src);
     let dst = viewport_state.and_then(|viewport_state| viewport_state.dst);
 
-    // Surface-local size the buffer covers before the destination scaling.
-    let surface_size = match (src, buffer_size) {
-        (Some(src), _) => (src.size.w, src.size.h),
-        (None, Some((width, height))) => {
-            // A rotating transform swaps the axes between the two spaces.
-            let (width, height) = match transform {
-                Transform::_90 | Transform::_270 | Transform::Flipped90 | Transform::Flipped270 => {
-                    (height, width)
-                },
-                _ => (width, height),
-            };
-            let scale = f64::from(buffer_scale.max(1));
-            (f64::from(width) / scale, f64::from(height) / scale)
-        },
+    // The whole buffer in surface-local coordinates: to_logical applies
+    // buffer_scale and transposes the axes for a rotating transform.
+    let buffer_logical_size: Option<Size<f64, Logical>> = buffer_size.map(|(width, height)| {
+        Size::<i32, BufferCoords>::from((width, height))
+            .to_f64()
+            .to_logical(f64::from(buffer_scale.max(1)), transform)
+    });
+
+    // The part of it the viewport samples, before the destination scaling.
+    let src_size: Size<f64, Logical> = match (src, buffer_logical_size) {
+        (Some(src), _) => Size::from((src.size.w, src.size.h)),
+        (None, Some(size)) => size,
         // Nothing to scale against.
         (None, None) => return rect.to_buffer(buffer_scale, transform, &rect.size),
     };
 
     let (scale_w, scale_h) = match dst {
-        Some(dst) if dst.w > 0 && dst.h > 0 => (
-            surface_size.0 / f64::from(dst.w),
-            surface_size.1 / f64::from(dst.h),
-        ),
+        Some(dst) if dst.w > 0 && dst.h > 0 => {
+            (src_size.w / f64::from(dst.w), src_size.h / f64::from(dst.h))
+        },
         _ => (1.0, 1.0),
     };
     let (offset_x, offset_y) = src.map_or((0.0, 0.0), |src| (src.loc.x, src.loc.y));
 
     let rect = rect.to_f64();
-    let unviewported = Rectangle::new(
+    let surface_local_rect = Rectangle::new(
         Point::from((
             rect.loc.x * scale_w + offset_x,
             rect.loc.y * scale_h + offset_y,
@@ -211,10 +208,14 @@ pub fn surface_damage_to_buffer(
         Size::from((rect.size.w * scale_w, rect.size.h * scale_h)),
     );
 
+    // The rect spans the whole surface-local space now that src.loc has been
+    // added, so a mirroring transform measures against that, not the crop.
+    let area_size = buffer_logical_size.unwrap_or(src_size);
+    let area = Size::from((area_size.w.ceil() as i32, area_size.h.ceil() as i32));
+
     // Round outwards: too much damage costs a repaint, too little leaves stale
     // pixels.
-    let area = Size::from((surface_size.0.ceil() as i32, surface_size.1.ceil() as i32));
-    unviewported
+    surface_local_rect
         .to_i32_up::<i32>()
         .to_buffer(buffer_scale, transform, &area)
 }
@@ -330,6 +331,26 @@ mod tests {
                 Some((400, 200))
             ),
             buffer_rect(10, 10, 100, 50),
+        );
+    }
+
+    /// A rotating transform mirrors the rect within the whole buffer, not
+    /// within the viewport source rectangle.
+    #[test]
+    fn viewport_source_with_transform() {
+        let viewport = viewport(
+            Some(geometry::Rectangle::new(10.0, 10.0, 100.0, 50.0)),
+            Some((200, 100)),
+        );
+        assert_eq!(
+            surface_damage_to_buffer(
+                damage(0, 0, 200, 100),
+                1,
+                Transform::_180,
+                Some(&viewport),
+                Some((400, 200))
+            ),
+            buffer_rect(290, 140, 100, 50),
         );
     }
 

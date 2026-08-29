@@ -146,6 +146,7 @@ pub fn hash<T: Hash>(t: &T) -> u64 {
 }
 
 const CHANNEL_SIZE: usize = 1024;
+const MESSAGE_LIMIT: usize = 128;
 
 pub trait Serializable:
     Debug
@@ -584,7 +585,7 @@ where
         let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
             channel::sync_channel(CHANNEL_SIZE);
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
-            crossbeam_channel::unbounded();
+            crossbeam_channel::bounded(MESSAGE_LIMIT);
         let other_end_connected = Arc::new(AtomicBool::new(false));
 
         {
@@ -611,7 +612,7 @@ where
         let (reader_tx, reader_rx): (channel::SyncSender<RecvType<RT>>, Channel<RecvType<RT>>) =
             channel::sync_channel(CHANNEL_SIZE);
         let (writer_tx, writer_rx): (Sender<SendType<ST>>, Receiver<SendType<ST>>) =
-            crossbeam_channel::unbounded();
+            crossbeam_channel::bounded(MESSAGE_LIMIT);
         let other_end_connected = Arc::new(AtomicBool::new(true));
 
         {

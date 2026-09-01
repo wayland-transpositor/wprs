@@ -231,7 +231,15 @@ def run_remote_command_with_stdout(remote_cmd: list[str]) -> str:
     text=True).stdout.strip()
 
 def remote_socket_dir() -> str:
-  return remote_env_var('XDG_RUNTIME_DIR') or remote_env_var('TEMPDIR') or '/tmp'
+  val = remote_env_var('XDG_RUNTIME_DIR')
+  if val:
+    return val
+  uid = run_remote_command_with_stdout(['id', '-u'])
+  path = f'/run/user/{uid}'
+  exists = run_remote_command_with_stdout(['sh', '-c', f'"test -d {path} && echo yes || echo no"'])
+  if exists == 'yes':
+    return path
+  return remote_env_var('TEMPDIR') or '/tmp'
 
 
 def forward_wprs_sock() -> None:
@@ -464,6 +472,7 @@ def get_env_vars_to_forward() -> dict[str, str]:
 
 def start_remote_command(caps: Capabilities | None) -> None:
   env = {
+    'XDG_RUNTIME_DIR': remote_socket_dir(),
     'WAYLAND_DEBUG': str(int(args.command_wayland_debug)),
     'WAYLAND_DISPLAY': args.wprsd_wayland_display,
     'SSH_AUTH_SOCK': f'{remote_socket_dir()}/wprs-ssh-auth.sock',

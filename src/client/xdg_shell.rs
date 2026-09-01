@@ -66,14 +66,29 @@ impl RemoteXdgToplevel {
         object_bimap: &mut ObjectBimap,
         title_prefix: &str,
     ) -> Result<()> {
-        let local_surface = {
+        {
             let surface = surfaces.get_mut(&surface_id).location(loc!())?;
             if surface.role.is_some() {
                 return Ok(());
             }
-            surface.local_surface.take().location(loc!())?
-        };
+            if surface.local_surface.is_none() {
+                bail!("local_surface is None");
+            }
+        }
         let toplevel_state = surface_state.xdg_toplevel()?;
+
+        if let Some(id) = toplevel_state.parent {
+            surfaces
+                .get(&id)
+                .location(loc!())?
+                .xdg_toplevel()
+                .location(loc!())?;
+        }
+
+        let local_surface = {
+            let surface = surfaces.get_mut(&surface_id).location(loc!())?;
+            surface.local_surface.take().unwrap()
+        };
 
         let local_window =
             xdg_shell_state.create_window(local_surface, WindowDecorations::ServerDefault, qh);
@@ -308,13 +323,15 @@ impl RemoteXdgPopup {
         qh: &QueueHandle<WprsClientState>,
         object_bimap: &mut ObjectBimap,
     ) -> Result<()> {
-        let local_surface = {
+        {
             let surface = surfaces.get_mut(&surface_id).location(loc!())?;
             if surface.role.is_some() {
                 return Ok(());
             }
-            surface.local_surface.take().location(loc!())?
-        };
+            if surface.local_surface.is_none() {
+                bail!("local_surface is None");
+            }
+        }
         let popup_state = surface_state.xdg_popup().location(loc!())?;
 
         let parent = {
@@ -332,6 +349,11 @@ impl RemoteXdgPopup {
 
         let positioner =
             Self::new_positioner(xdg_shell_state, &popup_state.positioner).location(loc!())?;
+
+        let local_surface = {
+            let surface = surfaces.get_mut(&surface_id).location(loc!())?;
+            surface.local_surface.take().unwrap()
+        };
 
         let local_popup = popup::Popup::from_surface(
             parent.as_ref(),
